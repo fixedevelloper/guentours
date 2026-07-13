@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:guentours;DB_CLOSE_DELAY=-1;MODE=MySQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  mail:
+    host: localhost
+    port: 3025
+
+app:
+  providers:
+    travelopro:
+      mock-mode: true
+    sabre:
+      mock-mode: true
+    travelport:
+      mock-mode: true

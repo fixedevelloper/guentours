@@ -1,0 +1,87 @@
+spring:
+  application:
+    name: guentours-api
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/guentours?useSSL=false&serverTimezone=UTC&createDatabaseIfNotExist=true}
+    username: ${DB_USERNAME:base}
+    password: ${DB_PASSWORD:ba001133}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS:false}
+
+app:
+  jwt:
+    secret: ${APP_JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LWRvLW5vdC11c2UtaW4tcHJvZHVjdGlvbi1wbGVhc2U=}
+    expiration-minutes: ${APP_JWT_EXPIRATION_MINUTES:60}
+
+  mail:
+    from: ${APP_MAIL_FROM:no-reply@guentours.com}
+
+  payment:
+    # Percentage of the total price charged upfront when a customer chooses "pay later".
+    deposit-percentage: ${APP_PAYMENT_DEPOSIT_PERCENTAGE:20}
+
+  booking:
+    # How often unpaid/deposit-only holds past their provider ticketing deadline get auto-cancelled.
+    expiry-check-interval-ms: ${APP_BOOKING_EXPIRY_CHECK_INTERVAL_MS:300000}
+
+  providers:
+    travelopro:
+      enabled: ${TRAVELOPRO_ENABLED:true}
+      mock-mode: ${TRAVELOPRO_MOCK_MODE:true}
+      base-url: ${TRAVELOPRO_BASE_URL:}
+      api-key: ${TRAVELOPRO_API_KEY:}
+      api-secret: ${TRAVELOPRO_API_SECRET:}
+      username: ${TRAVELOPRO_USERNAME:}
+      password: ${TRAVELOPRO_PASSWORD:}
+      access-mode: ${TRAVELOPRO_ACCESS_MODE:Test}
+      client-ip: ${TRAVELOPRO_CLIENT_IP:127.0.0.1}
+    sabre:
+      enabled: ${SABRE_ENABLED:true}
+      mock-mode: ${SABRE_MOCK_MODE:true}
+      base-url: ${SABRE_BASE_URL:}
+      api-key: ${SABRE_API_KEY:}
+      api-secret: ${SABRE_API_SECRET:}
+    travelport:
+      enabled: ${TRAVELPORT_ENABLED:true}
+      mock-mode: ${TRAVELPORT_MOCK_MODE:true}
+      base-url: ${TRAVELPORT_BASE_URL:}
+      api-key: ${TRAVELPORT_API_KEY:}
+      api-secret: ${TRAVELPORT_API_SECRET:}
+
+  reference-data:
+    # 30 days in milliseconds; initial delay of 0 populates airports/hotel_cities on first boot.
+    sync-interval-ms: ${REFERENCE_DATA_SYNC_INTERVAL_MS:2592000000}
+    sync-initial-delay-ms: ${REFERENCE_DATA_SYNC_INITIAL_DELAY_MS:0}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    com.guentours: INFO
