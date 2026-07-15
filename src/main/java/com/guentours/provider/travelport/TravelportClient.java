@@ -95,7 +95,6 @@ public class TravelportClient implements TravelProviderClient {
                 .requestFactory(ClientHttpRequestFactories.get(timeoutSettings))
                 .build();
         this.tokenProvider = new TravelportTokenProvider(RestClient.builder(), config);
-        log.info(this.tokenProvider.toString());
     }
 
     @Override
@@ -197,7 +196,7 @@ public class TravelportClient implements TravelProviderClient {
             return;
         }
         restClient.delete()
-                .uri("/book/reservation/reservations/{locator}", pnrCode)
+                .uri(RESERVATIONS_BASE + "/{locator}", pnrCode)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
                 .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
                 .header(PCC_HEADER, config.getPseudoCityCode())
@@ -217,7 +216,6 @@ public class TravelportClient implements TravelProviderClient {
 
     private List<FlightOffer> callFlightApi(FlightSearchCriteria criteria) {
         TravelportSearchRequest request = buildSearchRequest(criteria);
-        log.info("TOKEN ",tokenProvider);
         TravelportSearchResponse response = restClient.post()
                 .uri("/air/catalog/search/catalogproductofferings")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())

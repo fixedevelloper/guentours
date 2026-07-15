@@ -60,7 +60,6 @@ class SabreTokenProvider {
                 .body(body)
                 .retrieve()
                 .body(SabreTokenResponse.class);
-        log.error(response.toString());
 
         if (response == null || response.accessToken() == null) {
             throw new ProviderException("Sabre token exchange returned no access_token");

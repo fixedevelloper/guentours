@@ -35,6 +35,7 @@ import java.time.LocalDateTime;
 import java.time.OffsetTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -126,7 +127,7 @@ public class SabreClient implements TravelProviderClient {
         if (config.isMockMode()) {
             return ProviderMockSupport.verifyHotelPrice(offer.providerOfferId());
         }
-        throw new ProviderException("Sabre live hotel price verification is not yet integrated");
+        return callHotelPriceCheckApi(offer);
     }
 
     @Override
@@ -142,7 +143,7 @@ public class SabreClient implements TravelProviderClient {
         if (config.isMockMode()) {
             return ProviderMockSupport.hotelHold(getType());
         }
-        throw new ProviderException("Sabre live hotel booking is not yet integrated");
+        return callHotelBookingApi(request);
     }
 
     @Override
@@ -158,7 +159,13 @@ public class SabreClient implements TravelProviderClient {
         if (config.isMockMode()) {
             return ProviderMockSupport.confirmHotelBooking(getType(), hotelBookingRef);
         }
-        throw new ProviderException("Sabre live hotel booking is not yet integrated");
+        // createBooking already created the actual reservation at hold time, and our own
+        // PaymentGateway has collected the funds (txn payment.transactionReference()); unlike
+        // flights, Sabre hotel orders need no separate ticketing/payment-submission call, so
+        // the reservation stands as the confirmation (same reasoning as TravelportClient).
+        log.info("Confirmed Sabre hotel reservation {} (charged via txn {})",
+                hotelBookingRef, payment.transactionReference());
+        return new FinalHotelConfirmation(getType(), hotelBookingRef, hotelBookingRef, true);
     }
 
     @Override
@@ -182,7 +189,16 @@ public class SabreClient implements TravelProviderClient {
             log.info("Mock-cancelled Sabre hotel booking {}", hotelBookingRef);
             return;
         }
-        throw new ProviderException("Sabre live hotel cancellation is not yet integrated");
+        // Each createHotelHold call produces its own dedicated Sabre order (never merged with
+        // a flight order), so a full cancelAll of that order - the same Booking Management
+        // /cancelBooking call used for flights - is sufficient here.
+        restClient.post()
+                .uri("/v1/trip/orders/cancelBooking")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                .body(new SabreCancelBookingRequest(hotelBookingRef, true))
+                .retrieve()
+                .toBodilessEntity();
+        log.info("Cancelled Sabre hotel booking {}", hotelBookingRef);
     }
 
     private List<FlightOffer> callFlightApi(FlightSearchCriteria criteria) {
@@ -551,8 +567,208 @@ public class SabreClient implements TravelProviderClient {
         };
     }
 
+    /**
+     * Searches Sabre's Get Hotel Avail v5 ({@code POST /v5/get/hotelavail}) by IATA city code
+     * and maps each property's cheapest rate onto our canonical {@link HotelOffer}. The hotel
+     * code, rate plan and adult count are captured in {@code providerContext} so a later
+     * price-check/booking can re-fetch a fresh, bookable rate for that exact property.
+     */
     private List<HotelOffer> callHotelApi(HotelSearchCriteria criteria) {
-        // TODO Sabre Hotel Search v3 call, mapped onto HotelOffer via this.restClient.
-        throw new ProviderException("Sabre live hotel search is not yet integrated");
+        int adults = Math.max(criteria.adults(), 1);
+        var request = new SabreHotelAvailRequest(
+                new SabreHotelAvailRequest.GetHotelAvailRQ(
+                        new SabreHotelAvailRequest.POS(new SabreHotelAvailRequest.Source(config.getPseudoCityCode())),
+                        new SabreHotelAvailRequest.SearchCriteria(
+                                50, "TotalRate", "ASC", true,
+                                new SabreHotelAvailRequest.GeoSearch(
+                                        new SabreHotelAvailRequest.GeoRef(30, "MI",
+                                                new SabreHotelAvailRequest.RefPoint(criteria.cityCode(), "CODE", "6"))),
+                                new SabreHotelAvailRequest.RateInfoRef(
+                                        "EUR", "4",
+                                        new SabreHotelAvailRequest.StayDateTimeRange(
+                                                criteria.checkIn().toString(), criteria.checkOut().toString()),
+                                        new SabreHotelAvailRequest.Rooms(List.of(
+                                                new SabreHotelAvailRequest.Room(1, adults)))))));
+
+        SabreHotelAvailResponse response = restClient.post()
+                .uri("/v5/get/hotelavail")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                .body(request)
+                .retrieve()
+                .body(SabreHotelAvailResponse.class);
+
+        var body = response == null ? null : response.GetHotelAvailRS();
+        if (body == null || body.HotelAvailInfos() == null || body.HotelAvailInfos().HotelAvailInfo() == null) {
+            return List.of();
+        }
+
+        return body.HotelAvailInfos().HotelAvailInfo().stream()
+                .map(info -> toHotelOffer(info, criteria, adults))
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    private HotelOffer toHotelOffer(SabreHotelAvailResponse.HotelAvailInfo info, HotelSearchCriteria criteria, int adults) {
+        if (info == null || info.HotelInfo() == null || info.HotelInfo().HotelCode() == null
+                || info.RateInfos() == null || info.RateInfos().RateInfo() == null
+                || info.RateInfos().RateInfo().isEmpty()) {
+            return null;
+        }
+        var cheapest = info.RateInfos().RateInfo().stream()
+                .filter(r -> r.ConvertedRateInfo() != null && r.ConvertedRateInfo().AmountAfterTax() != null)
+                .min((a, b) -> Double.compare(a.ConvertedRateInfo().AmountAfterTax(), b.ConvertedRateInfo().AmountAfterTax()))
+                .orElse(null);
+        if (cheapest == null) {
+            return null;
+        }
+
+        String currency = cheapest.ConvertedRateInfo().CurrencyCode() != null
+                ? cheapest.ConvertedRateInfo().CurrencyCode() : "EUR";
+        Map<String, String> context = new HashMap<>();
+        context.put("hotelCode", info.HotelInfo().HotelCode());
+        context.put("adults", String.valueOf(adults));
+
+        return new HotelOffer(
+                getType(),
+                info.HotelInfo().HotelCode(),
+                info.HotelInfo().HotelName(),
+                criteria.cityCode(),
+                "",
+                criteria.checkIn(),
+                criteria.checkOut(),
+                new Money(BigDecimal.valueOf(cheapest.ConvertedRateInfo().AmountAfterTax()), currency),
+                0.0,
+                context);
+    }
+
+    /**
+     * Re-checks a property's rate via Get Hotel Details ({@code POST /v5/get/hoteldetails})
+     * then Hotel Price Check ({@code POST /v5/hotel/pricecheck}) - the latter returns the fresh
+     * {@code BookingKey} that {@code createBooking} consumes. Keyed by the hotel code captured
+     * from search ({@link HotelOffer#context}); when that context is missing (e.g. an offer
+     * carrying no context), the check is skipped and the originally quoted price is trusted.
+     */
+    private HotelPriceVerification callHotelPriceCheckApi(HotelOffer offer) {
+        SabreHotelPriceCheckResponse.HotelPriceCheckRS priced = priceCheck(offer);
+        if (priced == null) {
+            return new HotelPriceVerification(offer.providerOfferId(), null, true, null);
+        }
+        Money freshPrice = priced.ConvertedRateInfo() != null && priced.ConvertedRateInfo().AmountAfterTax() != null
+                ? new Money(BigDecimal.valueOf(priced.ConvertedRateInfo().AmountAfterTax()),
+                        priced.ConvertedRateInfo().CurrencyCode() != null
+                                ? priced.ConvertedRateInfo().CurrencyCode() : offer.price().currency())
+                : null;
+        String cancellationPolicy = priced.CancelPolicy() != null ? priced.CancelPolicy().Description() : null;
+        return new HotelPriceVerification(offer.providerOfferId(), freshPrice, true, cancellationPolicy);
+    }
+
+    /**
+     * Fetches a fresh, bookable rate plan for the offer's hotel code (Get Hotel Details) and
+     * re-prices it (Hotel Price Check), returning the {@code BookingKey} needed to book.
+     * Returns {@code null} when the offer carries no {@code hotelCode} context or the property
+     * has no bookable rate plan left.
+     */
+    private SabreHotelPriceCheckResponse.HotelPriceCheckRS priceCheck(HotelOffer offer) {
+        String hotelCode = offer.context("hotelCode");
+        if (hotelCode == null) {
+            return null;
+        }
+        int adults = offer.context("adults") != null ? Integer.parseInt(offer.context("adults")) : 1;
+
+        var detailsRequest = new SabreHotelDetailsRequest(
+                new SabreHotelDetailsRequest.GetHotelDetailsRQ(
+                        new SabreHotelDetailsRequest.POS(new SabreHotelDetailsRequest.Source(config.getPseudoCityCode())),
+                        new SabreHotelDetailsRequest.SearchCriteria(
+                                new SabreHotelDetailsRequest.HotelRefs(
+                                        new SabreHotelDetailsRequest.HotelRef(hotelCode, "GLOBAL")),
+                                new SabreHotelDetailsRequest.RateInfoRef(
+                                        new SabreHotelDetailsRequest.Rooms(List.of(
+                                                new SabreHotelDetailsRequest.Room(1, adults))),
+                                        new SabreHotelDetailsRequest.StayDateTimeRange(
+                                                offer.checkIn().toString(), offer.checkOut().toString()),
+                                        offer.price().currency(), "100"))));
+
+        SabreHotelDetailsResponse detailsResponse = restClient.post()
+                .uri("/v5/get/hoteldetails")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                .body(detailsRequest)
+                .retrieve()
+                .body(SabreHotelDetailsResponse.class);
+
+        var ratePlans = detailsResponse == null || detailsResponse.GetHotelDetailsRS() == null
+                || detailsResponse.GetHotelDetailsRS().HotelDetailsInfo() == null
+                || detailsResponse.GetHotelDetailsRS().HotelDetailsInfo().HotelRateInfo() == null
+                ? null : detailsResponse.GetHotelDetailsRS().HotelDetailsInfo().HotelRateInfo().RatePlans();
+        if (ratePlans == null || ratePlans.RatePlan() == null || ratePlans.RatePlan().isEmpty()) {
+            return null;
+        }
+        var cheapestPlan = ratePlans.RatePlan().stream()
+                .filter(p -> p.RatePlanCode() != null && p.ConvertedRateInfo() != null
+                        && p.ConvertedRateInfo().AmountAfterTax() != null)
+                .min((a, b) -> Double.compare(a.ConvertedRateInfo().AmountAfterTax(), b.ConvertedRateInfo().AmountAfterTax()))
+                .orElse(null);
+        if (cheapestPlan == null) {
+            return null;
+        }
+
+        var priceCheckRequest = new SabreHotelPriceCheckRequest(
+                new SabreHotelPriceCheckRequest.HotelPriceCheckRQ(
+                        new SabreHotelPriceCheckRequest.POS(new SabreHotelPriceCheckRequest.Source(config.getPseudoCityCode())),
+                        new SabreHotelPriceCheckRequest.HotelRateSelect(hotelCode, cheapestPlan.RatePlanCode(),
+                                new SabreHotelPriceCheckRequest.StayDateTimeRange(
+                                        offer.checkIn().toString(), offer.checkOut().toString()))));
+
+        SabreHotelPriceCheckResponse priceCheckResponse = restClient.post()
+                .uri("/v5/hotel/pricecheck")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                .body(priceCheckRequest)
+                .retrieve()
+                .body(SabreHotelPriceCheckResponse.class);
+
+        return priceCheckResponse == null ? null : priceCheckResponse.HotelPriceCheckRS();
+    }
+
+    /**
+     * Books a room via the same Booking Management order endpoint used for flights
+     * ({@code POST /v1/trip/orders/createBooking}), sending the fresh {@code BookingKey}
+     * obtained from {@link #priceCheck} plus the guest(s). No form of payment is sent here -
+     * our own PaymentGateway collects the funds (see {@link #confirmHotelBooking}).
+     */
+    private ProviderBookingConfirmation callHotelBookingApi(HotelBookingRequest request) {
+        SabreHotelPriceCheckResponse.HotelPriceCheckRS priced = priceCheck(request.offer());
+        if (priced == null || priced.BookingKey() == null) {
+            throw new ProviderException("Sabre hotel booking failed: no bookable rate found for "
+                    + request.offer().providerOfferId());
+        }
+
+        List<SabreHotelBookingRequest.Guest> guests = request.guests().stream()
+                .map(g -> {
+                    String[] nameParts = splitName(g.fullName());
+                    return new SabreHotelBookingRequest.Guest(nameParts[0], nameParts[1]);
+                })
+                .toList();
+
+        SabreHotelBookingRequest bookingRequest = new SabreHotelBookingRequest(
+                List.of(new SabreHotelBookingRequest.Hotel(priced.BookingKey())),
+                guests,
+                new SabreHotelBookingRequest.ContactInfo(List.of(request.contactEmail())));
+
+        SabreHotelBookingResponse response = restClient.post()
+                .uri("/v1/trip/orders/createBooking")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                .body(bookingRequest)
+                .retrieve()
+                .body(SabreHotelBookingResponse.class);
+
+        if (response == null || response.confirmationId() == null) {
+            String reason = response != null && response.errors() != null && !response.errors().isEmpty()
+                    ? response.errors().get(0).description() : "no confirmation id returned";
+            throw new ProviderException("Sabre hotel booking creation failed: " + reason);
+        }
+
+        // createBooking's known response carries no explicit hold time limit for hotels; a
+        // conservative 24h policy default applies until the real TTL field is confirmed.
+        return new ProviderBookingConfirmation(getType(), response.confirmationId(),
+                LocalDateTime.now().plusHours(24), true);
     }
 }

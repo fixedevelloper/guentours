@@ -7,6 +7,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { routing } from "@/i18n/routing";
 import { Providers } from "@/components/providers";
 import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
 import { Toaster } from "@/components/ui/sonner";
 
 import "../globals.css";
@@ -85,9 +86,11 @@ export default async function LocaleLayout({
               pb-16 sur mobile permet de créer un espace vide en bas de l'écran 
               pour que la barre de navigation fixe ne cache pas le contenu (boutons de validation, etc.).
             */}
-            <main className="flex-1 flex flex-col w-full animate-fade-in pb-16 sm:pb-0">
+            <main className="flex-1 flex flex-col w-full animate-fade-in">
               {children}
             </main>
+
+            <SiteFooter />
 
             {/* Toaster pour les notifications */}
             <Toaster 
