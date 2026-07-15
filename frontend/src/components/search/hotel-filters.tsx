@@ -1,10 +1,10 @@
+// components/search/hotel-filters.tsx
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { SlidersHorizontal, Star } from "lucide-react";
+import { SlidersHorizontal, Star, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -48,23 +48,36 @@ export function HotelFilters({ options, value, onChange }: HotelFiltersProps) {
     value.minRating === 0;
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <SlidersHorizontal className="size-4" />
-          {t("title")}
-        </CardTitle>
+    <div className="space-y-6">
+      
+      {/* EN-TÊTE DU FILTRE (AFFICHE UNIQUEMENT LE RESET SUR DESKTOP OU SI UTILISED) */}
+      <div className="flex items-center justify-between pb-1">
+        <h3 className="hidden lg:flex items-center gap-2 text-sm font-black tracking-wide text-foreground uppercase">
+          <SlidersHorizontal className="size-3.5 text-muted-foreground" />
+          {t("title") ?? "Filtres"}
+        </h3>
         {!isDefault && (
-          <Button variant="ghost" size="sm" onClick={() => onChange(DEFAULT_HOTEL_FILTERS)}>
-            {t("reset")}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => onChange(DEFAULT_HOTEL_FILTERS)}
+            className="text-xs font-bold text-primary hover:bg-primary/5 hover:text-primary gap-1.5 px-2.5 py-1.5 h-auto rounded-lg transition-colors ml-auto"
+          >
+            <RotateCcw className="size-3" />
+            {t("reset") ?? "Réinitialiser"}
           </Button>
         )}
-      </CardHeader>
-      <CardContent className="grid gap-6">
-        <div className="grid gap-3">
-          <div className="flex items-center justify-between text-sm">
-            <Label>{t("maxPrice")}</Label>
-            <span className="font-medium">
+      </div>
+
+      <div className="grid gap-6">
+        
+        {/* FILTRE : BUDGET MAX */}
+        <div className="grid gap-3.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-bold text-muted-foreground/90 tracking-wider uppercase">
+              {t("maxPrice") ?? "Budget maximum"}
+            </Label>
+            <span className="text-sm font-black text-foreground tracking-tight bg-slate-50 dark:bg-zinc-900/50 border border-border/40 px-2.5 py-0.5 rounded-md">
               {formatMoney({ amount: currentMax, currency: "EUR" }, locale)}
             </span>
           </div>
@@ -74,74 +87,128 @@ export function HotelFilters({ options, value, onChange }: HotelFiltersProps) {
             step={1}
             value={[currentMax]}
             onValueChange={([v]) => onChange({ ...value, maxPrice: v })}
+            className="py-1"
           />
-        </div>
-
-        <Separator />
-
-        <div className="grid gap-3">
-          <Label>{t("minRating")}</Label>
-          <div className="flex flex-wrap gap-2">
-            {RATING_STEPS.map((rating) => (
-              <Button
-                key={rating}
-                type="button"
-                variant={value.minRating === rating ? "default" : "outline"}
-                size="sm"
-                onClick={() => onChange({ ...value, minRating: rating })}
-              >
-                {rating === 0 ? (
-                  t("anyRating")
-                ) : (
-                  <>
-                    {rating}
-                    <Star className="size-3.5 fill-current" />
-                  </>
-                )}
-              </Button>
-            ))}
+          <div className="flex justify-between text-[10px] text-muted-foreground/60 font-semibold tracking-wide">
+            <span>{formatMoney({ amount: options.minPrice, currency: "EUR" }, locale)}</span>
+            <span>{formatMoney({ amount: options.maxPrice, currency: "EUR" }, locale)}</span>
           </div>
         </div>
 
-        <Separator />
+        <Separator className="bg-border/55" />
 
+        {/* FILTRE : NOTE MINIMALE */}
         <div className="grid gap-3">
-          <Label>{t("providers")}</Label>
-          {ALL_PROVIDERS.map((provider) => (
-            <div key={provider} className="flex items-center gap-2">
-              <Checkbox
-                id={`hprovider-${provider}`}
-                checked={value.providers.includes(provider)}
-                onCheckedChange={() => toggleProvider(provider)}
-              />
-              <Label htmlFor={`hprovider-${provider}`} className="text-sm font-normal">
-                {providerLabel(provider)}
-              </Label>
-            </div>
-          ))}
+          <Label className="text-xs font-bold text-muted-foreground/90 tracking-wider uppercase">
+            {t("minRating") ?? "Note minimale"}
+          </Label>
+          <div className="flex flex-wrap gap-1.5">
+            {RATING_STEPS.map((rating) => {
+              const isSelected = value.minRating === rating;
+              return (
+                <Button
+                  key={rating}
+                  type="button"
+                  variant={isSelected ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => onChange({ ...value, minRating: rating })}
+                  className={`rounded-xl text-xs font-bold gap-1 transition-all py-4 px-3 ${
+                    isSelected 
+                      ? "bg-primary text-primary-foreground shadow-2xs hover:bg-primary/95" 
+                      : "border-border/80 hover:bg-slate-50 dark:hover:bg-zinc-900/40 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {rating === 0 ? (
+                    t("anyRating") ?? "Toutes"
+                  ) : (
+                    <>
+                      <span>{rating}</span>
+                      <Star className={`size-3 shrink-0 ${isSelected ? "fill-primary-foreground text-primary-foreground" : "fill-amber-400 text-amber-400"}`} />
+                    </>
+                  )}
+                </Button>
+              );
+            })}
+          </div>
         </div>
 
-        {options.roomTypes.length > 1 && (
-          <>
-            <Separator />
-            <div className="grid gap-3">
-              <Label>{t("roomTypes")}</Label>
-              {options.roomTypes.map((roomType) => (
-                <div key={roomType} className="flex items-center gap-2">
+        <Separator className="bg-border/55" />
+
+        {/* FILTRE : FOURNISSEURS */}
+        <div className="grid gap-3.5">
+          <Label className="text-xs font-bold text-muted-foreground/90 tracking-wider uppercase">
+            {t("providers") ?? "Partenaires de confiance"}
+          </Label>
+          <div className="grid gap-2.5">
+            {ALL_PROVIDERS.map((provider) => {
+              const checked = value.providers.includes(provider);
+              return (
+                <div 
+                  key={provider} 
+                  className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-150 ${
+                    checked 
+                      ? "bg-slate-50/50 dark:bg-zinc-900/20 border-border/90" 
+                      : "border-border/40 hover:bg-slate-50/30 hover:border-border/60"
+                  }`}
+                >
                   <Checkbox
-                    id={`room-${roomType}`}
-                    checked={value.roomTypes.includes(roomType)}
-                    onCheckedChange={() => toggleRoomType(roomType)}
+                    id={`hprovider-${provider}`}
+                    checked={checked}
+                    onCheckedChange={() => toggleProvider(provider)}
+                    className="rounded-md border-border/80 text-primary focus-visible:ring-primary/20"
                   />
-                  <Label htmlFor={`room-${roomType}`} className="text-sm font-normal">
-                    {roomType}
+                  <Label 
+                    htmlFor={`hprovider-${provider}`} 
+                    className="text-xs font-bold text-foreground/90 cursor-pointer select-none flex-1"
+                  >
+                    {providerLabel(provider)}
                   </Label>
                 </div>
-              ))}
+              );
+            })}
+          </div>
+        </div>
+
+        {/* FILTRE : OPTIONS DE CHAMBRES */}
+        {options.roomTypes.length > 1 && (
+          <>
+            <Separator className="bg-border/55" />
+            <div className="grid gap-3.5">
+              <Label className="text-xs font-bold text-muted-foreground/90 tracking-wider uppercase">
+                {t("roomTypes") ?? "Type de chambre"}
+              </Label>
+              <div className="grid gap-2.5 max-h-56 overflow-y-auto pr-1">
+                {options.roomTypes.map((roomType) => {
+                  const checked = value.roomTypes.includes(roomType);
+                  return (
+                    <div 
+                      key={roomType} 
+                      className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-150 ${
+                        checked 
+                          ? "bg-slate-50/50 dark:bg-zinc-900/20 border-border/90" 
+                          : "border-border/40 hover:bg-slate-50/30 hover:border-border/60"
+                      }`}
+                    >
+                      <Checkbox
+                        id={`room-${roomType}`}
+                        checked={checked}
+                        onCheckedChange={() => toggleRoomType(roomType)}
+                        className="rounded-md border-border/80 text-primary focus-visible:ring-primary/20"
+                      />
+                      <Label 
+                        htmlFor={`room-${roomType}`} 
+                        className="text-xs font-semibold text-foreground/80 cursor-pointer select-none flex-1 truncate capitalize"
+                      >
+                        {roomType.toLowerCase()}
+                      </Label>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

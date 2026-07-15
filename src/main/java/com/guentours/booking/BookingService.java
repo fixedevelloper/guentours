@@ -15,6 +15,7 @@ import com.guentours.provider.TravelProviderClient;
 import com.guentours.provider.dto.FlightPriceVerification;
 import com.guentours.provider.dto.HotelPriceVerification;
 import com.guentours.search.OfferCache;
+import com.guentours.shared.CommissionPolicy;
 import com.guentours.shared.Money;
 import com.guentours.shared.exception.BusinessException;
 import com.guentours.shared.exception.NotFoundException;
@@ -30,9 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -49,12 +50,13 @@ public class BookingService {
     private final Map<ProviderType, TravelProviderClient> providerClients;
     private final BookingTrackingService trackingService;
     private final ApplicationEventPublisher events;
-    private final int depositPercentage;
+    private final CommissionPolicy commissionPolicy;
+    private final BigDecimal reservationFeeAmount;
 
     public BookingService(BookingRepository bookingRepository, UserService userService, OfferCache offerCache,
                            List<TravelProviderClient> providerClients, BookingTrackingService trackingService,
-                           ApplicationEventPublisher events,
-                           @Value("${app.payment.deposit-percentage:20}") int depositPercentage) {
+                           ApplicationEventPublisher events, CommissionPolicy commissionPolicy,
+                           @Value("${app.payment.reservation-fee:5000}") BigDecimal reservationFeeAmount) {
         this.bookingRepository = bookingRepository;
         this.userService = userService;
         this.offerCache = offerCache;
@@ -62,7 +64,8 @@ public class BookingService {
                 .collect(Collectors.toMap(TravelProviderClient::getType, Function.identity()));
         this.trackingService = trackingService;
         this.events = events;
-        this.depositPercentage = depositPercentage;
+        this.commissionPolicy = commissionPolicy;
+        this.reservationFeeAmount = reservationFeeAmount;
     }
 
     /**
@@ -83,7 +86,9 @@ public class BookingService {
             case HOTEL -> checkoutHotel(request, user, travelers, plan);
         };
 
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        events.publishEvent(new BookingCreatedEvent(saved.getId()));
+        return saved;
     }
 
     /**
@@ -115,7 +120,7 @@ public class BookingService {
         try {
             for (int i = 0; i < offers.size(); i++) {
                 FlightOffer offer = offers.get(i);
-                FlightPriceVerification verification = client.verifyFlightPrice(offer.providerOfferId());
+                FlightPriceVerification verification = client.verifyFlightPrice(offer);
                 if (verification.priceChanged(offer.price()) || !verification.seatsAvailable()) {
                     throw new OfferExpiredException(
                             "This flight offer is no longer available at the quoted price, please search again");
@@ -128,7 +133,8 @@ public class BookingService {
                 pnrCodes.add(hold.pnrCode());
                 itineraryLegs.add(new BookingFlightLeg(i, offer.airline(), offer.flightNumber(), offer.origin(),
                         offer.destination(), offer.departureTime(), offer.arrivalTime()));
-                total = total == null ? offer.price() : total.add(offer.price());
+                Money legPriceWithFee = commissionPolicy.addFlightFee(offer.price());
+                total = total == null ? legPriceWithFee : total.add(legPriceWithFee);
                 earliestDeadline = earliestDeadline == null || hold.ticketingDeadline().isBefore(earliestDeadline)
                         ? hold.ticketingDeadline() : earliestDeadline;
             }
@@ -146,9 +152,11 @@ public class BookingService {
         String combinedOfferId = offers.stream().map(FlightOffer::providerOfferId).collect(Collectors.joining("|"));
         Booking booking = Booking.forMultiCityFlight(user.getId(), user.getEmail(), providerType, combinedOfferId,
                 total, itineraryLegs, travelers);
-        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? depositFor(total) : null);
+        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(total.currency()) : null);
         booking.markOnHoldMultiLeg(pnrCodes, earliestDeadline);
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        events.publishEvent(new BookingCreatedEvent(saved.getId()));
+        return saved;
     }
 
     private Booking checkoutFlight(CheckoutRequest request, User user, List<BookedTraveler> travelers, PaymentPlan plan) {
@@ -156,7 +164,7 @@ public class BookingService {
                 .orElseThrow(() -> new BusinessException("This flight offer has expired, please search again"));
         TravelProviderClient client = clientFor(offer.providerType());
 
-        FlightPriceVerification verification = client.verifyFlightPrice(offer.providerOfferId());
+        FlightPriceVerification verification = client.verifyFlightPrice(offer);
         if (verification.priceChanged(offer.price()) || !verification.seatsAvailable()) {
             throw new OfferExpiredException("This flight offer is no longer available at the quoted price, please search again");
         }
@@ -168,10 +176,11 @@ public class BookingService {
             throw new ProviderException("Unable to hold this flight with " + offer.providerType());
         }
 
+        Money priceWithFee = commissionPolicy.addFlightFee(offer.price());
         Booking booking = Booking.forFlight(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
                 offer.airline(), offer.flightNumber(), offer.origin(), offer.destination(),
-                offer.departureTime(), offer.arrivalTime(), offer.cabinClass(), offer.price(), travelers);
-        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? depositFor(offer.price()) : null);
+                offer.departureTime(), offer.arrivalTime(), offer.cabinClass(), priceWithFee, travelers);
+        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(priceWithFee.currency()) : null);
         booking.markOnHold(hold.pnrCode(), hold.ticketingDeadline());
         return booking;
     }
@@ -181,7 +190,7 @@ public class BookingService {
                 .orElseThrow(() -> new BusinessException("This hotel offer has expired, please search again"));
         TravelProviderClient client = clientFor(offer.providerType());
 
-        HotelPriceVerification verification = client.verifyHotelPrice(offer.providerOfferId());
+        HotelPriceVerification verification = client.verifyHotelPrice(offer);
         if (verification.priceChanged(offer.price()) || !verification.available()) {
             throw new OfferExpiredException("This hotel offer is no longer available at the quoted price, please search again");
         }
@@ -193,17 +202,18 @@ public class BookingService {
             throw new ProviderException("Unable to hold this room with " + offer.providerType());
         }
 
+        Money priceWithFee = commissionPolicy.addHotelFee(offer.price());
         Booking booking = Booking.forHotel(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
                 offer.hotelName(), offer.cityCode(), offer.checkIn(), offer.checkOut(), offer.roomType(),
-                offer.price(), travelers);
-        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? depositFor(offer.price()) : null);
+                priceWithFee, travelers);
+        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(priceWithFee.currency()) : null);
         booking.markOnHold(hold.pnrCode(), hold.ticketingDeadline());
         return booking;
     }
 
-    private Money depositFor(Money price) {
-        BigDecimal factor = BigDecimal.valueOf(depositPercentage).divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
-        return new Money(price.amount().multiply(factor), price.currency());
+    /** The fixed, non-refundable reservation fee due up front for a PAY_LATER booking (never deducted from the price). */
+    private Money reservationFee(String currency) {
+        return new Money(reservationFeeAmount, currency);
     }
 
     public Booking getById(String bookingId) {
@@ -211,25 +221,41 @@ public class BookingService {
                 .orElseThrow(() -> new NotFoundException("Booking not found: " + bookingId));
     }
 
+    /** Every booking made by the given account, most recent first - backs the customer dashboard. */
+    public List<Booking> getForUser(String userId) {
+        return bookingRepository.findByUserId(userId).stream()
+                .sorted(Comparator.comparing(Booking::getCreatedAt).reversed())
+                .toList();
+    }
+
+    /** Every booking across every account, most recent first - backs the admin dashboard. */
+    public List<Booking> getAll() {
+        return bookingRepository.findAll().stream()
+                .sorted(Comparator.comparing(Booking::getCreatedAt).reversed())
+                .toList();
+    }
+
     public BookingSummary getSummary(String bookingId) {
         return BookingSummary.from(getById(bookingId));
     }
 
     /**
-     * Called by the payment module right after a customer pays only the reservation deposit
-     * of a PAY_LATER booking. Unlike {@link #markPaidAndConfirm}, this does NOT trigger provider
-     * ticket issuance - the hold stays open until the balance is paid (or it lapses and gets
-     * auto-cancelled by {@link #cancelExpiredHolds()}).
+     * Called by the payment module right after a customer pays only the non-refundable reservation
+     * fee of a PAY_LATER booking. Unlike {@link #markPaidAndConfirm}, this does NOT trigger provider
+     * ticket issuance - the hold stays open until the full price is paid (or it lapses and gets
+     * auto-cancelled by {@link #cancelExpiredHolds()}). Fires {@link ReservationFeePaidEvent} so the
+     * fee is recorded as reservation commission.
      */
     @Transactional
     public void markDepositPaid(String bookingId) {
         Booking booking = getById(bookingId);
         if (booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
-            throw new BusinessException("Booking " + bookingId + " is not awaiting a deposit");
+            throw new BusinessException("Booking " + bookingId + " is not awaiting a reservation fee");
         }
         booking.markDepositPaid();
         bookingRepository.save(booking);
         trackingService.publish(bookingId, BookingStatus.DEPOSIT_PAID);
+        events.publishEvent(new ReservationFeePaidEvent(bookingId));
     }
 
     /**
@@ -351,7 +377,7 @@ public class BookingService {
 
     private List<BookedTraveler> toBookedTravelers(List<TravelerRequest> travelers) {
         return travelers.stream()
-                .map(t -> new BookedTraveler(t.fullName(), t.dateOfBirth(), t.passportNumber(), t.type()))
+                .map(t -> new BookedTraveler(t.fullName(), t.dateOfBirth(), t.passportNumber(), t.type(), t.seatNumber()))
                 .toList();
     }
 

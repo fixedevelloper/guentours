@@ -1,0 +1,24 @@
+-- Baseline schema, generated from the JPA entity mappings as of the Flyway migration to
+-- keep the very first migration in exact sync with what Hibernate validates against.
+create table airports (airport_code varchar(3) not null, airport_name varchar(255) not null, city varchar(255) not null, country varchar(255) not null, primary key (airport_code)) engine=InnoDB;
+create table booking_eticket_numbers (booking_id varchar(255) not null, eticket_number varchar(255)) engine=InnoDB;
+create table booking_itinerary_legs (leg_index integer, leg_position integer not null, arrival_time datetime(6), departure_time datetime(6), airline varchar(255), booking_id varchar(255) not null, destination varchar(255), flight_number varchar(255), origin varchar(255), primary key (leg_position, booking_id)) engine=InnoDB;
+create table booking_leg_pnr_codes (leg_position integer not null, booking_id varchar(255) not null, pnr_code varchar(255), primary key (leg_position, booking_id)) engine=InnoDB;
+create table booking_travelers (date_of_birth date, booking_id varchar(255) not null, full_name varchar(255), passport_number varchar(255), seat_number varchar(255), passenger_type enum ('ADULT','CHILD','INFANT')) engine=InnoDB;
+create table bookings (amount decimal(38,2), check_in date, check_out date, deposit_amount decimal(38,2), arrival_time datetime(6), created_at datetime(6) not null, departure_time datetime(6), ticketing_deadline datetime(6), updated_at datetime(6) not null, version bigint not null, airline varchar(255), city_code varchar(255), contact_email varchar(255) not null, currency varchar(255), deposit_currency varchar(255), destination varchar(255), failure_reason varchar(255), fare_class varchar(255), flight_number varchar(255), hotel_name varchar(255), id varchar(255) not null, origin varchar(255), provider_confirmation_number varchar(255), user_id varchar(255) not null, offer_type enum ('FLIGHT','HOTEL') not null, payment_plan enum ('PAY_LATER','PAY_NOW') not null, provider_offer_id tinytext not null, provider_type enum ('SABRE','TRAVELOPRO','TRAVELPORT') not null, status enum ('CANCELLED','CONFIRMED','CONFIRMING','DEPOSIT_PAID','FAILED','PAID','PENDING_PAYMENT') not null, primary key (id)) engine=InnoDB;
+create table commission_wallet_entries (amount decimal(38,2), created_at datetime(6) not null, booking_id varchar(255) not null, currency varchar(255), id varchar(255) not null, offer_type enum ('FLIGHT','HOTEL') not null, provider_type enum ('SABRE','TRAVELOPRO','TRAVELPORT') not null, primary key (id)) engine=InnoDB;
+create table e_tickets (issued_at datetime(6) not null, booking_id varchar(255) not null, id varchar(255) not null, provider_confirmation_number varchar(255), ticket_number varchar(255) not null, document tinytext, primary key (id)) engine=InnoDB;
+create table event_publication (completion_date datetime(6), publication_date datetime(6), id binary(16) not null, event_type varchar(255), listener_id varchar(255), serialized_event varchar(255), primary key (id)) engine=InnoDB;
+create table hotel_cities (latitude float(53) not null, longitude float(53) not null, id bigint not null auto_increment, city_name varchar(255) not null, country_name varchar(255) not null, primary key (id)) engine=InnoDB;
+create table payments (amount decimal(38,2), created_at datetime(6) not null, booking_id varchar(255) not null, currency varchar(255), failure_reason varchar(255), gateway_reference varchar(255), id varchar(255) not null, payer_reference_last4 varchar(255), payment_method enum ('CARD','MTN_MOBILE_MONEY','ORANGE_MONEY') not null, status enum ('FAILED','PENDING','SUCCEEDED') not null, primary key (id)) engine=InnoDB;
+create table users (auto_provisioned bit not null, created_at datetime(6) not null, email varchar(255) not null, full_name varchar(255) not null, id varchar(255) not null, password_hash varchar(255) not null, phone varchar(255), role enum ('ADMIN','CUSTOMER') not null, primary key (id)) engine=InnoDB;
+create index idx_airports_city on airports (city);
+create index idx_airports_name on airports (airport_name);
+alter table e_tickets add constraint UK6ni1yox69ihf3sjauf8fw6qtu unique (ticket_number);
+create index idx_hotel_cities_name on hotel_cities (city_name);
+alter table hotel_cities add constraint uk_hotel_cities_name_country unique (city_name, country_name);
+alter table users add constraint UK6dotkott2kjsp8vw4d0m25fb7 unique (email);
+alter table booking_eticket_numbers add constraint FKebgko0v4avmrn05twbjqun2hp foreign key (booking_id) references bookings (id);
+alter table booking_itinerary_legs add constraint FK3epmd2wy2tpnfn591uyi1q70y foreign key (booking_id) references bookings (id);
+alter table booking_leg_pnr_codes add constraint FKbe6ei3csr1953aobolkn9lp3v foreign key (booking_id) references bookings (id);
+alter table booking_travelers add constraint FKaho8r4wu12xsb2ggpo20vm6w4 foreign key (booking_id) references bookings (id);

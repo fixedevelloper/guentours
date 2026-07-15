@@ -6,6 +6,7 @@ import type {
   HotelSearchParams,
   MultiCityFlightSearchParams,
   MultiCityItinerary,
+  SeatMapResponse,
 } from "./types";
 
 export async function searchFlights(params: FlightSearchParams) {
@@ -20,5 +21,10 @@ export async function searchMultiCityFlights(params: MultiCityFlightSearchParams
 
 export async function searchHotels(params: HotelSearchParams) {
   const { data } = await apiClient.get<HarmonizedHotelOffer[]>("/api/search/hotels", { params });
+  return data;
+}
+
+export async function getFlightSeatMap(offerId: string) {
+  const { data } = await apiClient.get<SeatMapResponse>("/api/search/flights/seats", { params: { offerId } });
   return data;
 }

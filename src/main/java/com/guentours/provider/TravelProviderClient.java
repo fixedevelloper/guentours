@@ -26,22 +26,38 @@ public interface TravelProviderClient {
     /** Must never throw for a plain "no results"/timeout - return an empty list instead. */
     List<HotelOffer> searchHotels(HotelSearchCriteria criteria);
 
+    /**
+     * Seat map for a previously-searched flight offer, used by the seat-selection step. Returns
+     * {@code null} by default (provider exposes no seat data); adapters that integrate a real
+     * seat-map API override this. Callers fall back to a generic simulated map when this is
+     * {@code null} or empty. Must never throw for a plain "no seat data"/timeout - return
+     * {@code null} instead.
+     */
+    default ProviderSeatMap seatMap(FlightOffer offer) {
+        return null;
+    }
+
     // ==========================================
     // 2. VALIDATION & TARIFICATION REEL (Price & Rule Check)
     // ==========================================
 
     /**
      * Re-validates the flight offer price, baggage rules, and seat availability
-     * directly with the GDS before collecting passenger details.
+     * directly with the GDS before collecting passenger details. Receives the full
+     * cached offer (not just its id) because most vendors' revalidation APIs (e.g.
+     * Sabre's Revalidate Itinerary) re-price by itinerary details - carrier, flight
+     * number, segment date/times - rather than by an opaque offer reference.
      *
      * @throws OfferExpiredException if the seats are no longer available or price changed.
      */
-    FlightPriceVerification verifyFlightPrice(String flightOfferId);
+    FlightPriceVerification verifyFlightPrice(FlightOffer offer);
 
     /**
-     * Verifies current hotel room availability and final tax inclusions before checkout.
+     * Verifies current hotel room availability and final tax inclusions before checkout. Receives
+     * the full cached offer (not just its id) because availability re-checks re-query by property
+     * details (e.g. Travelport's chain/property codes) rather than an opaque offer reference.
      */
-    HotelPriceVerification verifyHotelPrice(String hotelOfferId);
+    HotelPriceVerification verifyHotelPrice(HotelOffer offer);
 
     // ==========================================
     // 3. CRÉATION DE LA RÉSERVATION (Book / Hold PNR)

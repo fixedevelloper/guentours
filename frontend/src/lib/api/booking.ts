@@ -16,6 +16,12 @@ export async function getBooking(bookingId: string) {
   return data;
 }
 
+/** Every booking made by the signed-in account - backs the customer dashboard. */
+export async function getMyBookings() {
+  const { data } = await apiClient.get<BookingResponse[]>("/api/bookings/me");
+  return data;
+}
+
 export async function cancelBooking(bookingId: string) {
   const { data } = await apiClient.post<BookingResponse>(`/api/bookings/${bookingId}/cancel`);
   return data;

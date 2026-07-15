@@ -101,13 +101,18 @@ public class Booking {
     @Column(name = "payment_plan", nullable = false)
     private PaymentPlan paymentPlan = PaymentPlan.PAY_NOW;
 
-    /** Only set when paymentPlan == PAY_LATER: the reservation fee due now, balance due before ticketingDeadline. */
+    /**
+     * Only set when paymentPlan == PAY_LATER: the fixed, non-refundable reservation fee the customer
+     * pays now to hold the booking. It is NOT deducted from {@link #price} - after it is paid the
+     * full price is still due before {@link #ticketingDeadline}. Stored in the legacy
+     * {@code deposit_*} columns.
+     */
     @Embedded
     @AttributeOverrides({
             @AttributeOverride(name = "amount", column = @Column(name = "deposit_amount")),
             @AttributeOverride(name = "currency", column = @Column(name = "deposit_currency"))
     })
-    private Money depositAmount;
+    private Money reservationFee;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "booking_travelers", joinColumns = @JoinColumn(name = "booking_id"))
@@ -210,9 +215,9 @@ public class Booking {
         return booking;
     }
 
-    public void applyPaymentPlan(PaymentPlan paymentPlan, Money depositAmount) {
+    public void applyPaymentPlan(PaymentPlan paymentPlan, Money reservationFee) {
         this.paymentPlan = paymentPlan;
-        this.depositAmount = depositAmount;
+        this.reservationFee = reservationFee;
     }
 
     /** Records the PNR/reservation hold obtained from the provider right after checkout. */
@@ -235,12 +240,16 @@ public class Booking {
         return legPnrCodes.isEmpty() ? List.of(providerConfirmationNumber) : legPnrCodes;
     }
 
-    /** Amount the customer must pay right now, given the current status and payment plan. */
+    /**
+     * Amount the customer must pay right now, given the current status and payment plan. For a
+     * PAY_LATER booking that is the non-refundable reservation fee up front; once that fee is paid
+     * (DEPOSIT_PAID) the full price is due, since the fee is never deducted from the total.
+     */
     public Money amountDue() {
         if (status == BookingStatus.DEPOSIT_PAID) {
-            return price.subtract(depositAmount);
+            return price;
         }
-        return paymentPlan == PaymentPlan.PAY_LATER ? depositAmount : price;
+        return paymentPlan == PaymentPlan.PAY_LATER ? reservationFee : price;
     }
 
     public void markDepositPaid() {
@@ -360,8 +369,9 @@ public class Booking {
         return paymentPlan;
     }
 
-    public Money getDepositAmount() {
-        return depositAmount;
+    /** The fixed non-refundable reservation fee for a PAY_LATER booking, or null for PAY_NOW. */
+    public Money getReservationFee() {
+        return reservationFee;
     }
 
     public List<BookedTraveler> getTravelers() {

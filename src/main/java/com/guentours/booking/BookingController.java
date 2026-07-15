@@ -1,5 +1,8 @@
 package com.guentours.booking;
 
+import com.guentours.security.SecurityUtils;
+import com.guentours.shared.exception.NotFoundException;
+import com.guentours.user.UserService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -11,14 +14,32 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/bookings")
 public class BookingController {
 
     private final BookingService bookingService;
+    private final UserService userService;
 
-    public BookingController(BookingService bookingService) {
+    public BookingController(BookingService bookingService, UserService userService) {
         this.bookingService = bookingService;
+        this.userService = userService;
+    }
+
+    /** Every booking made by the signed-in account, most recent first - backs the customer dashboard. */
+    @GetMapping("/me")
+    public ResponseEntity<List<BookingResponse>> myBookings() {
+        String email = SecurityUtils.currentUserEmail();
+        if (email == null) {
+            throw new NotFoundException("Not authenticated");
+        }
+        String userId = userService.getByEmail(email).getId();
+        List<BookingResponse> bookings = bookingService.getForUser(userId).stream()
+                .map(BookingResponse::from)
+                .toList();
+        return ResponseEntity.ok(bookings);
     }
 
     /** Registers the booking (still unpaid) from a harmonized search offer, auto-provisioning the account if needed. */

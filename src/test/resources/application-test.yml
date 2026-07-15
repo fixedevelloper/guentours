@@ -7,9 +7,17 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+  # Flyway's migrations are written for MySQL; tests keep using Hibernate's own fast,
+  # auto-generated H2 schema above instead of replaying them against a different dialect.
+  flyway:
+    enabled: false
   mail:
     host: localhost
     port: 3025
+    # Explicit blanks so a developer's real SMTP creds in their local .env never leak into
+    # the test relay (GreenMail here doesn't expect AUTH).
+    username:
+    password:
 
 app:
   providers:
@@ -19,3 +27,8 @@ app:
       mock-mode: true
     travelport:
       mock-mode: true
+
+  reference-data:
+    # Keep the recurring sync from firing mid-test and racing with tests that trigger it directly.
+    sync-interval-ms: 999999999999
+    sync-initial-delay-ms: 999999999999

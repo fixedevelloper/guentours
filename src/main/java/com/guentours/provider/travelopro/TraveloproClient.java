@@ -101,18 +101,17 @@ public class TraveloproClient implements TravelProviderClient {
     }
 
     @Override
-    public FlightPriceVerification verifyFlightPrice(String flightOfferId) {
+    public FlightPriceVerification verifyFlightPrice(FlightOffer offer) {
         if (config.isMockMode()) {
-            return ProviderMockSupport.verifyFlightPrice(flightOfferId);
+            return ProviderMockSupport.verifyFlightPrice(offer.providerOfferId());
         }
-        return ProviderMockSupport.verifyFlightPrice(flightOfferId);
-        //throw new ProviderException("Travelopro live flight price verification is not yet integrated");
+        throw new ProviderException("Travelopro live flight price verification is not yet integrated");
     }
 
     @Override
-    public HotelPriceVerification verifyHotelPrice(String hotelOfferId) {
+    public HotelPriceVerification verifyHotelPrice(HotelOffer offer) {
         if (config.isMockMode()) {
-            return ProviderMockSupport.verifyHotelPrice(hotelOfferId);
+            return ProviderMockSupport.verifyHotelPrice(offer.providerOfferId());
         }
         throw new ProviderException("Travelopro live hotel price verification is not yet integrated");
     }
@@ -176,6 +175,7 @@ public class TraveloproClient implements TravelProviderClient {
                 .retrieve()
                 .body(TraveloproAvailabilityResponse.class);
 
+        log.info(response.toString());
         var result = response == null || response.AirSearchResponse() == null
                 ? null : response.AirSearchResponse().AirSearchResult();
         if (result == null || result.FareItineraries() == null) {

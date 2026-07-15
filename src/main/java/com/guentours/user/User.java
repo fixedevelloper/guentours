@@ -53,6 +53,10 @@ public class User {
         this.autoProvisioned = autoProvisioned;
     }
 
+    public void promoteToAdmin() {
+        this.role = Role.ADMIN;
+    }
+
     public String getId() {
         return id;
     }

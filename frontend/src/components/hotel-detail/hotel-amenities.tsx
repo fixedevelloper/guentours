@@ -1,3 +1,6 @@
+// components/hotel-detail/hotel-amenities.tsx
+"use client";
+
 import { useTranslations } from "next-intl";
 import {
   Wifi,
@@ -37,9 +40,15 @@ export function HotelAmenities({ hotelName }: { hotelName: string }) {
       {amenities.map((key) => {
         const Icon = AMENITY_ICONS[key];
         return (
-          <div key={key} className="flex items-center gap-2 rounded-lg border border-border/60 px-3 py-2.5 text-sm">
-            <Icon className="size-4 text-primary" />
-            {t(key)}
+          <div 
+            key={key} 
+            className="flex items-center gap-3 rounded-xl border border-border/40 bg-card p-3 text-xs sm:text-sm font-semibold text-foreground/90 shadow-2xs hover:border-primary/20 hover:bg-slate-50/50 dark:hover:bg-zinc-900/40 transition-all duration-200 select-none group"
+          >
+            {/* Conteneur d'icône stylisé */}
+            <div className="p-2 rounded-lg bg-primary/5 text-primary group-hover:scale-110 transition-transform duration-200 shrink-0">
+              <Icon className="size-4 stroke-[2.2]" />
+            </div>
+            <span className="truncate capitalize">{t(key)}</span>
           </div>
         );
       })}

@@ -1,6 +1,7 @@
 package com.guentours.search;
 
 import com.guentours.provider.FlightOffer;
+import com.guentours.shared.CommissionPolicy;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -17,9 +18,11 @@ import java.util.Map;
 class FlightHarmonizer {
 
     private final OfferCache offerCache;
+    private final CommissionPolicy commissionPolicy;
 
-    FlightHarmonizer(OfferCache offerCache) {
+    FlightHarmonizer(OfferCache offerCache, CommissionPolicy commissionPolicy) {
         this.offerCache = offerCache;
+        this.commissionPolicy = commissionPolicy;
     }
 
     List<HarmonizedFlightOffer> harmonize(List<FlightOffer> rawOffers) {
@@ -34,7 +37,7 @@ class FlightHarmonizer {
             FlightOffer cheapest = group.get(0);
             for (FlightOffer offer : group) {
                 String offerId = offerCache.cacheFlightOffer(offer);
-                quotes.add(new ProviderQuote(offerId, offer.providerType(), offer.price()));
+                quotes.add(new ProviderQuote(offerId, offer.providerType(), commissionPolicy.addFlightFee(offer.price())));
                 if (offer.price().isLessThan(cheapest.price())) {
                     cheapest = offer;
                 }

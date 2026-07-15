@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { searchFlights, searchHotels, searchMultiCityFlights } from "@/lib/api/search";
+import { getFlightSeatMap, searchFlights, searchHotels, searchMultiCityFlights } from "@/lib/api/search";
 import type { FlightSearchParams, HotelSearchParams, MultiCityFlightSearchParams } from "@/lib/api/types";
 
 export function useFlightSearch(params: FlightSearchParams | null) {
@@ -24,5 +24,14 @@ export function useHotelSearch(params: HotelSearchParams | null) {
     queryKey: ["hotels", params],
     queryFn: () => searchHotels(params as HotelSearchParams),
     enabled: params !== null,
+  });
+}
+
+export function useFlightSeatMap(offerId: string | null) {
+  return useQuery({
+    queryKey: ["flight-seat-map", offerId],
+    queryFn: () => getFlightSeatMap(offerId as string),
+    enabled: offerId !== null,
+    staleTime: Infinity,
   });
 }

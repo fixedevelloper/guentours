@@ -4,29 +4,30 @@ spring:
 
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/guentours?useSSL=false&serverTimezone=UTC&createDatabaseIfNotExist=true}
-    username: ${DB_USERNAME:base}
-    password: ${DB_PASSWORD:ba001133}
+    username: ${DB_USERNAME:guentours}
+    password: ${DB_PASSWORD:guentours}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
     hibernate:
-      ddl-auto: update
+      # Flyway owns the schema (see db/migration); Hibernate only checks its entity
+      # mappings still match what Flyway created instead of altering anything itself.
+      ddl-auto: validate
     open-in-view: false
     properties:
       hibernate:
         format_sql: false
+
+  flyway:
+    locations: classpath:db/migration
+    baseline-on-migrate: false
 
   mail:
     host: ${MAIL_HOST:localhost}
     port: ${MAIL_PORT:1025}
     username: ${MAIL_USERNAME:}
     password: ${MAIL_PASSWORD:}
-    properties:
-      mail:
-        smtp:
-          auth: ${MAIL_SMTP_AUTH:false}
-          starttls:
-            enable: ${MAIL_SMTP_STARTTLS:false}
+    # SMTP AUTH and TLS/SSL are derived from MAIL_ENCRYPTION and the username in MailConfig.
 
 app:
   jwt:
@@ -34,15 +35,35 @@ app:
     expiration-minutes: ${APP_JWT_EXPIRATION_MINUTES:60}
 
   mail:
-    from: ${APP_MAIL_FROM:no-reply@guentours.com}
+    from: ${MAIL_FROM:${MAIL_USERNAME:no-reply@guentours.com}}
+    # tls (STARTTLS), ssl, or empty for a plaintext local dev relay (Mailhog/GreenMail).
+    encryption: ${MAIL_ENCRYPTION:}
+    timeout-ms: ${MAIL_TIMEOUT_MS:8000}
 
   payment:
-    # Percentage of the total price charged upfront when a customer chooses "pay later".
-    deposit-percentage: ${APP_PAYMENT_DEPOSIT_PERCENTAGE:20}
+    # Fixed, non-refundable fee a PAY_LATER customer pays up front to hold the booking (in the
+    # booking's currency). It is NOT deducted from the total - the full price is still due later.
+    reservation-fee: ${APP_PAYMENT_RESERVATION_FEE:5000}
+
+  commission:
+    # Fixed fee added on top of the provider's price (never deducted from it), charged to the
+    # customer and tracked separately in the commission wallet. One fee per flight leg booked,
+    # one fee per room booked.
+    flight-fee-amount: ${APP_COMMISSION_FLIGHT_FEE_AMOUNT:15}
+    hotel-fee-amount: ${APP_COMMISSION_HOTEL_FEE_AMOUNT:15}
 
   booking:
     # How often unpaid/deposit-only holds past their provider ticketing deadline get auto-cancelled.
     expiry-check-interval-ms: ${APP_BOOKING_EXPIRY_CHECK_INTERVAL_MS:300000}
+
+  admin:
+    # Seeds a default super-admin account on first boot (skipped once that email already exists),
+    # since there is otherwise no way into the admin dashboard on a fresh install. Change the
+    # password before going to production.
+    seed-enabled: ${APP_ADMIN_SEED_ENABLED:true}
+    email: ${APP_ADMIN_EMAIL:admin@guentours.com}
+    password: ${APP_ADMIN_PASSWORD:ChangeMe123!}
+    full-name: ${APP_ADMIN_FULL_NAME:Super Admin}
 
   providers:
     travelopro:
@@ -61,12 +82,20 @@ app:
       base-url: ${SABRE_BASE_URL:}
       api-key: ${SABRE_API_KEY:}
       api-secret: ${SABRE_API_SECRET:}
+      username: ${SABRE_USERNAME:}
+      password: ${SABRE_PASSWORD:}
+      pseudo-city-code: ${SABRE_PSEUDO_CITY_CODE:}
     travelport:
       enabled: ${TRAVELPORT_ENABLED:true}
       mock-mode: ${TRAVELPORT_MOCK_MODE:true}
       base-url: ${TRAVELPORT_BASE_URL:}
       api-key: ${TRAVELPORT_API_KEY:}
       api-secret: ${TRAVELPORT_API_SECRET:}
+      username: ${TRAVELPORT_USERNAME:}
+      password: ${TRAVELPORT_PASSWORD:}
+      token-url: ${TRAVELPORT_TOKEN_URL:}
+      access-group: ${TRAVELPORT_ACCESS_GROUP:}
+      pseudo-city-code: ${TRAVELPORT_PCC:}
 
   reference-data:
     # 30 days in milliseconds; initial delay of 0 populates airports/hotel_cities on first boot.

@@ -24,15 +24,21 @@ public class BookedTraveler {
     @Column(name = "passenger_type")
     private PassengerType type;
 
+    /** Seat picked at the seat-selection checkout step (FLIGHT only); null if none was assigned. */
+    @Column(name = "seat_number")
+    private String seatNumber;
+
     protected BookedTraveler() {
         // JPA
     }
 
-    public BookedTraveler(String fullName, LocalDate dateOfBirth, String passportNumber, PassengerType type) {
+    public BookedTraveler(String fullName, LocalDate dateOfBirth, String passportNumber, PassengerType type,
+                           String seatNumber) {
         this.fullName = fullName;
         this.dateOfBirth = dateOfBirth;
         this.passportNumber = passportNumber;
         this.type = type;
+        this.seatNumber = seatNumber;
     }
 
     public String getFullName() {
@@ -49,5 +55,9 @@ public class BookedTraveler {
 
     public PassengerType getType() {
         return type;
+    }
+
+    public String getSeatNumber() {
+        return seatNumber;
     }
 }

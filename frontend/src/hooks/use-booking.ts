@@ -28,6 +28,13 @@ export function useBookingQuery(bookingId: string | null) {
   });
 }
 
+export function useMyBookingsQuery() {
+  return useQuery({
+    queryKey: ["my-bookings"],
+    queryFn: () => bookingApi.getMyBookings(),
+  });
+}
+
 export function useCancelBookingMutation(bookingId: string) {
   const queryClient = useQueryClient();
   return useMutation({

@@ -141,6 +141,17 @@ export interface HarmonizedHotelOffer {
   quotes: ProviderQuote[];
 }
 
+export interface Seat {
+  seatNumber: string;
+  available: boolean;
+}
+
+export interface SeatMapResponse {
+  rows: number;
+  columns: string[];
+  seats: Seat[];
+}
+
 // ---------- Booking ----------
 
 export interface TravelerRequest {
@@ -148,6 +159,7 @@ export interface TravelerRequest {
   dateOfBirth?: string;
   passportNumber?: string;
   type: PassengerType;
+  seatNumber?: string;
 }
 
 export interface CheckoutRequest {
@@ -183,15 +195,36 @@ export interface BookingResponse {
   id: string;
   status: BookingStatus;
   offerType: OfferType;
+  providerType: ProviderType;
+  contactEmail: string;
   price: Money;
   paymentPlan: PaymentPlan;
-  depositAmount: Money | null;
+  reservationFee: Money | null;
   amountDue: Money;
   ticketingDeadline: string | null;
   providerConfirmationNumber: string | null;
   eTicketNumbers: string[];
   itineraryLegs: BookingFlightLeg[];
   failureReason: string | null;
+  travelers: BookingTravelerResponse[];
+  airline: string | null;
+  flightNumber: string | null;
+  origin: string | null;
+  destination: string | null;
+  departureTime: string | null;
+  arrivalTime: string | null;
+  hotelName: string | null;
+  cityCode: string | null;
+  checkIn: string | null;
+  checkOut: string | null;
+  fareClass: string | null;
+  createdAt: string;
+}
+
+export interface BookingTravelerResponse {
+  fullName: string;
+  type: PassengerType;
+  seatNumber: string | null;
 }
 
 // ---------- Payment ----------
@@ -245,4 +278,22 @@ export interface AuthResponse {
   tokenType: string;
   email: string;
   fullName: string;
+  role: "CUSTOMER" | "ADMIN";
+}
+
+// ---------- Admin ----------
+
+export interface AdminUserResponse {
+  id: string;
+  email: string;
+  fullName: string;
+  phone: string | null;
+  role: "CUSTOMER" | "ADMIN";
+  autoProvisioned: boolean;
+  createdAt: string;
+}
+
+export interface CommissionWalletBalanceResponse {
+  balances: Money[];
+  entryCount: number;
 }

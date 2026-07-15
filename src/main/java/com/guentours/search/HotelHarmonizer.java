@@ -1,6 +1,7 @@
 package com.guentours.search;
 
 import com.guentours.provider.HotelOffer;
+import com.guentours.shared.CommissionPolicy;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -13,9 +14,11 @@ import java.util.Map;
 class HotelHarmonizer {
 
     private final OfferCache offerCache;
+    private final CommissionPolicy commissionPolicy;
 
-    HotelHarmonizer(OfferCache offerCache) {
+    HotelHarmonizer(OfferCache offerCache, CommissionPolicy commissionPolicy) {
         this.offerCache = offerCache;
+        this.commissionPolicy = commissionPolicy;
     }
 
     List<HarmonizedHotelOffer> harmonize(List<HotelOffer> rawOffers) {
@@ -29,7 +32,7 @@ class HotelHarmonizer {
             List<ProviderQuote> quotes = new ArrayList<>();
             for (HotelOffer offer : group) {
                 String offerId = offerCache.cacheHotelOffer(offer);
-                quotes.add(new ProviderQuote(offerId, offer.providerType(), offer.price()));
+                quotes.add(new ProviderQuote(offerId, offer.providerType(), commissionPolicy.addHotelFee(offer.price())));
             }
             quotes.sort((a, b) -> a.price().compareTo(b.price()));
             HotelOffer reference = group.get(0);

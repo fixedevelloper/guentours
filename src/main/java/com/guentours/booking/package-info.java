@@ -5,6 +5,6 @@
  * provider confirmation) never need to trust client-supplied prices again.
  */
 @org.springframework.modulith.ApplicationModule(
-        allowedDependencies = {"user", "provider", "provider::dto", "search", "shared"}
+        allowedDependencies = {"user", "provider", "provider::dto", "search", "shared", "security"}
 )
 package com.guentours.booking;

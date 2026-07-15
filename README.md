@@ -92,18 +92,48 @@ elsewhere), and an SMTP relay if you want emails to actually deliver (a local
 [MailHog](https://github.com/mailhog/MailHog)/Mailpit on port 1025 works well
 for development).
 
+Copy `.env.example` to `.env` and fill in real values - [spring-dotenv](https://github.com/paulschwarz/spring-dotenv)
+loads it into the Spring Environment automatically at startup, no shell
+exports needed. `.env` is gitignored; only the template is committed.
+
 ```bash
+cp .env.example .env
 mvn spring-boot:run
 ```
 
-Key environment variables (see `application.yml` for the full list and defaults):
+Key environment variables (see `application.yml`/`.env.example` for the full list and defaults):
 
 | Variable | Purpose |
 |---|---|
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | MySQL connection |
 | `APP_JWT_SECRET` | Base64 HMAC secret for JWTs - **override in production** |
 | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` | SMTP relay |
+| `APP_COMMISSION_FLIGHT_FEE_AMOUNT`, `APP_COMMISSION_HOTEL_FEE_AMOUNT` | Fixed booking fee added on top of each provider's price |
+| `APP_ADMIN_EMAIL`, `APP_ADMIN_PASSWORD`, `APP_ADMIN_FULL_NAME`, `APP_ADMIN_SEED_ENABLED` | Default super-admin seeded on first boot (see below) |
 | `TRAVELOPRO_*`, `SABRE_*`, `TRAVELPORT_*` | Per-provider `enabled`/`mock-mode`/`base-url`/`api-key`/`api-secret` |
+
+### Default admin account
+
+There is no in-app way to promote an account to `ADMIN` - `AdminSeeder` creates one
+super-admin account on first boot instead (skipped if that email already exists), so
+the admin dashboard is reachable on a fresh install:
+
+- Email: `admin@guentours.com` (`APP_ADMIN_EMAIL`)
+- Password: `ChangeMe123!` (`APP_ADMIN_PASSWORD`) - **change this before going to production**,
+  or set `APP_ADMIN_SEED_ENABLED=false` to skip seeding entirely.
+
+Promoting any other account to `ADMIN` afterwards is still a manual role update
+(`User.promoteToAdmin()`/a direct `UPDATE users SET role='ADMIN'`).
+
+### Database migrations
+
+Schema is owned by [Flyway](https://flywaydb.org) (`src/main/resources/db/migration`,
+MySQL dialect via `flyway-mysql`) - Hibernate only validates its entity mappings
+against it (`ddl-auto: validate`) instead of altering the schema itself. Add a
+new `V{n}__description.sql` file for any entity change. Tests run against an
+in-memory H2 database with Hibernate's own auto-generated schema instead
+(`ddl-auto: create-drop`, Flyway disabled) since Flyway's MySQL-flavored SQL
+isn't guaranteed to be H2-compatible.
 
 ## API overview
 

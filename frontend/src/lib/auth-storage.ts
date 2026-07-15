@@ -7,6 +7,7 @@ const PROFILE_KEY = "guentours.profile";
 export interface StoredProfile {
   email: string;
   fullName: string;
+  role: "CUSTOMER" | "ADMIN";
 }
 
 export function getStoredToken(): string | null {

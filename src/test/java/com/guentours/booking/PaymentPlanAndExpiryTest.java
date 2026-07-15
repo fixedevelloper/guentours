@@ -41,29 +41,31 @@ class PaymentPlanAndExpiryTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    void payingOnlyTheDepositHoldsTheBookingUntilTheBalanceIsPaidThenConfirms() throws Exception {
+    void payingTheReservationFeeHoldsTheBookingThenTheFullPriceConfirmsIt() throws Exception {
         String bookingId = checkoutFlight("PAY_LATER");
 
         JsonNode afterCheckout = getBooking(bookingId);
         assertThat(afterCheckout.get("status").asText()).isEqualTo("PENDING_PAYMENT");
         assertThat(afterCheckout.get("paymentPlan").asText()).isEqualTo("PAY_LATER");
         double price = afterCheckout.get("price").get("amount").asDouble();
-        double deposit = afterCheckout.get("depositAmount").get("amount").asDouble();
-        assertThat(deposit).isCloseTo(price * 0.20, org.assertj.core.data.Offset.offset(0.02));
-        assertThat(afterCheckout.get("amountDue").get("amount").asDouble()).isEqualTo(deposit);
+        // A fixed reservation fee is due up front, and it is the amount to pay now.
+        double reservationFee = afterCheckout.get("reservationFee").get("amount").asDouble();
+        assertThat(reservationFee).isPositive();
+        assertThat(afterCheckout.get("amountDue").get("amount").asDouble()).isEqualTo(reservationFee);
 
-        JsonNode depositPayment = pay(bookingId);
-        assertThat(depositPayment.get("status").asText()).isEqualTo("SUCCEEDED");
-        assertThat(depositPayment.get("amount").get("amount").asDouble()).isEqualTo(deposit);
+        JsonNode feePayment = pay(bookingId);
+        assertThat(feePayment.get("status").asText()).isEqualTo("SUCCEEDED");
+        assertThat(feePayment.get("amount").get("amount").asDouble()).isEqualTo(reservationFee);
 
-        JsonNode afterDeposit = getBooking(bookingId);
-        assertThat(afterDeposit.get("status").asText()).isEqualTo("DEPOSIT_PAID");
-        double balance = afterDeposit.get("amountDue").get("amount").asDouble();
-        assertThat(balance).isCloseTo(price - deposit, org.assertj.core.data.Offset.offset(0.02));
+        JsonNode afterFee = getBooking(bookingId);
+        assertThat(afterFee.get("status").asText()).isEqualTo("DEPOSIT_PAID");
+        // The reservation fee is NOT deducted: the full price is still due.
+        double balance = afterFee.get("amountDue").get("amount").asDouble();
+        assertThat(balance).isEqualTo(price);
 
         JsonNode balancePayment = pay(bookingId);
         assertThat(balancePayment.get("status").asText()).isEqualTo("SUCCEEDED");
-        assertThat(balancePayment.get("amount").get("amount").asDouble()).isEqualTo(balance);
+        assertThat(balancePayment.get("amount").get("amount").asDouble()).isEqualTo(price);
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
                 assertThat(getBooking(bookingId).get("status").asText()).isEqualTo("CONFIRMED"));

@@ -15,9 +15,10 @@ import {
 interface AuthContextValue {
   user: StoredProfile | null;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   isHydrated: boolean;
-  login: (request: LoginRequest) => Promise<void>;
-  register: (request: RegisterRequest) => Promise<void>;
+  login: (request: LoginRequest) => Promise<StoredProfile>;
+  register: (request: RegisterRequest) => Promise<StoredProfile>;
   logout: () => void;
 }
 
@@ -40,18 +41,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       user,
       isAuthenticated: user !== null,
+      isAdmin: user?.role === "ADMIN",
       isHydrated,
       async login(request) {
         const response = await authApi.login(request);
-        const profile = { email: response.email, fullName: response.fullName };
+        const profile = { email: response.email, fullName: response.fullName, role: response.role };
         saveAuthSession(response.token, profile);
         setUser(profile);
+        return profile;
       },
       async register(request) {
         const response = await authApi.register(request);
-        const profile = { email: response.email, fullName: response.fullName };
+        const profile = { email: response.email, fullName: response.fullName, role: response.role };
         saveAuthSession(response.token, profile);
         setUser(profile);
+        return profile;
       },
       logout() {
         clearAuthSession();

@@ -10,12 +10,12 @@ public record BookingSummary(
         BookingStatus status,
         Money price,
         PaymentPlan paymentPlan,
-        Money depositAmount,
+        Money reservationFee,
         Money amountDue
 ) {
     public static BookingSummary from(Booking booking) {
         return new BookingSummary(booking.getId(), booking.getUserId(), booking.getContactEmail(),
-                booking.getStatus(), booking.getPrice(), booking.getPaymentPlan(), booking.getDepositAmount(),
+                booking.getStatus(), booking.getPrice(), booking.getPaymentPlan(), booking.getReservationFee(),
                 booking.amountDue());
     }
 }

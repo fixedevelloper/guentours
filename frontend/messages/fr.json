@@ -8,6 +8,8 @@
     "flights": "Vols",
     "hotels": "Hôtels",
     "myBooking": "Mon dossier",
+    "dashboard": "Tableau de bord",
+    "admin": "Administration",
     "login": "Connexion",
     "register": "Créer un compte",
     "logout": "Se déconnecter",
@@ -17,7 +19,7 @@
   "Home": {
     "eyebrow": "Comparateur multi-fournisseurs",
     "heroTitle": "Comparez. Réservez. Voyagez.",
-    "heroSubtitle": "Une seule recherche interroge Travelopro, Sabre et Travelport pour vous montrer le meilleur prix, sans jamais changer d'onglet.",
+  
     "tabFlights": "Vol",
     "tabHotels": "Hôtel",
     "featureProvidersTitle": "3 fournisseurs comparés",
@@ -25,7 +27,12 @@
     "featureSecureTitle": "Paiement sécurisé",
     "featureSecureBody": "Chiffrement de bout en bout, aucune donnée de carte stockée sur nos serveurs.",
     "featureTrackingTitle": "Suivi en temps réel",
-    "featureTrackingBody": "Statut de la réservation mis à jour en direct jusqu'à l'émission du billet."
+    "featureTrackingBody": "Statut de la réservation mis à jour en direct jusqu'à l'émission du billet.",
+  "eyebrowHotels": "Hôtels de Rêve",
+  "heroTitleHotels": "Trouvez un séjour d'exception",
+  "heroSubtitle": "Comparez et réservez des vols vers des centaines de destinations au meilleur prix.",
+  "heroSubtitleHotels": "Des complexes de luxe aux appartements cosy, trouvez l'endroit idéal où poser vos valises."
+
   },
   "FlightSearch": {
     "origin": "Origine",
@@ -93,7 +100,8 @@
     "backToSearch": "Modifier la recherche",
     "rating": "Note",
     "roomType": "Type de chambre",
-    "night": "{count, plural, =1 {1 nuit} other {# nuits}}"
+    "night": "{count, plural, =1 {1 nuit} other {# nuits}}",
+     "closeSearch": "Fermer la recherche"
   },
   "Filters": {
     "title": "Filtres",
@@ -157,14 +165,27 @@
     "payNow": "Payer maintenant",
     "payNowDescription": "Réglez le prix total dès maintenant, réservation confirmée immédiatement.",
     "payLater": "Réserver et payer plus tard",
-    "payLaterDescription": "Payez seulement {percentage}% d'acompte aujourd'hui ; le solde sera à régler avant la date limite."
+    "payLaterDescription": "Payez dès maintenant des frais de réservation fixes et non remboursables pour bloquer votre réservation ; le prix total reste à régler avant la date limite (ces frais ne sont pas déduits du total).",
+    "seatBadge": "Siège {seat}"
+  },
+  "SeatSelection": {
+    "title": "Choisissez vos sièges",
+    "instructions": "Sélectionnez {count, plural, =1 {1 siège} other {# sièges}} disponibles sur le plan de la cabine.",
+    "legendAvailable": "Disponible",
+    "legendSelected": "Sélectionné",
+    "legendOccupied": "Occupé",
+    "selectedCount": "{selected} / {total} sièges sélectionnés",
+    "travelerCount": "Nombre de voyageurs",
+    "continue": "Continuer",
+    "skip": "Passer cette étape",
+    "unavailable": "Le plan des sièges n'est pas disponible pour ce vol."
   },
   "Payment": {
     "title": "Paiement sécurisé",
     "amountDue": "Montant à payer",
-    "depositDue": "Acompte à payer",
+    "depositDue": "Frais de réservation à payer",
     "balanceDue": "Solde à payer",
-    "payLaterNotice": "Prix total : {total}. Le solde restant devra être payé avant le {deadline}, sinon la réservation sera annulée.",
+    "payLaterNotice": "Ces frais de réservation ne sont pas remboursables et ne sont pas déduits du prix. Prix total : {total}, à régler intégralement avant le {deadline}, sinon la réservation sera annulée.",
     "balanceDeadlineNotice": "À régler avant le {deadline}, sinon la réservation sera annulée.",
     "methodCard": "Carte bancaire",
     "methodMtn": "MTN Mobile Money",
@@ -218,6 +239,44 @@
     "issuedAt": "Émis le {date}",
     "empty": "Aucun billet n'a encore été émis pour cette réservation.",
     "print": "Imprimer"
+  },
+  "Dashboard": {
+    "clientEyebrow": "Espace client",
+    "clientTitle": "Mon tableau de bord",
+    "greeting": "Bonjour {name}, voici vos réservations.",
+    "navMyBookings": "Mes réservations",
+    "searchFlights": "Rechercher un vol",
+    "searchHotels": "Rechercher un hôtel",
+    "myBookingsTitle": "Mes réservations",
+    "noBookings": "Vous n'avez pas encore de réservation.",
+    "loadError": "Impossible de charger les données. Merci de réessayer.",
+    "viewBooking": "Voir la réservation",
+    "adminEyebrow": "Espace administrateur",
+    "adminTitle": "Tableau de bord administrateur",
+    "adminSubtitle": "Vue d'ensemble de l'activité de la plateforme.",
+    "navOverview": "Vue d'ensemble",
+    "navBookings": "Réservations",
+    "navUsers": "Utilisateurs",
+    "navCommission": "Commissions",
+    "totalBookings": "Réservations totales",
+    "totalRevenue": "Chiffre d'affaires",
+    "totalUsers": "Utilisateurs totaux",
+    "commissionWallet": "Wallet de commissions",
+    "commissionSubtitle": "Détail du wallet de commissions accumulées sur les réservations.",
+    "walletBalance": "Solde du wallet",
+    "walletEntryCount": "Nombre d'entrées",
+    "recentBookingsTitle": "Réservations récentes",
+    "viewAll": "Voir tout",
+    "resultsCount": "{count, plural, =0 {Aucun résultat} =1 {1 résultat} other {# résultats}}",
+    "bookingsTab": "Réservations",
+    "usersTab": "Utilisateurs",
+    "allBookingsTitle": "Toutes les réservations",
+    "allUsersTitle": "Tous les utilisateurs",
+    "noUsers": "Aucun utilisateur.",
+    "userName": "Nom",
+    "userEmail": "E-mail",
+    "userRole": "Rôle",
+    "userCreatedAt": "Créé le"
   },
   "Auth": {
     "loginTitle": "Connexion",

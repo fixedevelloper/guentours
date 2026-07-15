@@ -3,7 +3,7 @@
 import { Suspense, useMemo } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { ChevronLeft, MapPin, Star } from "lucide-react";
+import { ChevronLeft, MapPin, Star, Sparkles } from "lucide-react";
 
 import { Link } from "@/i18n/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -19,7 +19,7 @@ import { parseHotelSearchParams, hotelSearchParamsToQuery } from "@/lib/search-p
 
 export default function HotelDetailPage() {
   return (
-    <Suspense fallback={<div className="mx-auto max-w-5xl px-4 py-8"><Skeleton className="h-96 w-full" /></div>}>
+    <Suspense fallback={<HotelDetailSkeleton />}>
       <HotelDetailPageContent />
     </Suspense>
   );
@@ -46,23 +46,24 @@ function HotelDetailPageContent() {
     : 1;
 
   if (query.isLoading) {
-    return (
-      <div className="mx-auto max-w-5xl px-4 py-8">
-        <Skeleton className="h-96 w-full" />
-      </div>
-    );
+    return <HotelDetailSkeleton />;
   }
 
   if (!params || hotelOffers.length === 0) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        <Alert variant="destructive">
-          <AlertTitle>{t("notFoundTitle")}</AlertTitle>
-          <AlertDescription>
-            {t("notFoundBody")}
-            <Button asChild variant="outline" size="sm" className="mt-3">
-              <Link href="/hotels">{t("backToResults")}</Link>
-            </Button>
+      <div className="mx-auto max-w-2xl px-4 py-16">
+        <Alert className="rounded-2xl border-border/60 bg-card p-6 shadow-xs">
+          <Sparkles className="size-5 text-primary mb-2" />
+          <AlertTitle className="text-lg font-bold tracking-tight text-foreground">
+            {t("notFoundTitle") ?? "Hébergement introuvable"}
+          </AlertTitle>
+          <AlertDescription className="mt-2 text-sm text-muted-foreground leading-relaxed">
+            {t("notFoundBody") ?? "Nous n'avons pas réussi à récupérer les offres pour cet hôtel. Vos filtres ou vos dates sont peut-être obsolètes."}
+            <div className="mt-5">
+              <Button asChild variant="default" size="sm" className="rounded-xl font-bold px-4">
+                <Link href="/hotels">{t("backToResults") ?? "Retour aux résultats"}</Link>
+              </Button>
+            </div>
           </AlertDescription>
         </Alert>
       </div>
@@ -73,58 +74,123 @@ function HotelDetailPageContent() {
   const bestRating = Math.max(...hotelOffers.map((o) => o.rating));
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      <Button asChild variant="ghost" size="sm" className="mb-4 -ml-2">
+    <div className="mx-auto max-w-5xl px-4 py-6 sm:py-10">
+      
+      {/* BOUTON RETOUR MINIMALISTE */}
+      <Button 
+        asChild 
+        variant="ghost" 
+        size="sm" 
+        className="group mb-5 -ml-2.5 rounded-xl text-muted-foreground hover:text-foreground font-semibold text-xs gap-1 transition-all"
+      >
         <Link href={backHref}>
-          <ChevronLeft />
+          <ChevronLeft className="size-4 transition-transform group-hover:-translate-x-0.5" />
           {t("backToResults")}
         </Link>
       </Button>
 
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{reference.hotelName}</h1>
-        <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <MapPin className="size-4" />
+      {/* EN-TÊTE DE L'HÔTEL */}
+      <div className="mb-6 space-y-2">
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-foreground">
+          {reference.hotelName}
+        </h1>
+        
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs sm:text-sm text-muted-foreground font-medium">
+          <span className="flex items-center gap-1.5 text-foreground/80">
+            <MapPin className="size-4 text-muted-foreground/60" />
             {reference.cityCode}
           </span>
-          <span>·</span>
-          <span className="flex items-center gap-1">
-            <Star className="size-4 fill-current text-warning" />
+          <span className="text-border">•</span>
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-500 font-bold">
+            <Star className="size-3.5 fill-current text-amber-500" />
             {bestRating.toFixed(1)}
           </span>
         </div>
       </div>
 
-      <HotelGallery hotelName={reference.hotelName} />
+      {/* GALERIE D'IMAGES */}
+      <div className="overflow-hidden rounded-2xl shadow-xs border border-border/20">
+        <HotelGallery hotelName={reference.hotelName} />
+      </div>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_320px]">
+      {/* GRILLE DE PRÉSENTATION DES DÉTAILS */}
+      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_320px] items-start">
+        
         <div className="grid gap-8">
-          <div>
-            <h2 className="mb-2 text-lg font-semibold">{t("descriptionTitle")}</h2>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              {t("description", { hotelName: reference.hotelName, cityCode: reference.cityCode, rating: bestRating.toFixed(1) })}
+          {/* DESCRIPTION */}
+          <div className="space-y-3">
+            <h2 className="text-lg font-bold tracking-tight text-foreground">
+              {t("descriptionTitle")}
+            </h2>
+            <p className="text-sm leading-relaxed text-muted-foreground/90 font-medium">
+              {t("description", { 
+                hotelName: reference.hotelName, 
+                cityCode: reference.cityCode, 
+                rating: bestRating.toFixed(1) 
+              })}
             </p>
           </div>
 
-          <Separator />
+          <Separator className="bg-border/60" />
 
-          <div>
-            <h2 className="mb-3 text-lg font-semibold">{t("facilitiesTitle")}</h2>
+          {/* ÉQUIPEMENTS / SERVICES */}
+          <div className="space-y-4">
+            <h2 className="text-lg font-bold tracking-tight text-foreground">
+              {t("facilitiesTitle")}
+            </h2>
             <HotelAmenities hotelName={reference.hotelName} />
           </div>
         </div>
 
-        <aside>
-          <div className="lg:sticky lg:top-20">
+        {/* COLONNE LATÉRALE CARTE / LOCALISATION */}
+        <aside className="lg:sticky lg:top-24">
+          <div className="overflow-hidden rounded-2xl border border-border/50 bg-card p-1 shadow-2xs">
             <HotelLocationCard hotelName={reference.hotelName} cityCode={reference.cityCode} />
           </div>
         </aside>
       </div>
 
-      <Separator className="my-8" />
+      <Separator className="my-10 bg-border/60" />
 
-      <HotelRoomList offers={hotelOffers} nights={nights} />
+      {/* LISTE DES CHAMBRES ET OFFRES */}
+      <div className="space-y-6">
+        <HotelRoomList offers={hotelOffers} nights={nights} />
+      </div>
+    </div>
+  );
+}
+
+// SQUELETTE DE CHARGEMENT PRÉCIS ET ESTHÉTIQUE
+function HotelDetailSkeleton() {
+  return (
+    <div className="mx-auto max-w-5xl px-4 py-8 space-y-6 animate-pulse">
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-28 rounded-md" />
+        <Skeleton className="h-10 w-2/3 rounded-xl" />
+        <div className="flex gap-2">
+          <Skeleton className="h-4 w-20 rounded-md" />
+          <Skeleton className="h-4 w-12 rounded-md" />
+        </div>
+      </div>
+      <Skeleton className="h-[350px] w-full rounded-2xl" />
+      <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <Skeleton className="h-5 w-40 rounded-md" />
+            <Skeleton className="h-4 w-full rounded-md" />
+            <Skeleton className="h-4 w-5/6 rounded-md" />
+          </div>
+          <Separator />
+          <div className="space-y-3">
+            <Skeleton className="h-5 w-40 rounded-md" />
+            <div className="grid grid-cols-2 gap-2">
+              <Skeleton className="h-8 w-full rounded-lg" />
+              <Skeleton className="h-8 w-full rounded-lg" />
+            </div>
+          </div>
+        </div>
+        <Skeleton className="h-48 w-full rounded-2xl" />
+      </div>
     </div>
   );
 }

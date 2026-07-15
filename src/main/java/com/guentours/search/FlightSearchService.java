@@ -5,6 +5,7 @@ import com.guentours.provider.FlightSearchCriteria;
 import com.guentours.provider.JourneyType;
 import com.guentours.provider.ProviderType;
 import com.guentours.provider.TravelProviderClient;
+import com.guentours.shared.CommissionPolicy;
 import com.guentours.shared.Money;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,13 +29,15 @@ public class FlightSearchService {
     private final ExecutorService providerSearchExecutor;
     private final FlightHarmonizer harmonizer;
     private final OfferCache offerCache;
+    private final CommissionPolicy commissionPolicy;
 
     public FlightSearchService(List<TravelProviderClient> providerClients, ExecutorService providerSearchExecutor,
-                                FlightHarmonizer harmonizer, OfferCache offerCache) {
+                                FlightHarmonizer harmonizer, OfferCache offerCache, CommissionPolicy commissionPolicy) {
         this.providerClients = providerClients;
         this.providerSearchExecutor = providerSearchExecutor;
         this.harmonizer = harmonizer;
         this.offerCache = offerCache;
+        this.commissionPolicy = commissionPolicy;
     }
 
     public List<HarmonizedFlightOffer> search(FlightSearchRequest request) {
@@ -102,7 +105,8 @@ public class FlightSearchService {
                 String offerId = offerCache.cacheFlightOffer(offer);
                 itineraryLegs.add(new MultiCityItineraryLeg(i, offer.airline(), offer.flightNumber(), offer.origin(),
                         offer.destination(), offer.departureTime(), offer.arrivalTime(), offer.cabinClass(), offerId));
-                total = total == null ? offer.price() : total.add(offer.price());
+                Money legPriceWithFee = commissionPolicy.addFlightFee(offer.price());
+                total = total == null ? legPriceWithFee : total.add(legPriceWithFee);
             }
             itineraries.add(new MultiCityItinerary(provider, total, itineraryLegs));
         }
