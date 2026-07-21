@@ -1,11 +1,11 @@
-name: Build & Deploy Spring Boot (GHCR)
+name: Build & Deploy Spring Boot
 
 on:
   push:
     branches:
       - main
 
-# Permission requise pour publier des packages sur GHCR
+# Permissions requises pour publier l'image sur GitHub Container Registry (GHCR)
 permissions:
   contents: read
   packages: write
@@ -38,17 +38,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # GHCR exige des noms d'images strictement en minuscules
-      - name: Définir le nom de l'image en minuscules
-        run: |
-          echo "IMAGE_URL=ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]' >> $GITHUB_ENV
+      - name: Générer les métadonnées Docker (Gestion de la casse et du tag)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
 
       - name: Construire et publier l'image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ env.IMAGE_URL }}:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -64,7 +68,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            # Transformation en minuscules pour l'URL sur le serveur
+            # Conversion du nom d'image en minuscules pour la commande docker pull sur le serveur
             IMAGE_URL=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
 
             docker pull $IMAGE_URL:latest
