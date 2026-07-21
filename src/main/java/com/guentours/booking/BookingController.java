@@ -2,7 +2,7 @@ package com.guentours.booking;
 
 import com.guentours.security.SecurityUtils;
 import com.guentours.shared.exception.NotFoundException;
-import com.guentours.user.UserService;
+import com.guentours.user.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

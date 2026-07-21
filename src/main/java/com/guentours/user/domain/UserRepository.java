@@ -1,4 +1,4 @@
-package com.guentours.user;
+package com.guentours.user.domain;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 

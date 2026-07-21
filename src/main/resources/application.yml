@@ -27,6 +27,7 @@ spring:
     port: ${MAIL_PORT:1025}
     username: ${MAIL_USERNAME:}
     password: ${MAIL_PASSWORD:}
+    partner-login-url: https://app.creativtrips.com/login
     # SMTP AUTH and TLS/SSL are derived from MAIL_ENCRYPTION and the username in MailConfig.
 
 app:

@@ -14,7 +14,9 @@
     "register": "Créer un compte",
     "logout": "Se déconnecter",
     "language": "Langue",
-    "greeting": "Bonjour, {name}"
+    "greeting": "Bonjour, {name}",
+    "becomeHost": "Devenir hôte"
+
   },
 "Home": {
     "badgeFlights": "Comparateur de Vols Pas Chers",
@@ -123,7 +125,8 @@
     "rating": "Note",
     "roomType": "Type de chambre",
     "night": "{count, plural, =1 {1 nuit} other {# nuits}}",
-     "closeSearch": "Fermer la recherche"
+     "closeSearch": "Fermer la recherche",
+    "passenger": "Passagers"
   },
   "Filters": {
     "title": "Filtres",
@@ -135,7 +138,12 @@
     "minRating": "Note minimale",
     "anyRating": "Toutes notes",
     "noMatch": "Aucune offre ne correspond à ces filtres.",
-    "resultsFiltered": "{shown} sur {total}"
+    "resultsFiltered": "{shown} sur {total}",
+    "stops": "Escales",
+    "allStops": "Toutes",
+    "direct": "Direct",
+    "oneStop": "1 escale",
+    "twoPlusStops": "2+ escales"
   },
   "HotelMap": {
     "title": "Carte",
@@ -329,23 +337,22 @@
     "back": "Retour"
   },
   "Footer": {
-    "tagline": "Comparateur de vols et d'hôtels",
-    "description": "GuenTours compare en temps réel les offres de Travelopro, Sabre et Travelport pour vous garantir le meilleur prix, avec un paiement sécurisé et un suivi en direct de vos réservations.",
+    "tagline": "Guen's Travel & Tours",
+    "description": "Votre passerelle de confiance pour comparer les vols pas chers et réserver les meilleurs hébergements à travers l'Afrique et le monde entier.",
+    "contactAddress": "Douala, Cameroun",
     "navTitle": "Navigation",
     "navHome": "Accueil",
     "navFlights": "Vols",
     "navHotels": "Hôtels",
-    "navDashboard": "Mon espace",
+    "navDashboard": "Mon Espace",
     "supportTitle": "Assistance",
     "supportHelp": "Centre d'aide",
     "supportContact": "Nous contacter",
-    "supportTerms": "Conditions générales",
+    "supportTerms": "Conditions Générales",
     "supportPrivacy": "Confidentialité",
-    "contactTitle": "Contact",
-    "contactAddress": "12 rue des Voyageurs, 75001 Paris, France",
-    "paymentTitle": "Paiement sécurisé",
-    "rights": "Tous droits réservés.",
-    "madeWith": "Conçu pour voyager l'esprit tranquille."
+    "paymentTitle": "Modes de paiement",
+    "securePaymentLabel": "Paiement 100% sécurisé et chiffré",
+    "rights": "Tous droits réservés."
   },
   "Legal": {
     "backHome": "Retour à l'accueil",
@@ -371,5 +378,11 @@
     "privacySection3Body": "Les informations de voyage nécessaires (nom, dates, préférences) sont transmises aux fournisseurs (Travelopro, Sabre, Travelport) uniquement pour l'exécution de votre réservation.",
     "privacySection4Title": "4. Vos droits",
     "privacySection4Body": "Conformément à la réglementation applicable, vous disposez d'un droit d'accès, de rectification et de suppression de vos données en nous contactant."
+  },
+  "AppPromo": {
+    "badge": "Disponible maintenant",
+    "title": "Voyagez plus léger avec l'application Guen's travel",
+    "description": "Réservez, gérez vos séjours et accédez à vos billets directement depuis votre poche. Scannez le QR code pour télécharger notre application.",
+    "cta": "Télécharger l'app"
   }
 }

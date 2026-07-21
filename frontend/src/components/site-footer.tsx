@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useTranslations } from "next-intl";
-import { Mail, Phone, MapPin, ShieldCheck } from "lucide-react";
+import { Mail, Phone, MapPin, ShieldCheck, ArrowUpRight } from "lucide-react";
 
 import { Link } from "@/i18n/navigation";
 
@@ -13,92 +13,123 @@ export function SiteFooter() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="w-full border-t border-border/40 bg-muted/30 pb-16 sm:pb-0">
-      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-4 py-12 sm:px-6 sm:py-16 md:grid-cols-12 lg:px-8">
-        {/* Marque + description */}
-        <div className="md:col-span-4">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="relative size-10 overflow-hidden rounded-lg">
-              <Image src="/logo.png" alt="GuenTours" fill className="object-contain" />
-            </div>
-            <span className="text-sm font-bold tracking-tight">{t("tagline")}</span>
-          </Link>
-          <p className="mt-4 max-w-sm text-sm leading-relaxed text-muted-foreground">
-            {t("description")}
-          </p>
+      <footer className="relative w-full overflow-hidden bg-neutral-950 text-neutral-200 pb-20 sm:pb-0">
 
-          <ul className="mt-6 space-y-2.5 text-sm text-muted-foreground">
-            <li>
-              <a href="mailto:contact@guentours.com" className="flex items-center gap-2.5 transition-colors hover:text-foreground">
-                <Mail className="size-4 shrink-0" />
-                contact@guentours.com
-              </a>
-            </li>
-            <li>
-              <a href="tel:+33100000000" className="flex items-center gap-2.5 transition-colors hover:text-foreground">
-                <Phone className="size-4 shrink-0" />
-                +33 1 00 00 00 00
-              </a>
-            </li>
-            <li className="flex items-start gap-2.5">
-              <MapPin className="mt-0.5 size-4 shrink-0" />
-              <span>{t("contactAddress")}</span>
-            </li>
-          </ul>
-        </div>
+        {/* Arrière-plan stylisé : Dégradé radial pour un effet de halo lumineux moderne */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(120,119,198,0.12),rgba(255,255,255,0))]" />
 
-        {/* Navigation */}
-        <div className="md:col-span-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground">{t("navTitle")}</h3>
-          <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
-            <li><Link href="/" className="transition-colors hover:text-foreground">{t("navHome")}</Link></li>
-            <li><Link href="/flights" className="transition-colors hover:text-foreground">{t("navFlights")}</Link></li>
-            <li><Link href="/hotels" className="transition-colors hover:text-foreground">{t("navHotels")}</Link></li>
-            <li><Link href="/dashboard" className="transition-colors hover:text-foreground">{t("navDashboard")}</Link></li>
-          </ul>
-        </div>
+        {/* Ligne de séparation supérieure en fondu (Glow effect) */}
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-neutral-800 to-transparent" />
 
-        {/* Assistance */}
-        <div className="md:col-span-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground">{t("supportTitle")}</h3>
-          <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">
-            <li><a href="mailto:aide@guentours.com" className="transition-colors hover:text-foreground">{t("supportHelp")}</a></li>
-            <li><a href="mailto:contact@guentours.com" className="transition-colors hover:text-foreground">{t("supportContact")}</a></li>
-            <li><Link href="/legal/terms" className="transition-colors hover:text-foreground">{t("supportTerms")}</Link></li>
-            <li><Link href="/legal/privacy" className="transition-colors hover:text-foreground">{t("supportPrivacy")}</Link></li>
-          </ul>
-        </div>
+        <div className="relative z-10 mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 gap-12 md:grid-cols-12 lg:gap-16">
 
-        {/* Paiement sécurisé */}
-        <div className="md:col-span-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground">{t("paymentTitle")}</h3>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {PAYMENT_BADGES.map((label) => (
-              <span
-                key={label}
-                className="rounded-md border border-border/60 bg-background px-2.5 py-1 text-[11px] font-semibold text-muted-foreground"
-              >
-                {label}
+            {/* Marque + Description */}
+            <div className="flex flex-col gap-5 md:col-span-5 lg:col-span-4">
+              <Link href="/" className="group flex items-center gap-3 w-max">
+                <div className="relative size-10 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900 p-1.5 shadow-xl transition-transform duration-300 group-hover:scale-105">
+                  <Image src="/logo.png" alt="Guen's Travel & Tours" fill className="object-contain" />
+                </div>
+                <span className="text-base font-black tracking-tight bg-gradient-to-r from-white to-neutral-400 bg-clip-text text-transparent">
+                {t("tagline")}
               </span>
-            ))}
-          </div>
-          <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-            <ShieldCheck className="size-4 text-primary" />
-            <span>{t("madeWith")}</span>
-          </div>
-        </div>
-      </div>
+              </Link>
 
-      {/* Barre de copyright */}
-      <div className="border-t border-border/40">
-        <div className="mx-auto flex max-w-7xl flex-col items-center gap-2 px-4 py-5 text-xs text-muted-foreground sm:flex-row sm:justify-between sm:px-6 lg:px-8">
-          <p>© {year} GuenTours. {t("rights")}</p>
-          <div className="flex items-center gap-4">
-            <Link href="/legal/terms" className="transition-colors hover:text-foreground">{t("supportTerms")}</Link>
-            <Link href="/legal/privacy" className="transition-colors hover:text-foreground">{t("supportPrivacy")}</Link>
+              <p className="text-sm leading-relaxed text-neutral-400 max-w-sm">
+                {t("description")}
+              </p>
+
+              <ul className="mt-2 space-y-3 text-sm text-neutral-400">
+                <li>
+                  <a href="mailto:contact@guenstravelandtours.com" className="inline-flex items-center gap-3 transition-colors hover:text-white group">
+                  <span className="flex size-8 items-center justify-center rounded-lg bg-neutral-900 border border-neutral-800 shadow-inner transition-colors group-hover:bg-neutral-800 group-hover:text-white">
+                    <Mail className="size-3.5" />
+                  </span>
+                    contact@guenstravelandtours.com
+                  </a>
+                </li>
+                <li>
+                  <a href="tel:+237600000000" className="inline-flex items-center gap-3 transition-colors hover:text-white group">
+                  <span className="flex size-8 items-center justify-center rounded-lg bg-neutral-900 border border-neutral-800 shadow-inner transition-colors group-hover:bg-neutral-800 group-hover:text-white">
+                    <Phone className="size-3.5" />
+                  </span>
+                    +237 600 000 000
+                  </a>
+                </li>
+                <li className="flex items-center gap-3">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-500">
+                  <MapPin className="size-3.5" />
+                </span>
+                  <span className="leading-tight">{t("contactAddress")}</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Navigation & Liens */}
+            <div className="grid grid-cols-2 gap-8 md:col-span-7 lg:col-span-5">
+              {/* Colonne 1 */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-neutral-400">{t("navTitle")}</h3>
+                <ul className="space-y-3 text-sm text-neutral-400">
+                  {[
+                    { href: "/", label: t("navHome") },
+                    { href: "/flights", label: t("navFlights") },
+                    { href: "/hotels", label: t("navHotels") },
+                    { href: "/dashboard", label: t("navDashboard") }
+                  ].map((link) => (
+                      <li key={link.href}>
+                        <Link href={link.href} className="hover:text-white transition-colors hover:underline hover:underline-offset-4 decoration-neutral-500 decoration-2">
+                          {link.label}
+                        </Link>
+                      </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Colonne 2 */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-neutral-400">{t("supportTitle")}</h3>
+                <ul className="space-y-3 text-sm text-neutral-400">
+                  <li><a href="mailto:support@guenstravelandtours.com" className="inline-flex items-center gap-1 hover:text-white transition-colors group">{t("supportHelp")} <ArrowUpRight className="size-3 opacity-0 group-hover:opacity-100 transition-opacity" /></a></li>
+                  <li><a href="mailto:contact@guenstravelandtours.com" className="inline-flex items-center gap-1 hover:text-white transition-colors group">{t("supportContact")} <ArrowUpRight className="size-3 opacity-0 group-hover:opacity-100 transition-opacity" /></a></li>
+                  <li><Link href="/legal/terms" className="hover:text-white transition-colors">{t("supportTerms")}</Link></li>
+                  <li><Link href="/legal/privacy" className="hover:text-white transition-colors">{t("supportPrivacy")}</Link></li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Section Paiement & Certifications */}
+            <div className="flex flex-col gap-4 md:col-span-12 lg:col-span-3 lg:border-l lg:border-neutral-800 lg:pl-8">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-neutral-400">{t("paymentTitle")}</h3>
+
+              <div className="flex flex-wrap gap-1.5">
+                {PAYMENT_BADGES.map((label) => (
+                    <span
+                        key={label}
+                        className="rounded-lg border border-neutral-800 bg-neutral-900/60 backdrop-blur-sm px-3 py-1.5 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-white"
+                    >
+                  {label}
+                </span>
+                ))}
+              </div>
+
+              <div className="mt-2 inline-flex w-max items-center gap-2 rounded-xl bg-neutral-900 border border-neutral-800 px-3 py-2 text-xs font-medium text-neutral-300">
+                <ShieldCheck className="size-4 shrink-0 text-emerald-500" />
+                <span>{t("securePaymentLabel")}</span>
+              </div>
+            </div>
           </div>
+
+          {/* Barre de Copyright Basse */}
+          <div className="mt-16 border-t border-neutral-900 pt-6 flex flex-col items-center gap-4 text-xs text-neutral-500 sm:flex-row sm:justify-between">
+            <p>© {year} Guen's Travel & Tours. {t("rights")}</p>
+            <div className="flex items-center gap-6 font-medium">
+              <Link href="/legal/terms" className="hover:text-neutral-300 transition-colors">{t("supportTerms")}</Link>
+              <Link href="/legal/privacy" className="hover:text-neutral-300 transition-colors">{t("supportPrivacy")}</Link>
+            </div>
+          </div>
+
         </div>
-      </div>
-    </footer>
+      </footer>
   );
 }

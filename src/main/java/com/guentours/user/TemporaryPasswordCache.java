@@ -1,5 +1,6 @@
 package com.guentours.user;
 
+import com.guentours.user.event.UserAutoProvisionedEvent;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;

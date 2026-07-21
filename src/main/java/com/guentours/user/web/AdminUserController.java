@@ -1,5 +1,8 @@
-package com.guentours.user;
+package com.guentours.user.web;
 
+import com.guentours.user.domain.User;
+import com.guentours.user.domain.UserRepository;
+import com.guentours.user.service.AdminUserResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;

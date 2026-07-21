@@ -17,7 +17,7 @@ class ReferenceDataScheduler {
         this.syncService = syncService;
     }
 
-    @Scheduled(fixedRateString = "${app.reference-data.sync-interval-ms:2592000000}",
+/*    @Scheduled(fixedRateString = "${app.reference-data.sync-interval-ms:2592000000}",
             initialDelayString = "${app.reference-data.sync-initial-delay-ms:0}")
     void syncAirports() {
         syncService.syncAirports();
@@ -27,5 +27,5 @@ class ReferenceDataScheduler {
             initialDelayString = "${app.reference-data.sync-initial-delay-ms:0}")
     void syncHotelCities() {
         syncService.syncHotelCities();
-    }
+    }*/
 }

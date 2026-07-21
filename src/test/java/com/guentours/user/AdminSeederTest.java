@@ -1,5 +1,8 @@
 package com.guentours.user;
 
+import com.guentours.user.domain.User;
+import com.guentours.user.domain.UserRepository;
+import com.guentours.user.domain.Role;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

@@ -1,4 +1,7 @@
-package com.guentours.user;
+package com.guentours.user.service;
+
+import com.guentours.user.domain.User;
+import com.guentours.user.domain.Role;
 
 import java.time.Instant;
 

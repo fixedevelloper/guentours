@@ -1,6 +1,6 @@
 package com.guentours.security;
 
-import com.guentours.user.UserRepository;
+import com.guentours.user.domain.UserRepository;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;

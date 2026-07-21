@@ -1,7 +1,12 @@
-package com.guentours.user;
+package com.guentours.user.service;
 
 import com.guentours.shared.exception.BusinessException;
 import com.guentours.shared.exception.NotFoundException;
+import com.guentours.user.PasswordGenerator;
+import com.guentours.user.TemporaryPasswordCache;
+import com.guentours.user.domain.User;
+import com.guentours.user.domain.UserRepository;
+import com.guentours.user.event.UserAutoProvisionedEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;

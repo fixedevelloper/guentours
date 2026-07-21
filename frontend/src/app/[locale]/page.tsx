@@ -23,6 +23,7 @@ import { FlightSearchForm } from "@/components/search/flight-search-form";
 import { HotelSearchForm } from "@/components/search/hotel-search-form";
 import { flightSearchParamsToQuery, hotelSearchParamsToQuery, multiCitySearchParamsToQuery } from "@/lib/search-params";
 import type { FlightSearchParams, HotelSearchParams, MultiCityFlightSearchParams } from "@/lib/api/types";
+import {AppPromo} from "../../components/AppPromo";
 
 const HERO_CONFIGS = {
   flights: {
@@ -234,6 +235,7 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+      <AppPromo />
     </div>
   );
 }

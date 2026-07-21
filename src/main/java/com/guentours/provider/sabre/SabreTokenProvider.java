@@ -8,6 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -53,13 +54,32 @@ class SabreTokenProvider {
         body.add("username", config.getUsername());
         body.add("password", config.getPassword());
 
-        SabreTokenResponse response = restClient.post()
-                .uri("/v3/auth/token")
-                .header(HttpHeaders.AUTHORIZATION, "Basic " + securityToken)
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(body)
-                .retrieve()
-                .body(SabreTokenResponse.class);
+        String host = config.getBaseUrl().isBlank() ? "https://api.platform.sabre.com" : config.getBaseUrl();
+        SabreTokenResponse response;
+        try {
+            response = restClient.post()
+                    .uri("/v3/auth/token")
+                    .header(HttpHeaders.AUTHORIZATION, "Basic " + securityToken)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(body)
+                    .retrieve()
+                    .body(SabreTokenResponse.class);
+        } catch (RestClientResponseException ex) {
+            // Surface Sabre's real reason instead of a bare "401 [no body]": an empty-body 401
+            // means the Basic client-id/secret was rejected (wrong key/secret, or CERT creds sent
+            // to the production host and vice-versa - the host defaults to production when
+            // SABRE_BASE_URL is blank); a JSON error body (invalid_client/invalid_grant) means the
+            // credentials reached Sabre but were refused.
+            String detail = ex.getResponseBodyAsString();
+            String reason = detail == null || detail.isBlank()
+                    ? "empty body - check SABRE_API_KEY/SABRE_API_SECRET and that SABRE_BASE_URL matches the "
+                            + "credentials' environment (CERT vs production)"
+                    : detail;
+            log.error("Sabre auth failed at {}/v3/auth/token: {} {} - {}",
+                    host, ex.getStatusCode().value(), ex.getStatusText(), reason);
+            throw new ProviderException("Sabre auth failed (" + ex.getStatusCode().value() + " against " + host
+                    + "): " + reason);
+        }
 
         if (response == null || response.accessToken() == null) {
             throw new ProviderException("Sabre token exchange returned no access_token");

@@ -1,7 +1,7 @@
 package com.guentours.security;
 
-import com.guentours.user.User;
-import com.guentours.user.UserService;
+import com.guentours.user.domain.User;
+import com.guentours.user.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;

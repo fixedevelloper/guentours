@@ -3,30 +3,40 @@ package com.guentours.geo;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Component
-@Primary // Indique à Spring d'utiliser cette source dynamique en priorité
-class LiveHotelCityDataSource implements HotelCityDataSource {
+@Primary
+public class LiveHotelCityDataSource implements HotelCityDataSource {
 
     private static final Logger log = LoggerFactory.getLogger(LiveHotelCityDataSource.class);
 
     private final RestClient restClient;
-    private final SeedHotelCityDataSource fallbackDataSource;
 
-    public LiveHotelCityDataSource(RestClient.Builder restClientBuilder, SeedHotelCityDataSource fallbackDataSource) {
-        this.fallbackDataSource = fallbackDataSource;
+    @Value("${travelopro.user_id:cscreativ_testAPI}")
+    private String userId;
 
-        // Configuration sécurisée des timeouts réseau
+    @Value("${travelopro.user_password:cscreativTest@2026}")
+    private String userPassword;
+
+    @Value("${travelopro.ip_address:129.0.60.181}")
+    private String ipAddress;
+
+    @Value("${travelopro.access:Test}")
+    private String access;
+
+    public LiveHotelCityDataSource(RestClient.Builder restClientBuilder) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(10000); // 10 secondes max pour se connecter
-        requestFactory.setReadTimeout(30000);    // 30 secondes max pour lire la liste
+        requestFactory.setConnectTimeout(15000);
+        requestFactory.setReadTimeout(15000);
 
         this.restClient = restClientBuilder
                 .baseUrl("https://travelnext.works")
@@ -36,48 +46,106 @@ class LiveHotelCityDataSource implements HotelCityDataSource {
 
     @Override
     public List<HotelCityRecord> fetchAll() {
-        log.info("Fetching dynamic hotel cities from TravelNext API...");
+        log.info("🏨 Début de la récupération complète des villes hôtelières...");
+        log.info("Configuration active -> User: {} | Access: {} | IP: {}", userId, access, ipAddress);
 
+        List<HotelCityRecord> allCities = new ArrayList<>();
+
+        int limit = 10000;
+        long delayMs = 500;
+
+        int from = 1;
+        int to = limit;
+        int page = 1;
+        int consecutiveFailures = 0;
+
+        while (true) {
+            if (page > 3) {
+                log.error("❌ Sécurité : Nombre maximum de pages atteint.");
+                break;
+            }
+
+            if (page > 1 && delayMs > 0) {
+                try {
+                    TimeUnit.MILLISECONDS.sleep(delayMs);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.error("Sync interrompue pendant le délai anti-rate limit.");
+                    break;
+                }
+            }
+
+            List<HotelCityApiResponse.CityItem> remoteCities = fetchPage(from, to);
+
+            if (remoteCities == null) {
+                consecutiveFailures++;
+                if (consecutiveFailures >= 3) {
+                    log.error("❌ 3 échecs consécutifs à la page {}. Arrêt du flux.", page);
+                    break;
+                }
+                log.warn("⚠️ Erreur sur la plage [{}→{}], nouvelle tentative...", from, to);
+                continue;
+            }
+
+            if (remoteCities.isEmpty()) {
+                log.info("✓ Fin des données atteinte à la page {}. Total récolté : {} villes.", page - 1, allCities.size());
+                break;
+            }
+
+            consecutiveFailures = 0;
+
+            try {
+                log.info("📡 Page {} : Index {} à {} reçus (+{} villes).", page, from, to, remoteCities.size());
+
+                for (HotelCityApiResponse.CityItem item : remoteCities) {
+                    allCities.add(new HotelCityRecord(
+                            // item.id(), // Si ton Record accepte l'ID, sinon adapte selon ton constructeur
+                            item.cityName() != null ? item.cityName().trim() : "",
+                            item.countryName() != null ? item.countryName().trim() : "",
+                            //  item.countryCode() != null ? item.countryCode().trim() : "",
+                            Double.parseDouble(item.latitude()),
+                            Double.parseDouble(item.longitude())
+                    ));
+                }
+
+            } catch (Exception e) {
+                log.error("❌ Échec de la transformation du lot [{}→{}]: {}", from, to, e.getMessage());
+            }
+
+            from = to + 1;
+            to = from + limit - 1;
+            page++;
+        }
+
+        return allCities;
+    }
+
+    private List<HotelCityApiResponse.CityItem> fetchPage(int from, int to) {
         try {
-            // Exécution de l'appel GET avec les paramètres d'authentification et de pagination demandés
             HotelCityApiResponse response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/api/hotel-api-v6/cities")
-                            .queryParam("from", 1)
-                            .queryParam("to", 100)
-                            .queryParam("user_id", "cscreativ_testAPI")
-                            .queryParam("user_password", "cscreativTest@2026")
-                            .queryParam("ip_address", "129.0.60.181")
-                            .queryParam("access", "Test")
+                            .queryParam("from", from)
+                            .queryParam("to", to)
+                            .queryParam("user_id", userId)
+                            .queryParam("user_password", userPassword)
+                            .queryParam("ip_address", ipAddress)
+                            .queryParam("access", access)
                             .build())
                     .retrieve()
                     .body(HotelCityApiResponse.class);
 
-            if (response == null || response.cities() == null || response.cities().isEmpty()) {
-                log.warn("TravelNext Hotel API returned no cities. Falling back to seed data.");
-                return fallbackDataSource.fetchAll();
-            }
-
-            // Transformation et conversion vers vos objets métier internes HotelCityRecord
-            return response.cities().stream()
-                    .map(city -> new HotelCityRecord(
-                            city.cityName(),
-                            city.countryName(),
-                            Double.parseDouble(city.latitude()),
-                            Double.parseDouble(city.longitude())
-                    ))
-                    .toList();
+            return response != null ? response.cities() : null;
 
         } catch (Exception e) {
-            log.error("Failed to fetch live hotel cities from TravelNext: {}. Using hardcoded seeds as fallback.", e.getMessage());
-            // Résilience : renvoi immédiat des ~50 villes d'origine si l'API externe subit une panne
-            return fallbackDataSource.fetchAll();
+            log.error("❌ Erreur de communication sur l'index [{}→{}] : {}", from, to, e.getMessage());
+            return null;
         }
     }
 }
 
 /**
- * Enveloppe globale de la réponse renvoyée par l'API des villes d'hôtels.
+ * Enveloppe globale de la réponse renvoyée par l'API.
  */
 record HotelCityApiResponse(
         @JsonProperty("total_count") String totalCount,

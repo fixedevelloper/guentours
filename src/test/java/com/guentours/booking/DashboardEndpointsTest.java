@@ -2,8 +2,8 @@ package com.guentours.booking;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.guentours.user.User;
-import com.guentours.user.UserRepository;
+import com.guentours.user.domain.User;
+import com.guentours.user.domain.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

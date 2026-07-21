@@ -1,4 +1,6 @@
-package com.guentours.user;
+package com.guentours.user.event;
+
+import com.guentours.user.service.UserService;
 
 /**
  * Published exactly once, right after a new account is created transparently during

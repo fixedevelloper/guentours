@@ -5,7 +5,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.text.Normalizer;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Reloads the airports/hotel_cities reference tables from their configured
@@ -46,14 +53,54 @@ public class ReferenceDataSyncService {
     @Transactional
     public int syncHotelCities() {
         List<HotelCityRecord> records = hotelCityDataSource.fetchAll();
-        for (HotelCityRecord record : records) {
-            HotelCity city = hotelCityRepository
-                    .findByCityNameIgnoreCaseAndCountryNameIgnoreCase(record.cityName(), record.countryName())
-                    .orElseGet(() -> new HotelCity(record.cityName(), record.countryName(), record.latitude(), record.longitude()));
-            city.refresh(record.cityName(), record.countryName(), record.latitude(), record.longitude());
-            hotelCityRepository.save(city);
+        log.warn("Données reçues de la source : {}", records.size());
+
+        if (!records.isEmpty()) {
+            // Pattern pour enlever les marques d'accents combinées
+            Pattern diacriticsPattern = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
+
+            List<HotelCity> newCities = records.stream()
+                    .filter(r -> r.cityName() != null && r.countryName() != null)
+                    .collect(Collectors.toMap(
+                            // Clé de fusion INSENSIBLE aux accents et à la casse (Copie le comportement MySQL)
+                            r -> {
+                                String rawKey = (r.cityName().trim() + "-" + r.countryName().trim()).toLowerCase();
+                                // Décompose les caractères (ex: á -> a + ´)
+                                String normalized = Normalizer.normalize(rawKey, Normalizer.Form.NFD);
+                                // Supprime les accents isolés et remplace les caractères spécifiques comme le 'đ' vietnamien
+                                return diacriticsPattern.matcher(normalized)
+                                        .replaceAll("")
+                                        .replace("đ", "d");
+                            },
+                            // Valeur : On conserve l'entité avec ses vrais accents d'origine pour l'affichage !
+                            r -> new HotelCity(
+                                    r.cityName().trim(),
+                                    r.countryName().trim(),
+                                    r.latitude(),
+                                    r.longitude()
+                            ),
+                            // Si MySQL considère que c'est un doublon, on garde la première version
+                            (existing, replacement) -> existing
+                    ))
+                    .values()
+                    .stream()
+                    .toList();
+
+            log.info("Nombre de villes uniques après dédoublonnage insensible aux accents : {}", newCities.size());
+
+           // hotelCityRepository.deleteAllInBatch();
+            hotelCityRepository.saveAll(newCities);
         }
+
         log.info("Synced {} hotel cities", records.size());
         return records.size();
+    }
+
+    /**
+     * Utilitaire pour filtrer un Stream sur une clé spécifique
+     */
+    private static <T> Predicate<T> distinctByKey(Function<? super T, ?> keyExtractor) {
+        Map<Object, Boolean> seen = new ConcurrentHashMap<>();
+        return t -> seen.putIfAbsent(keyExtractor.apply(t), Boolean.TRUE) == null;
     }
 }

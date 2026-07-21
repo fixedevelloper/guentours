@@ -1,5 +1,7 @@
 package com.guentours.user;
 
+import com.guentours.user.domain.User;
+import com.guentours.user.domain.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
