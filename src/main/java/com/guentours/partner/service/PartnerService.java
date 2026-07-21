@@ -2,11 +2,14 @@ package com.guentours.partner.service;
 
 
 import com.guentours.partner.domain.Partner;
+import com.guentours.partner.domain.PartnerStatus;
 import com.guentours.partner.event.PartnerApprovedEvent;
 import com.guentours.partner.event.PartnerRegisteredEvent;
 import com.guentours.partner.domain.PartnerRepository;
 import com.guentours.partner.web.PartnerRegistrationRequest;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -66,5 +69,9 @@ public class PartnerService {
         ));
 
         return saved;
+    }
+
+    public Page<Partner> findAll(PartnerStatus status, Pageable pageable) {
+        return repository.findAll(pageable);
     }
 }

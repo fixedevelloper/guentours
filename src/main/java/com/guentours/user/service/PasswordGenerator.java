@@ -1,4 +1,4 @@
-package com.guentours.user;
+package com.guentours.user.service;
 
 import java.security.SecureRandom;
 

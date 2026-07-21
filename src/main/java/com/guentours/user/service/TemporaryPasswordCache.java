@@ -1,4 +1,4 @@
-package com.guentours.user;
+package com.guentours.user.service;
 
 import com.guentours.user.event.UserAutoProvisionedEvent;
 import org.springframework.stereotype.Component;
