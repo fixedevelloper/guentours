@@ -10,23 +10,25 @@ permissions:
   packages: write
 
 jobs:
-  deploy:
+
+  docker:
+
     runs-on: ubuntu-latest
 
+    environment: production
+
     steps:
+
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
+      - name: Login GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push
+      - name: Build and Push image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -35,17 +37,20 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/guestravel-api:latest
             ghcr.io/${{ github.repository_owner }}/guestravel-api:${{ github.sha }}
 
-      - name: Deploy
+      - name: Deploy VPS
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT }}
+
           script: |
+            echo "Connexion VPS OK"
+
             docker login ghcr.io \
-              -u "${{ github.actor }}" \
-              -p "${{ secrets.GITHUB_TOKEN }}"
+              -u ${{ github.actor }} \
+              -p ${{ secrets.GITHUB_TOKEN }}
 
             cd /opt/apps
 
