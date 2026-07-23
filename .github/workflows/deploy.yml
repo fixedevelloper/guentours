@@ -29,12 +29,12 @@ jobs:
       - name: Build image
         run: |
           docker build \
-            -t ghcr.io/${{ github.repository_owner }}/voyage-api:latest \
+            -t ghcr.io/${{ github.repository_owner }}/guestravel-api:latest \
             .
 
       - name: Push image
         run: |
-          docker push ghcr.io/${{ github.repository_owner }}/voyage-api:latest
+          docker push ghcr.io/${{ github.repository_owner }}/guestravel-api:latest
 
       - name: Deploy VPS
         uses: appleboy/ssh-action@v1.2.2
