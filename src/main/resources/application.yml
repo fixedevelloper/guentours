@@ -27,7 +27,6 @@ spring:
     port: ${MAIL_PORT:1025}
     username: ${MAIL_USERNAME:}
     password: ${MAIL_PASSWORD:}
-    partner-login-url: https://app.creativtrips.com/login
     # SMTP AUTH and TLS/SSL are derived from MAIL_ENCRYPTION and the username in MailConfig.
 
 app:
@@ -40,7 +39,7 @@ app:
     # tls (STARTTLS), ssl, or empty for a plaintext local dev relay (Mailhog/GreenMail).
     encryption: ${MAIL_ENCRYPTION:}
     timeout-ms: ${MAIL_TIMEOUT_MS:8000}
-
+    partner-login-url: https://app.guentours.com/login
   payment:
     # Fixed, non-refundable fee a PAY_LATER customer pays up front to hold the booking (in the
     # booking's currency). It is NOT deducted from the total - the full price is still due later.

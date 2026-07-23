@@ -4,10 +4,19 @@
 const TOKEN_KEY = "guentours.token";
 const PROFILE_KEY = "guentours.profile";
 
+export type UserRole =
+    | "CUSTOMER"
+    | "ADMIN"
+    | "PARTNER_AIRLINE"
+    | "PARTNER_HOTEL"
+    | "PARTNER_CAR_RENTAL"
+    | "PARTNER_FURNISHED_RENTAL";
+
 export interface StoredProfile {
   email: string;
   fullName: string;
-  role: "CUSTOMER" | "ADMIN";
+  role: UserRole;
+  partnerId?: string; // présent uniquement pour les comptes partenaires
 }
 
 export function getStoredToken(): string | null {

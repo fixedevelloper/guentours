@@ -6,8 +6,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 
 import { routing } from "@/i18n/routing";
 import { Providers } from "@/components/providers";
-import { SiteHeader } from "@/components/site-header";
-import { SiteFooter } from "@/components/site-footer";
 import { Toaster } from "@/components/ui/sonner";
 
 import "../globals.css";
@@ -75,22 +73,10 @@ export default async function LocaleLayout({
             enableSystem 
             disableTransitionOnChange
           >
-            {/* 
-              Le Header gère lui-même sa barre du haut collante (sticky) 
-              et sa barre du bas fixe (fixed) sans conteneur parent restrictif.
-            */}
-            <SiteHeader />
 
-            {/* 
-              Conteneur de page principal.
-              pb-16 sur mobile permet de créer un espace vide en bas de l'écran 
-              pour que la barre de navigation fixe ne cache pas le contenu (boutons de validation, etc.).
-            */}
             <main className="flex-1 flex flex-col w-full animate-fade-in">
               {children}
             </main>
-
-            <SiteFooter />
 
             {/* Toaster pour les notifications */}
             <Toaster 

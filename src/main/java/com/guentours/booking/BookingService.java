@@ -84,6 +84,8 @@ public class BookingService {
         Booking booking = switch (request.offerType()) {
             case FLIGHT -> checkoutFlight(request, user, travelers, plan);
             case HOTEL -> checkoutHotel(request, user, travelers, plan);
+            case CAR_RENTAL -> null;
+            case FURNISHED_RENTAL -> null;
         };
 
         Booking saved = bookingRepository.save(booking);

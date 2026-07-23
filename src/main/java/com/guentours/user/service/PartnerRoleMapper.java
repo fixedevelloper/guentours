@@ -1,6 +1,5 @@
 package com.guentours.user.service;
 
-
 import com.guentours.user.domain.Role;
 
 public final class PartnerRoleMapper {

@@ -25,7 +25,7 @@ public class AdminUserController {
     @GetMapping
     public ResponseEntity<List<AdminUserResponse>> allUsers() {
         List<AdminUserResponse> users = userRepository.findAll().stream()
-                .sorted(Comparator.comparing(User::getCreatedAt).reversed())
+                .sorted(Comparator.comparing(User::getId).reversed())
                 .map(AdminUserResponse::from)
                 .toList();
         return ResponseEntity.ok(users);

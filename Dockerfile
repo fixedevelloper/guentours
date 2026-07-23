@@ -1,14 +1,25 @@
-# Image de runtime Java 21 basée sur Alpine (très légère ~150 Mo)
-FROM eclipse-temurin:21-jre-alpine
+# ---------- Build ----------
+FROM maven:3.9.9-eclipse-temurin-21 AS build
 
-# Répertoire de travail dans le conteneur
 WORKDIR /app
 
-# Copier le fichier JAR généré par Maven
-COPY target/*.jar app.jar
+COPY pom.xml .
 
-# Exposer le port de l'application
-EXPOSE 9080
+COPY .mvn .mvn
+COPY mvnw .
+COPY src src
 
-# Exécuter l'application Spring Boot
-ENTRYPOINT ["java", "-jar", "app.jar"]
+RUN chmod +x mvnw
+
+RUN ./mvnw clean package -DskipTests
+
+# ---------- Runtime ----------
+FROM eclipse-temurin:21-jre
+
+WORKDIR /app
+
+COPY --from=build /app/target/*.jar app.jar
+
+EXPOSE 8080
+
+ENTRYPOINT ["java","-jar","app.jar"]

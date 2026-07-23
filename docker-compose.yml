@@ -1,0 +1,20 @@
+services:
+
+  spring:
+    build:
+      context: ./spring
+    container_name: spring
+
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"
+
+    volumes:
+      - ./spring/logs:/logs
+
+    networks:
+      - backend
+
+networks:
+  backend:

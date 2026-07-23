@@ -12,10 +12,19 @@ import {
   type StoredProfile,
 } from "@/lib/auth-storage";
 
+const PARTNER_ROLES = [
+  "PARTNER_AIRLINE",
+  "PARTNER_HOTEL",
+  "PARTNER_CAR_RENTAL",
+  "PARTNER_FURNISHED_RENTAL",
+] as const;
+
 interface AuthContextValue {
   user: StoredProfile | null;
+  partnerId: string | null; // Exposé directement pour simplifier l'accès
   isAuthenticated: boolean;
   isAdmin: boolean;
+  isPartner: boolean;
   isHydrated: boolean;
   login: (request: LoginRequest) => Promise<StoredProfile>;
   register: (request: RegisterRequest) => Promise<StoredProfile>;
@@ -38,31 +47,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({
-      user,
-      isAuthenticated: user !== null,
-      isAdmin: user?.role === "ADMIN",
-      isHydrated,
-      async login(request) {
-        const response = await authApi.login(request);
-        const profile = { email: response.email, fullName: response.fullName, role: response.role };
-        saveAuthSession(response.token, profile);
-        setUser(profile);
-        return profile;
-      },
-      async register(request) {
-        const response = await authApi.register(request);
-        const profile = { email: response.email, fullName: response.fullName, role: response.role };
-        saveAuthSession(response.token, profile);
-        setUser(profile);
-        return profile;
-      },
-      logout() {
-        clearAuthSession();
-        setUser(null);
-      },
-    }),
-    [user, isHydrated]
+      () => ({
+        user,
+        partnerId: user?.partnerId ?? null, // Récupération directe
+        isAuthenticated: user !== null,
+        isAdmin: user?.role === "ADMIN",
+        isPartner: user !== null && PARTNER_ROLES.includes(user.role as (typeof PARTNER_ROLES)[number]),
+        isHydrated,
+        async login(request) {
+          const response = await authApi.login(request);
+          const profile = {
+            email: response.email,
+            fullName: response.fullName,
+            role: response.role,
+            partnerId: response.partnerId,
+          };
+          saveAuthSession(response.token, profile);
+          setUser(profile);
+          return profile;
+        },
+        async register(request) {
+          const response = await authApi.register(request);
+          const profile = {
+            email: response.email,
+            fullName: response.fullName,
+            role: response.role,
+            partnerId: response.partnerId,
+          };
+          saveAuthSession(response.token, profile);
+          setUser(profile);
+          return profile;
+        },
+        logout() {
+          clearAuthSession();
+          setUser(null);
+        },
+      }),
+      [user, isHydrated]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -11,7 +11,14 @@ create table e_tickets (issued_at datetime(6) not null, booking_id varchar(255) 
 create table event_publication (completion_date datetime(6), publication_date datetime(6), id binary(16) not null, event_type varchar(255), listener_id varchar(255), serialized_event varchar(255), primary key (id)) engine=InnoDB;
 create table hotel_cities (latitude float(53) not null, longitude float(53) not null, id bigint not null auto_increment, city_name varchar(255) not null, country_name varchar(255) not null, primary key (id)) engine=InnoDB;
 create table payments (amount decimal(38,2), created_at datetime(6) not null, booking_id varchar(255) not null, currency varchar(255), failure_reason varchar(255), gateway_reference varchar(255), id varchar(255) not null, payer_reference_last4 varchar(255), payment_method enum ('CARD','MTN_MOBILE_MONEY','ORANGE_MONEY') not null, status enum ('FAILED','PENDING','SUCCEEDED') not null, primary key (id)) engine=InnoDB;
-create table users (auto_provisioned bit not null, created_at datetime(6) not null, email varchar(255) not null, full_name varchar(255) not null, id varchar(255) not null, password_hash varchar(255) not null, phone varchar(255), role enum ('ADMIN','CUSTOMER') not null, primary key (id)) engine=InnoDB;
+create table users (auto_provisioned bit not null, created_at datetime(6) not null,
+                    partner_id VARCHAR(36),
+                    must_change_password BOOLEAN NOT NULL DEFAULT FALSE,email varchar(255) not null,
+                    full_name varchar(255) not null, id varchar(255) not null, password_hash varchar(255) not null, phone varchar(255),
+                    role ENUM(
+        'ADMIN','CUSTOMER',
+        'PARTNER_AIRLINE','PARTNER_HOTEL','PARTNER_CAR_RENTAL','PARTNER_FURNISHED_RENTAL'
+    ) not null, primary key (id)) engine=InnoDB;
 create index idx_airports_city on airports (city);
 create index idx_airports_name on airports (airport_name);
 alter table e_tickets add constraint UK6ni1yox69ihf3sjauf8fw6qtu unique (ticket_number);

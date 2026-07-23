@@ -16,6 +16,6 @@ public record AdminUserResponse(
 ) {
     public static AdminUserResponse from(User user) {
         return new AdminUserResponse(user.getId(), user.getEmail(), user.getFullName(), user.getPhone(),
-                user.getRole(), user.isAutoProvisioned(), user.getCreatedAt());
+                user.getRole(), user.isMustChangePassword(), user.getCreatedAt());
     }
 }

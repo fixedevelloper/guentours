@@ -384,5 +384,16 @@
     "title": "Voyagez plus léger avec l'application Guen's travel",
     "description": "Réservez, gérez vos séjours et accédez à vos billets directement depuis votre poche. Scannez le QR code pour télécharger notre application.",
     "cta": "Télécharger l'app"
+  },
+  "Partner": {
+    "navDashboard": "Tableau de bord",
+    "navListings": "Annonces",
+    "navBookings": "Réservations",
+    "navSettings": "Paramètres",
+    "status": {
+      "PENDING_REVIEW": "En attente",
+      "APPROVED": "Approuvé",
+      "REJECTED": "Rejeté"
+    }
   }
 }

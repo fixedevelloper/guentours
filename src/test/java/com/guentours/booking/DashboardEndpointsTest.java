@@ -2,6 +2,7 @@ package com.guentours.booking;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.guentours.user.domain.Role;
 import com.guentours.user.domain.User;
 import com.guentours.user.domain.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -71,8 +72,8 @@ class DashboardEndpointsTest {
                 authEntity(customerToken), String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
 
         String adminEmail = "admin+" + System.nanoTime() + "@example.com";
-        User admin = new User(adminEmail, "Admin User", null, passwordEncoder.encode("Secret123!"), false);
-        admin.promoteToAdmin();
+        User admin = new User(adminEmail,passwordEncoder.encode("Secret123!"), "Admin User", Role.ADMIN,  null);
+        //admin.promoteToAdmin();
         userRepository.save(admin);
         String adminToken = login(adminEmail, "Secret123!");
 

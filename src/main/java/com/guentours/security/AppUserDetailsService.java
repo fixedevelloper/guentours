@@ -22,3 +22,4 @@ public class AppUserDetailsService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("No account for email " + email));
     }
 }
+

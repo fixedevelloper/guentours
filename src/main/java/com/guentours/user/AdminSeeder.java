@@ -1,5 +1,6 @@
 package com.guentours.user;
 
+import com.guentours.user.domain.Role;
 import com.guentours.user.domain.User;
 import com.guentours.user.domain.UserRepository;
 import org.slf4j.Logger;
@@ -48,8 +49,8 @@ class AdminSeeder {
         if (!enabled || userRepository.existsByEmailIgnoreCase(email)) {
             return;
         }
-        User admin = new User(email, fullName, null, passwordEncoder.encode(password), false);
-        admin.promoteToAdmin();
+        User admin = new User(email,passwordEncoder.encode(password), fullName, Role.ADMIN,null);
+        admin.isMustChangePassword();
         userRepository.save(admin);
         log.warn("Seeded default super-admin account ({}) - change its password before going to production", email);
     }

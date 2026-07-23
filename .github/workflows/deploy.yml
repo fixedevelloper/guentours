@@ -1,85 +1,55 @@
-name: Build & Deploy Spring Boot
+name: Build and Deploy
 
 on:
   push:
     branches:
       - main
 
-# Permissions requises pour publier l'image sur GitHub Container Registry (GHCR)
 permissions:
   contents: read
   packages: write
 
 jobs:
-  build:
+
+  docker:
+
     runs-on: ubuntu-latest
 
     steps:
-      - name: Récupérer le code
-        uses: actions/checkout@v4
 
-      - name: Installer Java & Configurer le cache
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-          cache: maven
+      - uses: actions/checkout@v4
 
-      - name: Compiler
-        run: mvn clean package -DskipTests
-
-      - name: Configurer Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Connexion à GHCR
+      - name: Login GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_TOKEN }}
 
-      - name: Générer les métadonnées Docker (Gestion de la casse et du tag)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=latest
+      - name: Build image
+        run: |
+          docker build \
+            -t ghcr.io/${{ github.repository_owner }}/voyage-api:latest \
+            .
 
-      - name: Construire et publier l'image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Push image
+        run: |
+          docker push ghcr.io/${{ github.repository_owner }}/voyage-api:latest
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Déployer sur le serveur
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Deploy VPS
+        uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
           script: |
-            # Conversion du nom d'image en minuscules pour la commande docker pull sur le serveur
-            IMAGE_URL=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+            docker login ghcr.io \
+              -u ${{ github.actor }} \
+              -p ${{ secrets.GHCR_TOKEN }}
 
-            docker pull $IMAGE_URL:latest
+            cd /opt/apps
 
-            docker stop spring-app || true
-            docker rm spring-app || true
+            docker compose pull
 
-            docker run -d \
-              --name spring-app \
-              --restart always \
-              -p 127.0.0.1:9080:9080 \
-              $IMAGE_URL:latest
-
-            docker image prune -af
+            docker compose up -d

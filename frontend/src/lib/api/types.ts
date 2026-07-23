@@ -1,5 +1,7 @@
 // Types mirroring the guentours-api backend contracts (com.guentours.* DTOs) 1:1
 // so the frontend never has to guess field names or enum values.
+import { z } from "zod";
+import {UserRole} from "../auth-storage";
 
 export type JourneyType = "ONE_WAY" | "ROUND_TRIP" | "MULTI_CITY";
 
@@ -254,10 +256,12 @@ export interface ETicket {
   id: string;
   bookingId: string;
   ticketNumber: string;
+  tempPassword:string;
   providerConfirmationNumber: string | null;
   document: string;
   issuedAt: string;
 }
+
 
 // ---------- Auth ----------
 
@@ -278,7 +282,8 @@ export interface AuthResponse {
   tokenType: string;
   email: string;
   fullName: string;
-  role: "CUSTOMER" | "ADMIN";
+  role: UserRole;
+  partnerId?: string; // présent uniquement pour les comptes partenaires
 }
 
 // ---------- Admin ----------
@@ -288,7 +293,8 @@ export interface AdminUserResponse {
   email: string;
   fullName: string;
   phone: string | null;
-  role: "CUSTOMER" | "ADMIN";
+  role: UserRole;
+  partnerId: string | null;
   autoProvisioned: boolean;
   createdAt: string;
 }
@@ -296,4 +302,262 @@ export interface AdminUserResponse {
 export interface CommissionWalletBalanceResponse {
   balances: Money[];
   entryCount: number;
+}
+// ---------- Pagination ----------
+
+export interface PageResponse<T> {
+  content: T[];
+  totalElements: number;
+  totalPages: number;
+  number: number; // page courante (0-indexée)
+  size: number;
+}
+
+// ---------- Partners ----------
+
+export type PartnerType = "AIRLINE" | "HOTEL" | "CAR_RENTAL" | "FURNISHED_RENTAL";
+export type PartnerStatus = "PENDING_REVIEW" | "APPROVED" | "REJECTED";
+
+export interface PartnerResponse {
+  id: string;
+  partnerType: PartnerType;
+  companyName: string;
+  email: string;
+  status: PartnerStatus;
+  createdAt: string;
+}
+// ---------- Partner: Flights ----------
+
+export type FlightStatus = "ACTIVE" | "SUSPENDED";
+
+export interface FlightResponse {
+  id: string;
+  flightNumber: string;
+  originAirportCode: string;
+  destinationAirportCode: string;
+  departureTime: string;
+  arrivalTime: string;
+  operatingDays: number[];
+  status: FlightStatus;
+}
+// ---------- Partner: Hotels ----------
+
+export interface HotelResponse {
+  id: string;
+  name: string;
+  city: string;
+  country: string;
+  starRating: number | null;
+  status: "ACTIVE" | "SUSPENDED";
+  coverImageUrl: string | null;
+}
+// ---------- Partner: Vehicles ----------
+
+export type VehicleCategory = "ECONOMY" | "COMPACT" | "SUV" | "LUXURY" | "VAN" | "MINIBUS";
+
+export interface VehicleResponse {
+  id: string;
+  brand: string;
+  model: string;
+  category: VehicleCategory;
+  pricePerDay: number;
+  currency: string;
+  unitsCount: number;
+  status: "ACTIVE" | "SUSPENDED";
+}
+
+// ---------- Partner: Properties ----------
+
+export type PropertyType = "APARTMENT" | "VILLA" | "STUDIO" | "HOUSE";
+
+export interface PropertyResponse {
+  id: string;
+  title: string;
+  propertyType: PropertyType;
+  city: string;
+  pricePerNight: number;
+  currency: string;
+  status: "ACTIVE" | "SUSPENDED";
+}
+
+
+/**
+ * Statuts d'une annonce de location meublée
+ */
+export type ListingStatus = "ACTIVE" | "SUSPENDED" | "DRAFT";
+
+/**
+ * Interface du formulaire de création/édition d'une résidence meublée
+ */
+export interface PropertyFormData {
+  title: string;
+  propertyType: PropertyType;
+  address: string;
+  city: string;
+  country: string;
+  bedrooms: number;
+  bathrooms: number;
+  maxGuests: number;
+  amenities: string[];
+  pricePerNight: number;
+  currency: string;
+  minStayNights: number;
+  description?: string;
+}
+
+/**
+ * Interface de la réponse API Spring Boot pour une propriété
+ */
+export interface PropertyResponse extends PropertyFormData {
+  id: string;
+  partnerId: string;
+  status: ListingStatus;
+  coverImageUrl?: string;
+  images?: string[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * Équipements standards pour résidence meublée
+ */
+export interface AmenityOption {
+  id: string;
+  label: string;
+  category?: "GENERAL" | "COMFORT" | "SECURITY" | "KITCHEN";
+}
+
+export const PROPERTY_AMENITIES: AmenityOption[] = [
+  { id: "WIFI", label: "Wi-Fi Haut Débit", category: "GENERAL" },
+  { id: "AIR_CONDITIONING", label: "Climatisation", category: "COMFORT" },
+  { id: "SWIMMING_POOL", label: "Piscine", category: "COMFORT" },
+  { id: "PARKING", label: "Parking Réservez/Gratuit", category: "GENERAL" },
+  { id: "GENERATOR", label: "Groupe Électrogène", category: "SECURITY" },
+  { id: "KITCHEN", label: "Cuisine Équipée", category: "KITCHEN" },
+  { id: "TV", label: "Smart TV / Canal+", category: "GENERAL" },
+  { id: "BALCONY", label: "Balcon / Terrasse", category: "COMFORT" },
+  { id: "SECURITY_GUARD", label: "Gardien 24/7", category: "SECURITY" },
+  { id: "WASHER", label: "Lave-linge", category: "GENERAL" },
+];
+
+/**
+ * Schéma de validation Zod pour le formulaire de résidence meublée
+ */
+export const propertyFormSchema = z.object({
+  title: z
+      .string()
+      .min(3, "Le titre doit contenir au moins 3 caractères")
+      .max(120, "Le titre ne doit pas dépasser 120 caractères"),
+  propertyType: z.enum(["APARTMENT", "HOUSE", "VILLA", "STUDIO"] as const, {
+    required_error: "Veuillez sélectionner un type d'hébergement",
+  }),
+  address: z.string().min(3, "L'adresse est requise"),
+  city: z.string().min(2, "La ville est requise"),
+  country: z.string().min(2, "Le pays est requis"),
+  bedrooms: z.number().int().min(0, "Le nombre de chambres ne peut pas être négatif"),
+  bathrooms: z.number().int().min(1, "Il faut au moins 1 salle de bain"),
+  maxGuests: z.number().int().min(1, "La capacité minimale est de 1 personne"),
+  amenities: z.array(z.string()).default([]),
+  pricePerNight: z.number().positive("Le prix par nuit doit être supérieur à 0"),
+  currency: z.string().default("XAF"),
+  minStayNights: z.number().int().min(1, "Le séjour minimum est d'au moins 1 nuit"),
+  description: z.string().max(2000, "La description ne peut pas dépasser 2000 caractères").optional(),
+});
+
+/**
+ * Valeurs initiales par défaut pour la création
+ */
+export const DEFAULT_PROPERTY_FORM_VALUES: PropertyFormData = {
+  title: "",
+  propertyType: "APARTMENT",
+  address: "",
+  city: "",
+  country: "Cameroun",
+  bedrooms: 1,
+  bathrooms: 1,
+  maxGuests: 2,
+  amenities: ["WIFI", "AIR_CONDITIONING"],
+  pricePerNight: 0,
+  currency: "XAF",
+  minStayNights: 1,
+  description: "",
+};
+export interface FlightFormData {
+  partnerId: string;
+  flightNumber: string;
+  aircraftType: string;
+  originAirportCode: string;
+  destinationAirportCode: string;
+  departureTime: string; // Format "HH:mm:ss" pour LocalTime Java
+  arrivalTime: string;   // Format "HH:mm:ss" pour LocalTime Java
+  durationMinutes: number;
+  operatingDays: number[]; // Tableau des jours 1-7
+}
+// lib/api/types.ts — ajouts
+
+export interface FareResponse {
+  id: string;
+  cabinClass: CabinClass;
+  basePrice: number;
+  currency: string;
+  baggageAllowanceKg: number;
+  totalSeats: number;
+}
+
+export interface FareFormData {
+  cabinClass: CabinClass;
+  basePrice: number;
+  currency: string;
+  baggageAllowanceKg: number;
+  totalSeats: number;
+}
+
+export type DepartureStatus = "SCHEDULED" | "DELAYED" | "CANCELLED" | "DEPARTED";
+
+export interface AvailabilityResponse {
+  id: string;
+  flightDate: string; // "YYYY-MM-DD"
+  seatsAvailable: number;
+  priceOverride: number | null;
+  status: DepartureStatus;
+}
+
+export interface AvailabilityFormData {
+  flightDate: string;
+  seatsAvailable: number;
+}
+export interface RoomAvailabilityResponse {
+  id: string;
+  stayDate: string; // "YYYY-MM-DD"
+  roomsAvailable: number;
+  priceOverride: number | null;
+}
+
+export interface RoomAvailabilityFormData {
+  stayDate: string;
+  roomsAvailable: number;
+}
+
+export interface RoomTypeResponse {
+  id: string;
+  name: string;
+  maxAdults: number;
+  maxChildren: number;
+  bedType: string | null;
+  sizeSqm: number | null;
+  basePrice: number;
+  currency: string;
+  totalRooms: number;
+  status: "ACTIVE" | "SUSPENDED";
+}
+export interface RoomAvailabilityResponse {
+  id: string;
+  stayDate: string; // "YYYY-MM-DD"
+  roomsAvailable: number;
+  priceOverride: number | null;
+}
+
+export interface RoomAvailabilityFormData {
+  stayDate: string;
+  roomsAvailable: number;
 }

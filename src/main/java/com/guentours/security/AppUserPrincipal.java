@@ -25,6 +25,11 @@ public class AppUserPrincipal implements UserDetails {
         return user.getRole().name();
     }
 
+    /** Null for CUSTOMER/ADMIN accounts; set only for partner accounts (PARTNER_AIRLINE, PARTNER_HOTEL, etc.). */
+    public String getPartnerId() {
+        return user.getPartnerId();
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));

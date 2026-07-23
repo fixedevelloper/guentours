@@ -20,7 +20,7 @@ public class AuthController {
     private final JwtService jwtService;
 
     public AuthController(UserService userService, AuthenticationManager authenticationManager,
-                           JwtService jwtService) {
+                          JwtService jwtService) {
         this.userService = userService;
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
@@ -31,7 +31,7 @@ public class AuthController {
         User user = userService.registerNewUser(request.email(), request.fullName(), request.phone(), request.password());
         AppUserPrincipal principal = new AppUserPrincipal(user);
         String token = jwtService.generateToken(principal, principal.getRole());
-        return ResponseEntity.ok(AuthResponse.of(token, user.getEmail(), user.getFullName(), principal.getRole()));
+        return ResponseEntity.ok(AuthResponse.of(token, user.getEmail(), user.getFullName(), principal.getRole(), user.getPartnerId()));
     }
 
     @PostMapping("/login")
@@ -41,6 +41,6 @@ public class AuthController {
         User user = userService.getByEmail(request.email());
         AppUserPrincipal principal = new AppUserPrincipal(user);
         String token = jwtService.generateToken(principal, principal.getRole());
-        return ResponseEntity.ok(AuthResponse.of(token, user.getEmail(), user.getFullName(), principal.getRole()));
+        return ResponseEntity.ok(AuthResponse.of(token, user.getEmail(), user.getFullName(), principal.getRole(), user.getPartnerId()));
     }
 }

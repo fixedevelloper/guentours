@@ -1,14 +1,6 @@
 package com.guentours.user.domain;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-
+import jakarta.persistence.*;
 import java.time.Instant;
 
 @Entity
@@ -22,70 +14,62 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(name = "full_name", nullable = false)
-    private String fullName;
-
     private String phone;
 
-    @Column(name = "password_hash", nullable = false)
+    @Column(nullable = false)
     private String passwordHash;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private Role role = Role.CUSTOMER;
+    private String fullName;
 
-    /** True when the account was created automatically during a guest checkout rather than self-registration. */
-    @Column(name = "auto_provisioned", nullable = false)
-    private boolean autoProvisioned;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private Role role;
 
-    @Column(name = "created_at", nullable = false)
+    // Référence externe vers Partner (module partners) — pas de FK inter-module
+    private String partnerId;
+
+    @Column(nullable = false)
+    private boolean autoProvisioned = false;
+
+    @Column(nullable = false)
+    private boolean mustChangePassword = false;
+
+    @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
-    protected User() {
-        // JPA
-    }
+    protected User() {}
 
+    /** Compte client : inscription directe ou auto-provisioning au checkout. */
     public User(String email, String fullName, String phone, String passwordHash, boolean autoProvisioned) {
-        this.email = email.toLowerCase();
+        this.email = email;
         this.fullName = fullName;
         this.phone = phone;
         this.passwordHash = passwordHash;
+        this.role = Role.CUSTOMER;
         this.autoProvisioned = autoProvisioned;
+        this.mustChangePassword = autoProvisioned; // mot de passe généré → à changer à la 1ère connexion
     }
 
-    public void promoteToAdmin() {
-        this.role = Role.ADMIN;
+    /** Compte partenaire, créé à l'approbation du dossier partenaire. */
+    public User(String email, String passwordHash, String fullName, Role role, String partnerId) {
+        this.email = email;
+        this.passwordHash = passwordHash;
+        this.fullName = fullName;
+        this.role = role;
+        this.partnerId = partnerId;
     }
 
-    public String getId() {
-        return id;
-    }
+    public void setMustChangePassword(boolean value) { this.mustChangePassword = value; }
 
-    public String getEmail() {
-        return email;
-    }
-
-    public String getFullName() {
-        return fullName;
-    }
-
-    public String getPhone() {
-        return phone;
-    }
-
-    public String getPasswordHash() {
-        return passwordHash;
-    }
-
-    public Role getRole() {
-        return role;
-    }
-
-    public boolean isAutoProvisioned() {
-        return autoProvisioned;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
+    public String getId() { return id; }
+    public String getEmail() { return email; }
+    public String getPhone() { return phone; }
+    public String getPasswordHash() { return passwordHash; }
+    public String getFullName() { return fullName; }
+    public Role getRole() { return role; }
+    public String getPartnerId() { return partnerId; }
+    public boolean isAutoProvisioned() { return autoProvisioned; }
+    public boolean isMustChangePassword() { return mustChangePassword; }
+    public Instant getCreatedAt() { return createdAt; }
 }

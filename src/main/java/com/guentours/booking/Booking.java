@@ -20,6 +20,7 @@ import jakarta.persistence.Lob;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import lombok.Getter;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -35,6 +36,7 @@ public class Booking {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
+    @Getter
     @Column(name = "user_id", nullable = false)
     private String userId;
 
@@ -48,7 +50,8 @@ public class Booking {
     @Enumerated(EnumType.STRING)
     @Column(name = "provider_type", nullable = false)
     private ProviderType providerType;
-
+    @Getter
+    private String partnerId;
     /**
      * ID of the exact provider offer, as returned by the provider adapter at search time.
      * Some vendors (e.g. Travelopro's FareSourceCode) return an opaque token thousands of
@@ -60,6 +63,7 @@ public class Booking {
     private String providerOfferId;
 
     // --- Flight snapshot (populated when offerType == FLIGHT; for MULTI_CITY this mirrors leg 0) ---
+    @Getter
     private String airline;
     private String flightNumber;
     private String origin;
@@ -284,13 +288,15 @@ public class Booking {
         this.status = BookingStatus.CANCELLED;
         this.updatedAt = Instant.now();
     }
+    // Booking.java — ajouter parmi les autres méthodes "mark*"
+
+    /** Associe cette réservation à l'inventaire direct d'un partenaire (vol/chambre/véhicule/logement propre). */
+    public void assignPartner(String partnerId) {
+        this.partnerId = partnerId;
+    }
 
     public String getId() {
         return id;
-    }
-
-    public String getUserId() {
-        return userId;
     }
 
     public String getContactEmail() {
@@ -307,10 +313,6 @@ public class Booking {
 
     public String getProviderOfferId() {
         return providerOfferId;
-    }
-
-    public String getAirline() {
-        return airline;
     }
 
     public String getFlightNumber() {
