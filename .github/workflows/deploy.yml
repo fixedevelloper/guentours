@@ -36,6 +36,11 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/guestravel-api:latest
             ghcr.io/${{ github.repository_owner }}/guestravel-api:${{ github.sha }}
+      - name: Debug host
+        run: |
+         echo "Host:"
+         echo "${{ secrets.SERVER_HOST }}"
+           echo "${{ secrets.SERVER_PORT }}"
 
       - name: Deploy VPS
         uses: appleboy/ssh-action@v1.2.2
