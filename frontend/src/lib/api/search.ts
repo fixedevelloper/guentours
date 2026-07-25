@@ -2,10 +2,11 @@ import { apiClient } from "./client";
 import type {
   FlightSearchParams,
   HarmonizedFlightOffer,
-  HarmonizedHotelOffer,
+  HarmonizedHotelOffer, HotelDetail,
   HotelSearchParams,
   MultiCityFlightSearchParams,
   MultiCityItinerary,
+  RoomOffer,
   SeatMapResponse,
 } from "./types";
 
@@ -26,5 +27,13 @@ export async function searchHotels(params: HotelSearchParams) {
 
 export async function getFlightSeatMap(offerId: string) {
   const { data } = await apiClient.get<SeatMapResponse>("/api/search/flights/seats", { params: { offerId } });
+  return data;
+}
+export async function getHotelDeatils(offerId: string) {
+  const { data } = await apiClient.get<HotelDetail>("/api/search/hotels/details", { params: { offerId } });
+  return data;
+}
+export async function getHotelRooms(offerId: string) {
+  const { data } = await apiClient.get<RoomOffer[]>("/api/search/hotels/get-rooms", { params: { offerId } });
   return data;
 }

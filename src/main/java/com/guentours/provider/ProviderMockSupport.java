@@ -63,6 +63,7 @@ public final class ProviderMockSupport {
     public static List<HotelOffer> hotels(ProviderType type, HotelSearchCriteria criteria,
                                     List<String> hotelNames, double priceMultiplier) {
         List<HotelOffer> offers = new ArrayList<>();
+        String currency = criteria.currency() == null ? "EUR" : criteria.currency();
         long nights = Math.max(1, criteria.checkOut().toEpochDay() - criteria.checkIn().toEpochDay());
         for (String hotelName : hotelNames) {
             Random r = seeded(hotelName, criteria.cityCode(), criteria.checkIn().toString(), criteria.checkOut().toString());
@@ -79,7 +80,7 @@ public final class ProviderMockSupport {
                     r.nextBoolean() ? "DOUBLE" : "TWIN",
                     criteria.checkIn(),
                     criteria.checkOut(),
-                    new Money(total, "EUR"),
+                    new Money(total, currency),
                     Math.min(5.0, rating)
             ));
         }

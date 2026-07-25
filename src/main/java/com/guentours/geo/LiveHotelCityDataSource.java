@@ -60,7 +60,7 @@ public class LiveHotelCityDataSource implements HotelCityDataSource {
         int consecutiveFailures = 0;
 
         while (true) {
-            if (page > 3) {
+            if (page > 10) {
                 log.error("❌ Sécurité : Nombre maximum de pages atteint.");
                 break;
             }

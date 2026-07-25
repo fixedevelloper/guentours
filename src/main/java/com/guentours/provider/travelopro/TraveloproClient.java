@@ -1,41 +1,26 @@
 package com.guentours.provider.travelopro;
 
-import com.guentours.provider.FinalHotelConfirmation;
-import com.guentours.provider.FinalTicketConfirmation;
-import com.guentours.provider.FlightBookingRequest;
-import com.guentours.provider.FlightOffer;
-import com.guentours.provider.FlightSearchCriteria;
-import com.guentours.provider.HotelBookingRequest;
-import com.guentours.provider.HotelOffer;
-import com.guentours.provider.HotelSearchCriteria;
-import com.guentours.provider.JourneyType;
-import com.guentours.provider.PassengerInfo;
-import com.guentours.provider.PaymentDetails;
-import com.guentours.provider.ProviderBookingConfirmation;
-import com.guentours.provider.ProviderMockSupport;
-import com.guentours.provider.ProviderProperties;
-import com.guentours.provider.ProviderType;
-import com.guentours.provider.TravelProviderClient;
+import com.guentours.provider.*;
 import com.guentours.provider.dto.FlightPriceVerification;
+import com.guentours.provider.dto.HotelDetailResponse;
 import com.guentours.provider.dto.HotelPriceVerification;
+import com.guentours.search.OfferCache;
 import com.guentours.shared.Money;
 import com.guentours.shared.exception.ProviderException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.client.ClientHttpRequestFactories;
 import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
+import org.springframework.http.MediaType;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Stream;
 
 /**
@@ -50,7 +35,7 @@ public class TraveloproClient implements TravelProviderClient {
 
     private static final Logger log = LoggerFactory.getLogger(TraveloproClient.class);
     private static final List<String> AIRLINES = List.of("AF", "DL", "TO");
-    private static final List<String> HOTELS = List.of("Hotel Le Meridien", "Ibis Central", "Travelopro Suites");
+    private static final List<String> HOTELS = List.of("Hotel Le Meridien", "Ibis Central");
 
     // TravelNext hotel search wants a currency/nationality/radius our HotelSearchCriteria doesn't
     // carry yet; these defaults keep results in the same currency the other adapters quote (EUR)
@@ -65,12 +50,25 @@ public class TraveloproClient implements TravelProviderClient {
 
     public TraveloproClient(RestClient.Builder restClientBuilder, ProviderProperties properties) {
         this.config = properties.getTravelopro();
+
         ClientHttpRequestFactorySettings timeoutSettings = ClientHttpRequestFactorySettings.DEFAULTS
                 .withConnectTimeout(Duration.ofMillis(config.getTimeoutMillis()))
                 .withReadTimeout(Duration.ofMillis(config.getTimeoutMillis()));
+
+        MappingJackson2HttpMessageConverter jsonConverter = new MappingJackson2HttpMessageConverter();
+        jsonConverter.setSupportedMediaTypes(List.of(
+                MediaType.APPLICATION_JSON,
+                MediaType.APPLICATION_OCTET_STREAM,
+                new MediaType("application", "*+json")
+        ));
+
         this.restClient = restClientBuilder
                 .baseUrl(config.getBaseUrl().isBlank() ? "https://travelnext.works" : config.getBaseUrl())
                 .requestFactory(ClientHttpRequestFactories.get(timeoutSettings))
+                .messageConverters(converters -> {
+                    converters.clear();
+                    converters.add(jsonConverter);
+                })
                 .build();
     }
 
@@ -103,6 +101,7 @@ public class TraveloproClient implements TravelProviderClient {
         if (!isEnabled()) {
             return List.of();
         }
+        log.info(criteria.toString());
         try {
             return config.isMockMode() ? ProviderMockSupport.hotels(getType(), criteria, HOTELS, 0.97)
                     : callHotelApi(criteria);
@@ -110,14 +109,14 @@ public class TraveloproClient implements TravelProviderClient {
             log.warn("Travelopro hotel search failed, skipping this provider: {}", ex.getMessage());
             return List.of();
         }
-    }
 
+    }
     @Override
     public FlightPriceVerification verifyFlightPrice(FlightOffer offer) {
         if (config.isMockMode()) {
             return ProviderMockSupport.verifyFlightPrice(offer.providerOfferId());
         }
-        throw new ProviderException("Travelopro live flight price verification is not yet integrated");
+        return callFlightPriceVerification(offer);
     }
 
     @Override
@@ -126,6 +125,59 @@ public class TraveloproClient implements TravelProviderClient {
             return ProviderMockSupport.verifyHotelPrice(offer.providerOfferId());
         }
         return callRoomRatesPriceCheck(offer);
+    }
+
+    @Override
+    public HotelDetail getDetailHotel(HotelOffer offer) {
+        if (config.isMockMode()) {
+            return null;
+        }
+        return callHotelContentAPI(offer);
+    }
+
+    @Override
+    public List<RoomOffer> getRoomOffers(HotelOffer offer) {
+        if (config.isMockMode()) {
+            log.info("[Travelopro] Mode MOCK actif pour l'offre : {}", offer);
+            return List.of();
+        }
+
+        String sessionId = offer.context("sessionId");
+        String hotelId = offer.context("hotelId");
+        String productId = offer.context("productId");
+        String tokenId = offer.context("tokenId");
+
+        // Validation défensive des paramètres requis
+        if (sessionId == null || hotelId == null) {
+            log.warn("[Travelopro] Paramètres de contexte manquants pour getRoomOffers (sessionId={}, hotelId={})", sessionId, hotelId);
+            return List.of();
+        }
+
+        try {
+            TraveloproRoomRateResponse response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/api/hotel-api-v6/get_room_rates")
+                            .queryParam("sessionId", sessionId)
+                            .queryParam("hotelId", hotelId)
+                            .queryParamIfPresent("productId", Optional.ofNullable(productId))
+                            .queryParamIfPresent("tokenId", Optional.ofNullable(tokenId))
+                            .build())
+                    .retrieve()
+                    .body(TraveloproRoomRateResponse.class);
+
+            log.debug("[Travelopro] Réponse reçue pour hotelId={} : {}", hotelId, response);
+
+            if (response == null || response.roomRates() == null) {
+                log.warn("[Travelopro] Réponse vide ou roomRates nul pour hotelId={}", hotelId);
+                return List.of();
+            }
+
+            return response.roomRates();
+
+        } catch (RestClientException e) {
+            log.error("[Travelopro] Erreur lors de l'appel API get_room_rates pour hotelId={}: {}", hotelId, e.getMessage(), e);
+            return List.of();
+        }
     }
 
     @Override
@@ -188,6 +240,28 @@ public class TraveloproClient implements TravelProviderClient {
                 + "no cancel endpoint in the integrated contract", hotelBookingRef);
     }
 
+    private HotelDetail callHotelContentAPI(HotelOffer offer) {
+        // 1. Clés String en guillemets doubles "..."
+        String sessionId = offer.context("sessionId");
+        String hotelId = offer.context("hotelId");
+        String productId =  offer.context("productId");
+        String tokenId =  offer.context("tokenId");
+
+        // 2. Construction propre de l'URL via UriBuilder (gestion automatique de l'encodage)
+        HotelDetail response = restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/hotel-api-v6/hotelDetails")
+                        .queryParam("sessionId", sessionId)
+                        .queryParam("hotelId", hotelId)
+                        .queryParam("productId", productId)
+                        .queryParam("tokenId", tokenId)
+                        .build())
+                .retrieve()
+                .body(HotelDetail.class);
+
+        // 3. Mapping/Retour du résultat (adapter selon la structure de HotelDetailResponse)
+        return response != null ? response : null;
+    }
     private List<FlightOffer> callFlightApi(FlightSearchCriteria criteria) {
         TraveloproAvailabilityRequest request = buildAvailabilityRequest(criteria);
 
@@ -204,13 +278,81 @@ public class TraveloproClient implements TravelProviderClient {
             return List.of();
         }
 
+        String sessionId = response.AirSearchResponse().session_id();
+
         return result.FareItineraries().stream()
                 .map(TraveloproAvailabilityResponse.FareItineraryWrapper::FareItinerary)
-                .map(itinerary -> toFlightOffer(itinerary, criteria))
+                .map(itinerary -> toFlightOffer(itinerary, criteria, sessionId))
                 .filter(Objects::nonNull)
                 .toList();
     }
+    /**
+     * Re-prices a flight offer via {@code aeroVE5/revalidate} right before a booking hold is
+     * created. Requires the {@code sessionId} captured in the offer's providerContext at search
+     * time - falls back to trusting the originally quoted price if that context is missing
+     * (e.g. an offer that predates this capture, or a provider response that omitted it).
+     */
+    /**
+     * Re-prices a flight offer via {@code aeroVE5/revalidate} right before a booking hold is
+     * created. Requires the {@code sessionId} captured in the offer's providerContext at search
+     * time - falls back to trusting the originally quoted price if that context is missing
+     * (e.g. an offer that predates this capture, or a provider response that omitted it).
+     */
+    private FlightPriceVerification callFlightPriceVerification(FlightOffer offer) {
+        String sessionId = offer.context("sessionId");
+        if (sessionId == null) {
+            log.warn("No sessionId in providerContext for Travelopro offer {}, skipping revalidate", offer.providerOfferId());
+            return new FlightPriceVerification(offer.providerOfferId(), null, true, offer.seatsAvailable(), null);
+        }
 
+        TraveloproRevalidateRequest request = new TraveloproRevalidateRequest(sessionId, offer.providerOfferId());
+
+        TraveloproRevalidateResponse response = restClient.post()
+                .uri("/api/aeroVE5/revalidate")
+                .body(request)
+                .retrieve()
+                .body(TraveloproRevalidateResponse.class);
+
+        var result = response == null || response.AirRevalidateResponse() == null
+                ? null : response.AirRevalidateResponse().AirRevalidateResult();
+
+        if (result == null || !Boolean.TRUE.equals(result.IsValid())) {
+            return new FlightPriceVerification(offer.providerOfferId(), null, false, 0, null);
+        }
+
+        var fareInfo = result.FareItineraries() != null && result.FareItineraries().FareItinerary() != null
+                ? result.FareItineraries().FareItinerary().AirItineraryFareInfo() : null;
+
+        Money verifiedPrice = null;
+        if (fareInfo != null && fareInfo.ItinTotalFares() != null && fareInfo.ItinTotalFares().TotalFare() != null) {
+            var totalFare = fareInfo.ItinTotalFares().TotalFare();
+            verifiedPrice = new Money(new BigDecimal(totalFare.Amount()), totalFare.CurrencyCode());
+        }
+
+        String baggageAllowance = extractBaggageAllowance(fareInfo);
+
+        return new FlightPriceVerification(offer.providerOfferId(), verifiedPrice, true, offer.seatsAvailable(), baggageAllowance);
+    }
+
+    /**
+     * Reads the adult passenger's baggage codes from the first matching {@code FareBreakdown} entry.
+     * Travelopro reports these as short carrier-specific codes (e.g. {@code "SB"} for standard baggage)
+     * rather than a parsed weight, so they're joined as-is; translating a given code to an actual kg
+     * allowance would require a per-airline code table this API doesn't expose.
+     */
+    private String extractBaggageAllowance(TraveloproRevalidateResponse.AirItineraryFareInfo fareInfo) {
+        if (fareInfo == null || fareInfo.FareBreakdown() == null) {
+            return null;
+        }
+        return fareInfo.FareBreakdown().stream()
+                .filter(entry -> entry.PassengerTypeQuantity() != null
+                        && "ADT".equalsIgnoreCase(entry.PassengerTypeQuantity().Code()))
+                .findFirst()
+                .map(TraveloproRevalidateResponse.FareBreakdownEntry::Baggage)
+                .filter(baggage -> baggage != null && !baggage.isEmpty())
+                .map(baggage -> String.join(", ", baggage))
+                .orElse(null);
+    }
     private TraveloproAvailabilityRequest buildAvailabilityRequest(FlightSearchCriteria criteria) {
         String journeyType = switch (criteria.journeyType()) {
             case ONE_WAY -> "OneWay";
@@ -238,7 +380,8 @@ public class TraveloproClient implements TravelProviderClient {
                 criteria.infants());
     }
 
-    private FlightOffer toFlightOffer(TraveloproAvailabilityResponse.FareItinerary itinerary, FlightSearchCriteria criteria) {
+    private FlightOffer toFlightOffer(TraveloproAvailabilityResponse.FareItinerary itinerary,
+                                      FlightSearchCriteria criteria, String sessionId) {
         if (itinerary == null || itinerary.AirItineraryFareInfo() == null
                 || itinerary.AirItineraryFareInfo().ItinTotalFares() == null
                 || itinerary.OriginDestinationOptions() == null) {
@@ -263,13 +406,15 @@ public class TraveloproClient implements TravelProviderClient {
         int seats = segments.stream()
                 .map(TraveloproAvailabilityResponse.SegmentWrapper::SeatsRemaining)
                 .filter(Objects::nonNull)
-                .map(TraveloproAvailabilityResponse.SeatsRemaining::Number)
+                .map(TraveloproAvailabilityResponse.SeatsRemainingInfo::Number)
                 .filter(Objects::nonNull)
                 .min(Integer::compareTo)
                 .orElse(0);
 
         var totalFare = itinerary.AirItineraryFareInfo().ItinTotalFares().TotalFare();
         Money price = new Money(new BigDecimal(totalFare.Amount()), totalFare.CurrencyCode());
+
+        Map<String, String> context = sessionId != null ? Map.of("sessionId", sessionId) : Map.of();
 
         return new FlightOffer(
                 getType(),
@@ -282,9 +427,9 @@ public class TraveloproClient implements TravelProviderClient {
                 LocalDateTime.parse(last.ArrivalDateTime()),
                 criteria.cabinClass(),
                 price,
-                seats);
+                seats,
+                context);
     }
-
     private String toTraveloproCabinClass(String cabinClass) {
         if (cabinClass == null) {
             return "Economy";
@@ -307,9 +452,9 @@ public class TraveloproClient implements TravelProviderClient {
     private List<HotelOffer> callHotelApi(HotelSearchCriteria criteria) {
         TraveloproHotelSearchRequest request = new TraveloproHotelSearchRequest(
                 config.getUsername(), config.getPassword(), config.getAccessMode(), config.getClientIp(),
-                HOTEL_CURRENCY, HOTEL_NATIONALITY,
+                criteria.currency(), HOTEL_NATIONALITY,
                 criteria.checkIn().toString(), criteria.checkOut().toString(),
-                criteria.cityCode(), null,
+                criteria.cityCode(), "",
                 HOTEL_SEARCH_RADIUS_KM, HOTEL_MAX_RESULTS,
                 buildOccupancy(criteria.adults(), Math.max(criteria.rooms(), 1)));
 
@@ -326,6 +471,7 @@ public class TraveloproClient implements TravelProviderClient {
             }
             return List.of();
         }
+
 
         String sessionId = response.status() != null ? response.status().sessionId() : null;
         return response.itineraries().stream()
@@ -527,7 +673,7 @@ public class TraveloproClient implements TravelProviderClient {
     private ProviderBookingConfirmation callBookApi(FlightBookingRequest request) {
         TraveloproBookRequest bookRequest = buildBookRequest(request);
         TraveloproBookResponse bookResponse = restClient.post()
-                .uri("/api/aeroVE5/book")
+                .uri("/api/aeroVE5/booking")
                 .body(bookRequest)
                 .retrieve()
                 .body(TraveloproBookResponse.class);

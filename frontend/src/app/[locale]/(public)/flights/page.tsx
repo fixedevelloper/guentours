@@ -94,9 +94,10 @@ function FlightsPageContent() {
         <div className="mx-auto max-w-6xl px-4 py-6 sm:py-10">
 
           {/* Résumé de recherche ultra-stylé */}
-          {params && (
+
               <div className="mb-8 flex flex-col items-center justify-between gap-4 rounded-3xl border border-border/60 bg-gradient-to-r from-background via-background/90 to-primary/5 p-4 shadow-sm backdrop-blur-sm sm:flex-row sm:rounded-full sm:py-3 sm:pl-6 sm:pr-3">
-                <div className="flex flex-wrap items-center justify-center gap-3 text-sm sm:justify-start">
+                {params && (
+                    <div className="flex flex-wrap items-center justify-center gap-3 text-sm sm:justify-start">
                   <div className="flex items-center gap-2 font-bold text-foreground">
                     <span className="rounded-xl bg-primary/10 px-3 py-1 text-xs font-bold text-primary shadow-2xs">{params.origin}</span>
                     <div className="flex size-7 items-center justify-center rounded-full bg-muted/60 text-muted-foreground transition-transform hover:rotate-180 duration-300">
@@ -115,7 +116,7 @@ function FlightsPageContent() {
                     <span>{params.passengers ?? 1} {t("passenger", { count: params.passengers ?? 1 })}</span>
                   </div>
                 </div>
-
+                )}
                 <Button
                     onClick={() => setEditing((v) => !v)}
                     size="sm"
@@ -125,7 +126,7 @@ function FlightsPageContent() {
                   Modifier
                 </Button>
               </div>
-          )}
+
 
           {/* Formulaire rétractable Desktop */}
           {editing && (

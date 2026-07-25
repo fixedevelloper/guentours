@@ -57,6 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         async login(request) {
           const response = await authApi.login(request);
           const profile = {
+              id:response.userId,
             email: response.email,
             fullName: response.fullName,
             role: response.role,
@@ -69,6 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         async register(request) {
           const response = await authApi.register(request);
           const profile = {
+            id:response.userId,
             email: response.email,
             fullName: response.fullName,
             role: response.role,

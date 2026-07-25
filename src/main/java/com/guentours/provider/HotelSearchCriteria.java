@@ -7,6 +7,7 @@ public record HotelSearchCriteria(
         LocalDate checkIn,
         LocalDate checkOut,
         int adults,
-        int rooms
+        int rooms,
+        String currency
 ) {
 }

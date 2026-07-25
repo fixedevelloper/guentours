@@ -101,7 +101,7 @@ function CheckoutPageContent() {
   /* ÉTAPE 1 : SÉLECTION DES SIÈGES (Si applicable) */
   if (needsSeatSelection && !seatStepDone && offer.offerType === "FLIGHT") {
     return (
-      <div className="mx-auto grid max-w-4xl gap-6 px-4 py-6 sm:py-10 sm:grid-cols-[1fr_320px]">
+      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:py-10 sm:grid-cols-[1fr_320px]">
         
         {/* Offre en premier sur mobile (order-1), à droite sur desktop (sm:order-2) */}
         <div className="order-1 sm:order-2">

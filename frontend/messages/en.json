@@ -148,12 +148,33 @@
     "hidden": "Map hidden on mobile"
   },
   "HotelDetail": {
+    "hotelBadge": "Recommended Property",
+    "aboutTitle": "About this property",
+    "showMore": "Read more",
+    "showLess": "Show less",
+    "facilitiesTitle": "Most popular facilities",
+    "contactTitle": "Contact & Location",
+    "roomsTitle": "Available Rooms & Offers",
+    "roomsError": "Unable to load room offers at the moment.",
+    "retry": "Try Again",
+    "noRoomsAvailable": "No room offers are available for these dates.",
+    "selectOffer": "Select",
+    "standardRoom": "Standard Room",
+    "maxOccupancy": "Max {count} guests",
+    "stayDuration": "{count, plural, one {# night} other {# nights}} · Total stay",
+    "address": "Address",
+    "phone": "Phone",
+    "email": "Email",
+    "viewOnMap": "View on map",
+    "excellent": "Excellent",
+    "veryGood": "Very Good",
+    "good": "Good",
+    "basedOnReviews": "Based on guest reviews",
     "backToResults": "Back to results",
     "locationTitle": "Location",
     "descriptionTitle": "Description",
     "description": "{hotelName} welcomes you in {cityCode} with a {rating}/5 rating. A great base for exploring the city, with easy access to transport and the main points of interest.",
-    "facilitiesTitle": "Facilities & amenities",
-    "roomsTitle": "Available rooms",
+  
     "notFoundTitle": "Hotel not found",
     "notFoundBody": "This offer may have expired. Please search again.",
     "amenities": {
@@ -167,7 +188,11 @@
       "spa": "Spa",
       "shuttle": "Airport shuttle",
       "pets": "Pets allowed"
-    }
+    },
+   
+    "totalStay": "Total stay",
+    "night": "night",
+    "nights": "nights"
   },
   "Checkout": {
     "title": "Complete your booking",
@@ -304,7 +329,15 @@
     "userName": "Name",
     "userEmail": "Email",
     "userRole": "Role",
-    "userCreatedAt": "Created on"
+    "userCreatedAt": "Created on",
+    "navPartners": "Partners",
+    "navResellers": "Resellers",
+    "navGeo": "Geo Data",
+    "resellerBookings": "My Sales",
+    "resellerDashboard": "Reseller Dashboard",
+    "commissions": "My Commissions",
+    "wallet": "Wallet & Balance",
+    "customers": "My Customers"
   },
   "Auth": {
     "loginTitle": "Sign in",
@@ -382,5 +415,93 @@
     "title": "Travel lighter with the Guen's travel app",
     "description": "Book, manage your stays, and access your tickets right from your pocket. Scan the QR code to download our app.",
     "cta": "Download the app"
+  },
+  
+  "ErrorPage": {
+    "title": "Something went wrong",
+    "description": "We couldn't load this page. A temporary problem has occurred.",
+    "retry": "Try Again",
+    "goHome": "Back to Home",
+    "errorCode": "Error Code"
+  },
+
+  "NotFoundPage": {
+    "title": "Page Not Found",
+    "description": "The page you are looking for doesn't exist or has been moved.",
+    "backToHotels": "Browse Hotels",
+    "error404": "Error 404"
+  },
+  
+  "Reseller": {
+    "badge": "Reseller Partner Program",
+    "title": "Become an Authorized Reseller",
+    "subtitle": "Join our distribution network, benefit from preferential rates, and earn commissions on every flight and hotel booking.",
+    "steps": {
+      "info": "Information",
+      "payment": "Membership & Payment"
+    },
+    "form": {
+      "profileTitle": "Company Profile",
+      "profileDesc": "Fill in the legal and contact details of your company.",
+      "logoLabel": "Company Logo",
+      "logoUpload": "Click to upload your logo",
+      "logoHint": "PNG, JPG or WEBP (max 2MB)",
+      "companyName": "Company Name",
+      "companyNamePlaceholder": "E.g. Travel Express Ltd",
+      "registrationNumber": "Registration Number / Tax ID / RCCM",
+      "registrationNumberPlaceholder": "E.g. RC/DLA/2024/B/1234",
+      "contactName": "Manager's Full Name",
+      "contactNamePlaceholder": "E.g. John Doe",
+      "email": "Business Email",
+      "emailPlaceholder": "contact@company.com",
+      "phone": "Primary Phone",
+      "phonePlaceholder": "+237 6XX XX XX XX",
+      "city": "City",
+      "cityPlaceholder": "E.g. Douala",
+      "country": "Country",
+      "countryPlaceholder": "E.g. Cameroon",
+      "description": "Business Description",
+      "descriptionPlaceholder": "Briefly describe your activity or commercial network...",
+      "continueBtn": "Continue to Payment"
+    },
+    "payment": {
+      "badge": "One-time Payment",
+      "price": "50,000 XAF",
+      "priceDesc": "Reseller account creation & activation fees.",
+      "includedTitle": "Included with your account:",
+      "benefits": {
+        "dashboard": "Access to reseller dashboard",
+        "commissions": "Direct commissions on flights & hotels",
+        "wallet": "Simplified wallet & balance management",
+        "support": "Technical support & priority assistance"
+      },
+      "methodTitle": "Payment Method",
+      "methodDesc": "Choose your preferred payment method.",
+      "orangeMoney": "Orange Money",
+      "orangeMoneySub": "Local / OM",
+      "mtnMomo": "MTN MoMo",
+      "mtnMomoSub": "Local / MoMo",
+      "creditCard": "Credit Card",
+      "creditCardSub": "Visa / Mastercard",
+      "phoneLabel": "Phone number for debit ({provider})",
+      "phonePlaceholder": "E.g. 6XXXXXXXX",
+      "ussdNotice": "A USSD confirmation prompt will appear on your phone.",
+      "cardNumber": "Card Number",
+      "expiryDate": "Expiry Date",
+      "cvc": "CVC / CWW",
+      "backBtn": "Back",
+      "payBtn": "Pay 50,000 XAF",
+      "processing": "Processing..."
+    },
+    "success": {
+      "title": "Application Submitted Successfully!",
+      "description": "Your payment of 50,000 XAF has been validated. Our teams are reviewing your application for {companyName}. Your reseller access will be activated within 24 hours.",
+      "summaryTitle": "Order Summary:",
+      "company": "Company:",
+      "contact": "Contact:",
+      "dashboardBtn": "Return to Dashboard"
+    }
   }
+
+
 }

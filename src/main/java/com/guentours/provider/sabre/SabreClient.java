@@ -1,21 +1,6 @@
 package com.guentours.provider.sabre;
 
-import com.guentours.provider.FinalHotelConfirmation;
-import com.guentours.provider.FinalTicketConfirmation;
-import com.guentours.provider.FlightBookingRequest;
-import com.guentours.provider.FlightOffer;
-import com.guentours.provider.FlightSearchCriteria;
-import com.guentours.provider.HotelBookingRequest;
-import com.guentours.provider.HotelOffer;
-import com.guentours.provider.HotelSearchCriteria;
-import com.guentours.provider.JourneyType;
-import com.guentours.provider.PassengerInfo;
-import com.guentours.provider.PaymentDetails;
-import com.guentours.provider.ProviderBookingConfirmation;
-import com.guentours.provider.ProviderMockSupport;
-import com.guentours.provider.ProviderProperties;
-import com.guentours.provider.ProviderType;
-import com.guentours.provider.TravelProviderClient;
+import com.guentours.provider.*;
 import com.guentours.provider.dto.FlightPriceVerification;
 import com.guentours.provider.dto.HotelPriceVerification;
 import com.guentours.shared.Money;
@@ -56,7 +41,7 @@ import java.util.stream.Collectors;
 public class SabreClient implements TravelProviderClient {
 
     private static final Logger log = LoggerFactory.getLogger(SabreClient.class);
-    private static final List<String> HOTELS = List.of("Hotel Le Meridien", "Ibis Central", "Sabre Grand Hotel");
+    private static final List<String> HOTELS = List.of("Hotel Le Meridien", "Ibis Central");
     /** Sabre wants full date-times with seconds; LocalDateTime.toString() drops ":00" seconds. */
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
@@ -128,6 +113,16 @@ public class SabreClient implements TravelProviderClient {
             return ProviderMockSupport.verifyHotelPrice(offer.providerOfferId());
         }
         return callHotelPriceCheckApi(offer);
+    }
+
+    @Override
+    public HotelDetail getDetailHotel(HotelOffer offer) {
+        return null;
+    }
+
+    @Override
+    public List<RoomOffer> getRoomOffers(HotelOffer offer) {
+        return List.of();
     }
 
     @Override

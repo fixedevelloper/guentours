@@ -1,19 +1,6 @@
 package com.guentours.search;
 
-import com.guentours.provider.FinalHotelConfirmation;
-import com.guentours.provider.FinalTicketConfirmation;
-import com.guentours.provider.FlightBookingRequest;
-import com.guentours.provider.FlightOffer;
-import com.guentours.provider.FlightSearchCriteria;
-import com.guentours.provider.HotelBookingRequest;
-import com.guentours.provider.HotelOffer;
-import com.guentours.provider.HotelSearchCriteria;
-import com.guentours.provider.PaymentDetails;
-import com.guentours.provider.ProviderBookingConfirmation;
-import com.guentours.provider.ProviderSeat;
-import com.guentours.provider.ProviderSeatMap;
-import com.guentours.provider.ProviderType;
-import com.guentours.provider.TravelProviderClient;
+import com.guentours.provider.*;
 import com.guentours.provider.dto.FlightPriceVerification;
 import com.guentours.provider.dto.HotelPriceVerification;
 import com.guentours.shared.Money;
@@ -108,6 +95,17 @@ class SeatMapServiceTest {
         public HotelPriceVerification verifyHotelPrice(HotelOffer offer) {
             return null;
         }
+
+        @Override
+        public HotelDetail getDetailHotel(HotelOffer offer) {
+            return null;
+        }
+
+        @Override
+        public List<RoomOffer> getRoomOffers(HotelOffer offer) {
+            return List.of();
+        }
+
 
         @Override
         public ProviderBookingConfirmation createFlightHold(FlightBookingRequest request) {

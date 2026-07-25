@@ -1,9 +1,9 @@
 package com.guentours.payment;
 
 import com.guentours.booking.BookingService;
-import com.guentours.booking.BookingStatus;
-import com.guentours.booking.BookingSummary;
-import com.guentours.booking.PaymentPlan;
+import com.guentours.booking.domain.BookingStatus;
+import com.guentours.booking.domain.BookingSummary;
+import com.guentours.booking.domain.PaymentPlan;
 import com.guentours.payment.gateway.ChargeRequest;
 import com.guentours.payment.gateway.ChargeResult;
 import com.guentours.payment.gateway.PaymentGateway;

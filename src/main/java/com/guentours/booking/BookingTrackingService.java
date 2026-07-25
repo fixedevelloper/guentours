@@ -1,5 +1,6 @@
 package com.guentours.booking;
 
+import com.guentours.booking.domain.BookingStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

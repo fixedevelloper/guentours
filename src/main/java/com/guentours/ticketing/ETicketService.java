@@ -1,7 +1,7 @@
 package com.guentours.ticketing;
 
-import com.guentours.booking.Booking;
-import com.guentours.booking.BookingConfirmedEvent;
+import com.guentours.booking.domain.Booking;
+import com.guentours.booking.event.BookingConfirmedEvent;
 import com.guentours.booking.BookingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -5,9 +5,6 @@ import { getStoredToken, clearAuthSession } from "@/lib/auth-storage";
 
 export const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080",
-  headers: {
-    "Content-Type": "application/json",
-  },
 });
 
 apiClient.interceptors.request.use((config) => {
@@ -15,6 +12,15 @@ apiClient.interceptors.request.use((config) => {
   if (token) {
     config.headers.set("Authorization", `Bearer ${token}`);
   }
+
+  // Si la requête contient un FormData, on supprime le Content-Type explicite
+  // pour laisser le navigateur générer "multipart/form-data; boundary=..."
+  if (config.data instanceof FormData) {
+    config.headers.delete("Content-Type");
+  } else if (!config.headers.has("Content-Type")) {
+    config.headers.set("Content-Type", "application/json");
+  }
+
   return config;
 });
 

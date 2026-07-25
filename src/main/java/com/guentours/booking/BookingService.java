@@ -1,5 +1,10 @@
 package com.guentours.booking;
 
+import com.guentours.booking.domain.*;
+import com.guentours.booking.event.*;
+import com.guentours.booking.web.CheckoutRequest;
+import com.guentours.booking.web.MultiCityCheckoutRequest;
+import com.guentours.booking.web.TravelerRequest;
 import com.guentours.provider.FinalHotelConfirmation;
 import com.guentours.provider.FinalTicketConfirmation;
 import com.guentours.provider.FlightBookingRequest;
@@ -87,6 +92,12 @@ public class BookingService {
             case CAR_RENTAL -> null;
             case FURNISHED_RENTAL -> null;
         };
+        // Dans ton BookingService existant, au moment de créer la Booking
+
+/*        if (promoCode != null && !promoCode.isBlank()) {
+            resellerService.findActiveByPromoCode(promoCode)
+                    .ifPresent(reseller -> booking.assignReseller(reseller.getId()));
+        }*/
 
         Booking saved = bookingRepository.save(booking);
         events.publishEvent(new BookingCreatedEvent(saved.getId()));
@@ -264,7 +275,6 @@ public class BookingService {
      * Called by the payment module right after a charge succeeds for the full price (PAY_NOW)
      * or the remaining balance (PAY_LATER, once the deposit was already paid). Marks the
      * booking PAID immediately (fast path for the payment response) and publishes
-     * {@link BookingPaidEvent}; {@link BookingConfirmationListener} picks that up after commit
      * and drives provider ticket issuance - which can be slow - on a background thread, so the
      * client follows progress via {@code GET /api/bookings/{id}/track} instead of blocking on it here.
      */
@@ -281,7 +291,7 @@ public class BookingService {
     }
 
     @Transactional
-    void confirmWithProvider(String bookingId, String paymentTransactionReference, String payerReferenceLast4) {
+    public void confirmWithProvider(String bookingId, String paymentTransactionReference, String payerReferenceLast4) {
         Booking booking = getById(bookingId);
         booking.markConfirming();
         bookingRepository.save(booking);
@@ -364,7 +374,7 @@ public class BookingService {
         }
     }
 
-    SseEmitter track(String bookingId) {
+    public SseEmitter track(String bookingId) {
         getById(bookingId); // 404s early if the booking doesn't exist
         return trackingService.subscribe(bookingId);
     }

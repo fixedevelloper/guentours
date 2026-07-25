@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { getFlightSeatMap, searchFlights, searchHotels, searchMultiCityFlights } from "@/lib/api/search";
+import { getFlightSeatMap, searchFlights, searchHotels, searchMultiCityFlights ,getHotelDeatils,getHotelRooms} from "@/lib/api/search";
 import type { FlightSearchParams, HotelSearchParams, MultiCityFlightSearchParams } from "@/lib/api/types";
 
 export function useFlightSearch(params: FlightSearchParams | null) {
@@ -20,6 +20,7 @@ export function useMultiCityFlightSearch(params: MultiCityFlightSearchParams | n
 }
 
 export function useHotelSearch(params: HotelSearchParams | null) {
+  console.log(params)
   return useQuery({
     queryKey: ["hotels", params],
     queryFn: () => searchHotels(params as HotelSearchParams),
@@ -31,6 +32,31 @@ export function useFlightSeatMap(offerId: string | null) {
   return useQuery({
     queryKey: ["flight-seat-map", offerId],
     queryFn: () => getFlightSeatMap(offerId as string),
+    enabled: offerId !== null,
+    staleTime: Infinity,
+  });
+}
+
+export function useHotelDetail(offerId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["hotel-detail", offerId],
+    queryFn: () => getHotelDeatils(offerId!),
+    // 1. Accepte null, undefined et les chaînes vides ""
+    enabled: Boolean(offerId),
+    // 2. Durée de validité des données (ex: 10 min)
+    staleTime: 10 * 60 * 1000, 
+    // 3. Ne PAS retenter en cas d'offre expirée (404 / 410)
+    retry: (failureCount, error: any) => {
+      const status = error?.response?.status;
+      if (status === 404 || status === 410) return false;
+      return failureCount < 2;
+    },
+  });
+}
+export function useHotelRooms(offerId: string | null) {
+  return useQuery({
+    queryKey: ["hotel-rooms", offerId],
+    queryFn: () => getHotelRooms(offerId as string),
     enabled: offerId !== null,
     staleTime: Infinity,
   });

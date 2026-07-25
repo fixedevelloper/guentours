@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.text.Normalizer;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,10 +17,7 @@ import java.util.stream.Collectors;
 
 /**
  * Reloads the airports/hotel_cities reference tables from their configured
- * {@link AirportDataSource}/{@link HotelCityDataSource}. Airports upsert cleanly via their
- * natural key (the IATA code is the primary key, so {@code save()} updates in place);
- * hotel cities have a generated id, so existing rows are looked up by (city, country) and
- * refreshed in place instead of being duplicated on every sync.
+ * {@link AirportDataSource}/{@link HotelCityDataSource}.
  */
 @Service
 public class ReferenceDataSyncService {
@@ -32,15 +30,36 @@ public class ReferenceDataSyncService {
     private final HotelCityRepository hotelCityRepository;
 
     public ReferenceDataSyncService(AirportDataSource airportDataSource, HotelCityDataSource hotelCityDataSource,
-                                     AirportRepository airportRepository, HotelCityRepository hotelCityRepository) {
+                                    AirportRepository airportRepository, HotelCityRepository hotelCityRepository) {
         this.airportDataSource = airportDataSource;
         this.hotelCityDataSource = hotelCityDataSource;
         this.airportRepository = airportRepository;
         this.hotelCityRepository = hotelCityRepository;
     }
 
+    // =========================================================================
+    // AIRPORTS
+    // =========================================================================
+
+    /**
+     * Exécuté par le Scheduler au démarrage : vérifie la BDD avant d'importer.
+     */
     @Transactional
     public int syncAirports() {
+        long existingCount = airportRepository.count();
+        if (existingCount > 0) {
+            log.info("Aéroports déjà présents en BDD ({} enregistrements). Synchronisation automatique ignorée.", existingCount);
+            return (int) existingCount;
+        }
+        return forceSyncAirports();
+    }
+
+    /**
+     * Force la synchronisation des aéroports (appelé si la BDD est vide ou par l'AdminController).
+     */
+    @Transactional
+    public int forceSyncAirports() {
+        log.info("Démarrage du chargement des aéroports depuis la source...");
         List<AirportRecord> records = airportDataSource.fetchAll();
         List<Airport> airports = records.stream()
                 .map(r -> new Airport(r.airportCode(), r.airportName(), r.city(), r.country()))
@@ -50,52 +69,97 @@ public class ReferenceDataSyncService {
         return airports.size();
     }
 
+    // =========================================================================
+    // HOTEL CITIES
+    // =========================================================================
+
+    /**
+     * Exécuté par le Scheduler au démarrage : vérifie la BDD avant d'importer.
+     */
     @Transactional
     public int syncHotelCities() {
-        List<HotelCityRecord> records = hotelCityDataSource.fetchAll();
-        log.warn("Données reçues de la source : {}", records.size());
-
-        if (!records.isEmpty()) {
-            // Pattern pour enlever les marques d'accents combinées
-            Pattern diacriticsPattern = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
-
-            List<HotelCity> newCities = records.stream()
-                    .filter(r -> r.cityName() != null && r.countryName() != null)
-                    .collect(Collectors.toMap(
-                            // Clé de fusion INSENSIBLE aux accents et à la casse (Copie le comportement MySQL)
-                            r -> {
-                                String rawKey = (r.cityName().trim() + "-" + r.countryName().trim()).toLowerCase();
-                                // Décompose les caractères (ex: á -> a + ´)
-                                String normalized = Normalizer.normalize(rawKey, Normalizer.Form.NFD);
-                                // Supprime les accents isolés et remplace les caractères spécifiques comme le 'đ' vietnamien
-                                return diacriticsPattern.matcher(normalized)
-                                        .replaceAll("")
-                                        .replace("đ", "d");
-                            },
-                            // Valeur : On conserve l'entité avec ses vrais accents d'origine pour l'affichage !
-                            r -> new HotelCity(
-                                    r.cityName().trim(),
-                                    r.countryName().trim(),
-                                    r.latitude(),
-                                    r.longitude()
-                            ),
-                            // Si MySQL considère que c'est un doublon, on garde la première version
-                            (existing, replacement) -> existing
-                    ))
-                    .values()
-                    .stream()
-                    .toList();
-
-            log.info("Nombre de villes uniques après dédoublonnage insensible aux accents : {}", newCities.size());
-
-           // hotelCityRepository.deleteAllInBatch();
-            hotelCityRepository.saveAll(newCities);
+        long existingCount = hotelCityRepository.count();
+        if (existingCount > 0) {
+            log.info("Villes d'hôtels déjà présentes en BDD ({} enregistrements). Synchronisation automatique ignorée.", existingCount);
+            return (int) existingCount;
         }
-
-        log.info("Synced {} hotel cities", records.size());
-        return records.size();
+        return forceSyncHotelCities();
     }
 
+    /**
+     * Force la synchronisation des villes d'hôtels (appelé si la BDD est vide ou par l'AdminController).
+     */
+    @Transactional
+    public int forceSyncHotelCities() {
+        log.info("Démarrage du chargement des villes d'hôtels depuis la source...");
+        List<HotelCityRecord> records = hotelCityDataSource.fetchAll();
+        log.info("Données reçues de la source : {} enregistrements", records.size());
+
+        if (records == null || records.isEmpty()) {
+            return 0;
+        }
+
+        Pattern diacriticsPattern = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
+
+        // 1. Charger les villes déjà existantes en BDD (évite l'erreur INSERT sur clé unique lors d'une re-synchro)
+        Map<String, HotelCity> existingDbCities = hotelCityRepository.findAll().stream()
+                .collect(Collectors.toMap(
+                        c -> buildNormalizedKey(c.getCityName(), c.getCountryName(), diacriticsPattern),
+                        c -> c,
+                        (existing, replacement) -> existing
+                ));
+
+        // 2. Traiter le flux : dédoublonner en mémoire + fusionner avec les enregistrements BDD
+        Map<String, HotelCity> citiesToSave = new HashMap<>();
+
+        for (HotelCityRecord r : records) {
+            if (r.cityName() == null || r.countryName() == null) continue;
+
+            String key = buildNormalizedKey(r.cityName(), r.countryName(), diacriticsPattern);
+
+            // Vérifier si la ville existe déjà en BDD ou si elle a déjà été lue dans la boucle
+            HotelCity cityEntity = existingDbCities.get(key);
+            if (cityEntity == null) {
+                cityEntity = citiesToSave.get(key);
+            }
+
+            if (cityEntity == null) {
+                // Nouvelle ville -> Nouvelle entité (INSERT)
+                cityEntity = new HotelCity(
+                        r.cityName().trim(),
+                        r.countryName().trim(),
+                        r.latitude(),
+                        r.longitude()
+                );
+            } else {
+                // Ville existante -> On conserve l'ID JPA et on met à jour les coordonnées (UPDATE)
+                cityEntity.setLatitude(r.latitude());
+                cityEntity.setLongitude(r.longitude());
+            }
+
+            citiesToSave.put(key, cityEntity);
+        }
+
+        List<HotelCity> saved = hotelCityRepository.saveAll(citiesToSave.values());
+        log.info("Synced {} hotel cities", saved.size());
+
+        return saved.size();
+    }
+
+    /**
+     * Clé de fusion INSENSIBLE aux accents, à la casse et aux équivalences MySQL (ex: 'ß' -> 'ss').
+     */
+    private String buildNormalizedKey(String cityName, String countryName, Pattern diacriticsPattern) {
+        String rawKey = (cityName.trim() + "-" + countryName.trim())
+                .toLowerCase()
+                .replace("ß", "ss")
+                .replace("đ", "d")
+                .replace("æ", "ae")
+                .replace("ø", "o");
+
+        String normalized = Normalizer.normalize(rawKey, Normalizer.Form.NFD);
+        return diacriticsPattern.matcher(normalized).replaceAll("");
+    }
     /**
      * Utilitaire pour filtrer un Stream sur une clé spécifique
      */

@@ -62,6 +62,7 @@ export interface HotelSearchParams {
   checkOut: string;
   adults?: number;
   rooms?: number;
+  currency?: string;
 }
 
 export interface FlightLeg {
@@ -283,7 +284,8 @@ export interface AuthResponse {
   email: string;
   fullName: string;
   role: UserRole;
-  partnerId?: string; // présent uniquement pour les comptes partenaires
+  partnerId?: string; // présent uniquement pour les comptes partenaires,
+  userId: string; // présent uniquement pour les comptes partenaires
 }
 
 // ---------- Admin ----------
@@ -560,4 +562,149 @@ export interface RoomAvailabilityResponse {
 export interface RoomAvailabilityFormData {
   stayDate: string;
   roomsAvailable: number;
+}
+export interface HotelImage {
+  caption: string;
+  url: string;
+}
+
+export interface HotelDescription {
+  content: string;
+}
+
+export interface HotelDetail {
+  hotelId: string;
+  name: string;
+  address: string;
+  city: string;
+  country: string;
+  email: string;
+  phone: string;
+  postalCode: string;
+  latitude: number;
+  longitude: number;
+  hotelRating: number;
+  description: HotelDescription;
+  facilities: string[];
+  hotelImages: HotelImage[];
+  hotelReview: string | null;
+}
+export interface RoomOffer {
+  productId: string;
+  roomType: string;
+  description: string;
+  roomCode: string;
+  fareType: string;
+  rateBasisId: string;
+  currency: string;
+  netPrice: number;
+  boardType: string;
+  maxOccupancyPerRoom: number;
+  inventoryType: string;
+  cancellationPolicy: string;
+  roomImages: string[];
+  facilities: string[];
+}
+export interface ResellerFormData {
+  userId:String;
+  companyName: string;
+  registrationNumber: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  city: string;
+  country: string;
+  description: string;
+  logo: File | null;
+}
+// Entité Revendeur renvoyée par le serveur
+export interface Reseller {
+  id: string | number;
+  companyName: string;
+  registrationNumber: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  city: string;
+  country: string;
+  description?: string | null;
+  logoUrl?: string | null;
+  status: ResellerStatus;
+  subscriptionStatus: "active" | "inactive" | "pending_payment";
+  createdAt: string; // Format ISO string (ex: "2026-07-25T04:20:00Z")
+  updatedAt: string;
+}
+// Réponse standard pour la création ou la récupération d'un seul revendeur
+export interface ResellerResponse {
+  success: boolean;
+  message: string;
+  data: Reseller;
+}
+export interface ResellerApprovalRequest {
+  /** Taux de commission compris entre 0.0 et 1.0 (ex: 0.15 pour 15%) */
+  commissionRate: number;
+}
+
+// Réponse pour les listes paginées (ex: dashboard admin)
+export interface ResellerListResponse {
+  success: boolean;
+  message?: string;
+  data: Reseller[];
+  meta?: {
+    currentPage: number;
+    lastPage: number;
+    perPage: number;
+    total: number;
+  };
+}
+export type ResellerStatus = "PENDING_REVIEW" | "APPROVED" | "SUSPENDED" | "REJECTED";
+
+export interface ResellerDetail {
+  id: string;
+  companyName: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  city?: string;
+  country?: string;
+  registrationNumber?: string;
+  promoCode: string;
+  commissionRate: number; // ex: 0.10 pour 10%
+  walletBalance: number;
+  totalSales: number;
+  totalBookingsCount?: number;
+  status: ResellerStatus;
+  logoUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResellerBooking {
+  id: string;
+  pnrNumber?: string;
+  passengerName: string;
+  totalAmount: number;
+  commissionAmount: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface ResellerWithdrawal {
+  id: string;
+  amount: number;
+  payoutMethod: string; // ex: "MOBILE_MONEY", "BANK_TRANSFER"
+  status: "PENDING" | "COMPLETED" | "REJECTED";
+  createdAt: string;
+}
+
+export interface PaginatedResponse<T> {
+  content: T[];
+  totalElements: number;
+  totalPages: number;
+  pageNumber: number;
+  pageSize: number;
+}
+
+export interface UpdateCommissionPayload {
+  commissionRate: number;
 }

@@ -150,12 +150,33 @@
     "hidden": "Carte masquée sur mobile"
   },
   "HotelDetail": {
+    "hotelBadge": "Établissement recommandé",
+    "aboutTitle": "À propos de cet établissement",
+    "showMore": "Lire la suite",
+    "showLess": "Afficher moins",
+    "facilitiesTitle": "Équipements les plus appréciés",
+    "contactTitle": "Contact & emplacement",
+    "roomsTitle": "Offres et chambres disponibles",
+    "roomsError": "Impossible de charger les offres de chambres pour le moment.",
+    "retry": "Réessayer",
+    "noRoomsAvailable": "Aucune offre de chambre disponible pour ces dates.",
+    "selectOffer": "Sélectionner",
+    "standardRoom": "Chambre Standard",
+    "maxOccupancy": "Max {count} pers.",
+    "stayDuration": "{count, plural, one {# nuit} other {# nuits}} · Total séjour",
+    "address": "Adresse",
+    "phone": "Téléphone",
+    "email": "Email",
+    "viewOnMap": "Voir sur la carte",
+    "excellent": "Excellent",
+    "veryGood": "Très bon",
+    "good": "Bien",
+    "basedOnReviews": "Basé sur les avis clients",
     "backToResults": "Retour aux résultats",
     "locationTitle": "Localisation",
     "descriptionTitle": "Description",
     "description": "{hotelName} vous accueille à {cityCode} et affiche une note de {rating}/5. Un excellent point de départ pour explorer la ville, avec un accès pratique aux transports et aux principaux lieux d'intérêt.",
-    "facilitiesTitle": "Équipements et services",
-    "roomsTitle": "Chambres disponibles",
+
     "notFoundTitle": "Hôtel introuvable",
     "notFoundBody": "Cette offre a peut-être expiré. Merci de relancer une recherche.",
     "amenities": {
@@ -169,7 +190,10 @@
       "spa": "Spa",
       "shuttle": "Navette aéroport",
       "pets": "Animaux acceptés"
-    }
+    },
+    "totalStay": "Total séjour",
+    "night": "nuit",
+    "nights": "nuits"
   },
   "Checkout": {
     "title": "Finaliser la réservation",
@@ -306,7 +330,15 @@
     "userName": "Nom",
     "userEmail": "E-mail",
     "userRole": "Rôle",
-    "userCreatedAt": "Créé le"
+    "userCreatedAt": "Créé le",
+    "navPartners": "Partenaires",
+    "navResellers": "Revendeurs",
+    "navGeo": "Données Géo",
+    "resellerBookings": "Mes Ventes",
+    "resellerDashboard": "Tableau de bord Revendeur",
+    "commissions": "Mes Commissions",
+    "wallet": "Portefeuille & Solde",
+    "customers": "Mes Clients"
   },
   "Auth": {
     "loginTitle": "Connexion",
@@ -395,5 +427,94 @@
       "APPROVED": "Approuvé",
       "REJECTED": "Rejeté"
     }
+  },
+  
+  "ErrorPage": {
+    "title": "Une erreur est survenue",
+    "description": "Nous n'avons pas pu charger cette page. Un problème temporaire est survenu.",
+    "retry": "Réessayer",
+    "goHome": "Retour à l'accueil",
+    "errorCode": "Code d'erreur"
+  
+},
+
+  "NotFoundPage": {
+    "title": "Page introuvable",
+    "description": "La page que vous cherchez n'existe pas ou a été déplacée.",
+    "backToHotels": "Voir les hébergements",
+    "error404": "Erreur 404"
+  },
+
+  "Reseller": {
+    "badge": "Programme Partenaire Revendeur",
+    "title": "Devenez Revendeur Agréé",
+    "subtitle": "Rejoignez notre réseau de distribution, bénéficiez de tarifs préférentiels et générez des commissions sur chaque réservation de vol et d'hôtel.",
+    "steps": {
+      "info": "Informations",
+      "payment": "Adhésion & Paiement"
+    },
+    "form": {
+      "profileTitle": "Profil de l'entreprise",
+      "profileDesc": "Renseignez les détails légaux et de contact de votre structure.",
+      "logoLabel": "Logo de l'entreprise",
+      "logoUpload": "Cliquez pour importer votre logo",
+      "logoHint": "PNG, JPG ou WEBP (max 2 Mo)",
+      "companyName": "Nom de l'entreprise",
+      "companyNamePlaceholder": "Ex: Travel Express Sarl",
+      "registrationNumber": "N° Immatriculation / RCCM / NIU",
+      "registrationNumberPlaceholder": "Ex: RC/DLA/2024/B/1234",
+      "contactName": "Nom & Prénom du responsable",
+      "contactNamePlaceholder": "Ex: Jean Dupont",
+      "email": "Email professionnel",
+      "emailPlaceholder": "contact@entreprise.com",
+      "phone": "Téléphone principal",
+      "phonePlaceholder": "+237 6XX XX XX XX",
+      "city": "Ville",
+      "cityPlaceholder": "Ex: Douala",
+      "country": "Pays",
+      "countryPlaceholder": "Ex: Cameroun",
+      "description": "Présentation de l'activité",
+      "descriptionPlaceholder": "Décrivez brièvement votre activité ou votre réseau commercial...",
+      "continueBtn": "Continuer vers le paiement"
+    },
+    "payment": {
+      "badge": "Paiement Unique",
+      "price": "50.000 FCFA",
+      "priceDesc": "Frais de création & d'activation de compte revendeur.",
+      "includedTitle": "Inclus avec votre compte :",
+      "benefits": {
+        "dashboard": "Accès au tableau de bord revendeur",
+        "commissions": "Commissions directes sur vols & hôtels",
+        "wallet": "Gestion simplifiée de portefeuille & soldes",
+        "support": "Support technique & assistance prioritaire"
+      },
+      "methodTitle": "Mode de paiement",
+      "methodDesc": "Choisissez votre méthode de paiement préférée.",
+      "orangeMoney": "Orange Money",
+      "orangeMoneySub": "Local / OM",
+      "mtnMomo": "MTN MoMo",
+      "mtnMomoSub": "Local / MoMo",
+      "creditCard": "Carte Bancaire",
+      "creditCardSub": "Visa / Mastercard",
+      "phoneLabel": "Numéro de téléphone pour le débit ({provider})",
+      "phonePlaceholder": "Ex: 6XXXXXXXX",
+      "ussdNotice": "Une demande de confirmation USSD apparaîtra sur votre téléphone.",
+      "cardNumber": "Numéro de Carte",
+      "expiryDate": "Date Expiration",
+      "cvc": "CVC / CWW",
+      "backBtn": "Retour",
+      "payBtn": "Payer 50.000 FCFA",
+      "processing": "Traitement en cours..."
+    },
+    "success": {
+      "title": "Demande transmise avec succès !",
+      "description": "Votre paiement de 50.000 FCFA a été validé. Nos équipes examinent votre dossier {companyName}. Votre accès revendeur sera activé d'ici 24 heures.",
+      "summaryTitle": "Récapitulatif de la commande :",
+      "company": "Entreprise :",
+      "contact": "Contact :",
+      "dashboardBtn": "Retourner à mon tableau de bord"
+    }
   }
+
+
 }

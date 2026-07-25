@@ -1,8 +1,8 @@
 package com.guentours.notification;
 
-import com.guentours.booking.Booking;
-import com.guentours.booking.BookingConfirmedEvent;
-import com.guentours.booking.BookingFailedEvent;
+import com.guentours.booking.domain.Booking;
+import com.guentours.booking.event.BookingConfirmedEvent;
+import com.guentours.booking.event.BookingFailedEvent;
 import com.guentours.booking.BookingService;
 import com.guentours.user.domain.User;
 import com.guentours.user.event.UserAutoProvisionedEvent;

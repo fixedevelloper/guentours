@@ -1,5 +1,6 @@
 package com.guentours.booking;
 
+import com.guentours.booking.domain.BookedTraveler;
 import com.guentours.provider.PassengerType;
 
 public record BookingTravelerResponse(String fullName, PassengerType type, String seatNumber) {

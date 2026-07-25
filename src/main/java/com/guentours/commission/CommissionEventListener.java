@@ -1,10 +1,10 @@
 package com.guentours.commission;
 
-import com.guentours.booking.Booking;
-import com.guentours.booking.BookingCreatedEvent;
+import com.guentours.booking.domain.Booking;
+import com.guentours.booking.event.BookingCreatedEvent;
 import com.guentours.booking.BookingService;
-import com.guentours.booking.OfferType;
-import com.guentours.booking.ReservationFeePaidEvent;
+import com.guentours.booking.domain.OfferType;
+import com.guentours.booking.event.ReservationFeePaidEvent;
 import com.guentours.shared.CommissionPolicy;
 import com.guentours.shared.Money;
 import org.springframework.context.event.EventListener;

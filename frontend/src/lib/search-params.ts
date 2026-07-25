@@ -87,6 +87,7 @@ export function parseHotelSearchParams(sp: URLSearchParams): HotelSearchParams |
     checkOut,
     adults: sp.get("adults") ? Number(sp.get("adults")) : undefined,
     rooms: sp.get("rooms") ? Number(sp.get("rooms")) : undefined,
+    currency: sp.get("currency") ? sp.get("currency") : 'XAF',
   };
 }
 
@@ -97,5 +98,6 @@ export function hotelSearchParamsToQuery(params: HotelSearchParams): string {
   qs.set("checkOut", params.checkOut);
   if (params.adults) qs.set("adults", String(params.adults));
   if (params.rooms) qs.set("rooms", String(params.rooms));
+  if (params.currency) qs.set("currency", params.currency);
   return qs.toString();
 }

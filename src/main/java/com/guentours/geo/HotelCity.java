@@ -71,4 +71,11 @@ public class HotelCity {
     public Double getLongitude() {
         return longitude;
     }
+
+    public void setLatitude(double latitude) {
+    }
+
+    public void setLongitude(double longitude) {
+
+    }
 }

@@ -1,5 +1,8 @@
 package com.guentours.search;
 
+import com.guentours.provider.HotelDetail;
+import com.guentours.provider.RoomOffer;
+import com.guentours.provider.dto.HotelDetailResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,7 +24,7 @@ public class SearchController {
     private final SeatMapService seatMapService;
 
     public SearchController(FlightSearchService flightSearchService, HotelSearchService hotelSearchService,
-                             SeatMapService seatMapService) {
+                            SeatMapService seatMapService) {
         this.flightSearchService = flightSearchService;
         this.hotelSearchService = hotelSearchService;
         this.seatMapService = seatMapService;
@@ -47,5 +50,15 @@ public class SearchController {
     @GetMapping("/hotels")
     public ResponseEntity<List<HarmonizedHotelOffer>> searchHotels(@Valid @ModelAttribute HotelSearchRequest request) {
         return ResponseEntity.ok(hotelSearchService.search(request));
+    }
+
+    /** Récupère la fiche détaillée d'un hôtel à partir de l'identifiant d'offre mis en cache. */
+    @GetMapping("/hotels/details")
+    public ResponseEntity<HotelDetail> getHotelDetail(@RequestParam String offerId) {
+        return ResponseEntity.ok(hotelSearchService.getDetailHotel(offerId));
+    }
+    @GetMapping("/hotels/get-rooms")
+    public ResponseEntity<List<RoomOffer>> getRoomOffers(@RequestParam String offerId) {
+        return ResponseEntity.ok(hotelSearchService.getRoomHotels(offerId));
     }
 }

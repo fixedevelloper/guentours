@@ -12,6 +12,7 @@ public record HotelSearchRequest(
         @NotNull @FutureOrPresent LocalDate checkIn,
         @NotNull @FutureOrPresent LocalDate checkOut,
         @Min(1) Integer adults,
-        @Min(1) Integer rooms
+        @Min(1) Integer rooms,
+        @NotBlank String currency
 ) {
 }

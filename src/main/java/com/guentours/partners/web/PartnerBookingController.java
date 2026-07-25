@@ -1,7 +1,7 @@
 package com.guentours.partners.web;
 
-import com.guentours.booking.Booking;
-import com.guentours.booking.BookingRepository;
+import com.guentours.booking.domain.Booking;
+import com.guentours.booking.domain.BookingRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;

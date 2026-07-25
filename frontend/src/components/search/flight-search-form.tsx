@@ -193,9 +193,10 @@ export function FlightSearchForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="XAF">FCFA</SelectItem>
             <SelectItem value="EUR">EUR</SelectItem>
             <SelectItem value="USD">USD</SelectItem>
-            <SelectItem value="GBP">GBP</SelectItem>
+
           </SelectContent>
         </Select>
       </div>

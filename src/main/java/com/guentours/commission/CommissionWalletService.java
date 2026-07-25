@@ -1,6 +1,6 @@
 package com.guentours.commission;
 
-import com.guentours.booking.OfferType;
+import com.guentours.booking.domain.OfferType;
 import com.guentours.provider.ProviderType;
 import com.guentours.shared.Money;
 import org.springframework.stereotype.Service;

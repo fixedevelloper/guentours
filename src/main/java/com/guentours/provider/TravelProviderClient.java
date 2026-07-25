@@ -58,7 +58,8 @@ public interface TravelProviderClient {
      * details (e.g. Travelport's chain/property codes) rather than an opaque offer reference.
      */
     HotelPriceVerification verifyHotelPrice(HotelOffer offer);
-
+    HotelDetail getDetailHotel(HotelOffer offer);
+    List<RoomOffer> getRoomOffers(HotelOffer offer);
     // ==========================================
     // 3. CRÉATION DE LA RÉSERVATION (Book / Hold PNR)
     // ==========================================
