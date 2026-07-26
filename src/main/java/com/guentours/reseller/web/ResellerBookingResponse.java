@@ -6,6 +6,7 @@ import com.guentours.booking.domain.OfferType;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDateTime;
 
 /**
  * DTO de réponse représentant une vente/réservation attribuée à un revendeur.
@@ -16,6 +17,7 @@ public record ResellerBookingResponse(
         String contactEmail,
         OfferType offerType,
         String summary,
+        LocalDateTime ticketingDeadline,
         String pnrCode,
         BigDecimal totalAmount,
         String currency,
@@ -48,6 +50,7 @@ public record ResellerBookingResponse(
                 booking.getContactEmail(),
                 booking.getOfferType(),
                 summary,
+                booking.getTicketingDeadline(),
                 booking.getProviderConfirmationNumber(),
                 amount,
                 currency,

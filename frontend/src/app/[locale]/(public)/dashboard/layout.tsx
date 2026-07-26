@@ -42,17 +42,15 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
 
   // Vérification du statut revendeur
   const isReseller =
-    user?.isReseller === true ||
     user?.role === "RESELLER" ||
-    user?.roles?.includes("RESELLER") ||
+    user?.role?.includes("RESELLER") ||
     user?.resellerStatus === "APPROVED" ||
     user?.resellerStatus === "ACTIVE";
 
   // 1. Menus de base (Espace Client)
   const baseNavItems: DashboardNavItem[] = [
     { href: "/dashboard", label: t("navMyBookings") ?? "Mes Réservations", icon: Ticket },
-    { href: "/flights", label: t("searchFlights") ?? "Rechercher un vol", icon: Plane },
-    { href: "/hotels", label: t("searchHotels") ?? "Rechercher un hôtel", icon: Building2 },
+
   ];
 
   // 2. Menus réservés aux REVENDEURS (Routage sous /dashboard/reseller/*)
@@ -63,6 +61,8 @@ export default function CustomerLayout({ children }: { children: React.ReactNode
           label: t("resellerDashboard") ?? "Tableau de bord",
           icon: LayoutDashboard,
         },
+        { href: "/dashboard/reseller/flights", label: t("searchFlights") ?? "Rechercher un vol", icon: Plane },
+        { href: "/dashboard/reseller/hotels", label: t("searchHotels") ?? "Rechercher un hôtel", icon: Building2 },
         {
           href: "/dashboard/reseller/bookings",
           label: t("resellerBookings") ?? "Mes Ventes",
