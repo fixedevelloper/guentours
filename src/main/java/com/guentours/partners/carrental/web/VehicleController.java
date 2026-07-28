@@ -55,6 +55,28 @@ public class VehicleController {
         service.delete(vehicleId);
     }
 
+    @PutMapping("/{vehicleId}")
+    public VehicleResponse update(@PathVariable String vehicleId, @Valid @RequestBody VehicleRegistrationRequest req) {
+        return VehicleResponse.from(service.update(vehicleId, req));
+    }
+
+    @PostMapping("/{vehicleId}/images")
+    @ResponseStatus(HttpStatus.CREATED)
+    public VehicleResponse addVehicleImage(@PathVariable String vehicleId, @Valid @RequestBody ImageUploadRequest req) {
+        return VehicleResponse.from(service.addVehicleImage(vehicleId, req));
+    }
+
+    @DeleteMapping("/{vehicleId}/images/{imageId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteVehicleImage(@PathVariable String vehicleId, @PathVariable String imageId) {
+        service.removeVehicleImage(vehicleId, imageId);
+    }
+
+    @PatchMapping("/{vehicleId}/images/{imageId}/primary")
+    public VehicleResponse setPrimaryVehicleImage(@PathVariable String vehicleId, @PathVariable String imageId) {
+        return VehicleResponse.from(service.setPrimaryVehicleImage(vehicleId, imageId));
+    }
+
     @PutMapping("/{vehicleId}/availability")
     public VehicleAvailability upsertAvailability(@PathVariable String vehicleId,
                                                   @Valid @RequestBody VehicleAvailabilityRequest req) {

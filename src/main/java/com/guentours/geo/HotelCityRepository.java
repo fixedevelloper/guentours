@@ -1,5 +1,6 @@
 package com.guentours.geo;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -12,6 +13,8 @@ public interface HotelCityRepository extends JpaRepository<HotelCity, Long> {
 
     Optional<HotelCity> findByCityNameIgnoreCaseAndCountryNameIgnoreCase(String cityName, String countryName);
 
+    boolean existsByCityNameIgnoreCaseAndCountryNameIgnoreCaseAndIdNot(String cityName, String countryName, Long id);
+
     @Query("""
             select c from HotelCity c
             where upper(c.cityName) like upper(concat(:query, '%'))
@@ -19,4 +22,10 @@ public interface HotelCityRepository extends JpaRepository<HotelCity, Long> {
             order by c.cityName
             """)
     List<HotelCity> search(@Param("query") String query, Pageable pageable);
+
+    /** Admin list: full substring match (not just city-prefix) on either field, paginated and
+     *  sorted per the given Pageable - unlike search() above, which backs the lightweight public
+     *  autocomplete and always orders by city name. */
+    Page<HotelCity> findByCityNameContainingIgnoreCaseOrCountryNameContainingIgnoreCase(
+            String cityName, String countryName, Pageable pageable);
 }

@@ -53,6 +53,17 @@ public class HotelController {
         return HotelResponse.from(service.addHotelImage(hotelId, req));
     }
 
+    @DeleteMapping("/{hotelId}/images/{imageId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteHotelImage(@PathVariable String hotelId, @PathVariable String imageId) {
+        service.removeHotelImage(hotelId, imageId);
+    }
+
+    @PatchMapping("/{hotelId}/images/{imageId}/primary")
+    public HotelResponse setPrimaryHotelImage(@PathVariable String hotelId, @PathVariable String imageId) {
+        return HotelResponse.from(service.setPrimaryHotelImage(hotelId, imageId));
+    }
+
     @PostMapping("/{hotelId}/room-types")
     @ResponseStatus(HttpStatus.CREATED)
     public RoomTypeResponse addRoomType(@PathVariable String hotelId, @Valid @RequestBody RoomTypeRequest req) {
@@ -66,6 +77,12 @@ public class HotelController {
                 .toList();
     }
 
+    @PatchMapping("/room-types/{roomTypeId}/status")
+    public RoomTypeResponse updateRoomTypeStatus(@PathVariable String roomTypeId,
+                                                 @Valid @RequestBody RoomTypeStatusRequest req) {
+        return RoomTypeResponse.from(service.updateRoomTypeStatus(roomTypeId, req.status()));
+    }
+
     @GetMapping("/room-types/{roomTypeId}")
     public RoomTypeResponse getRoomType(@PathVariable String roomTypeId) {
         return RoomTypeResponse.from(service.findRoomTypeById(roomTypeId));
@@ -75,6 +92,17 @@ public class HotelController {
     @ResponseStatus(HttpStatus.CREATED)
     public RoomTypeResponse addRoomTypeImage(@PathVariable String roomTypeId, @Valid @RequestBody ImageUploadRequest req) {
         return RoomTypeResponse.from(service.addRoomTypeImage(roomTypeId, req));
+    }
+
+    @DeleteMapping("/room-types/{roomTypeId}/images/{imageId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteRoomTypeImage(@PathVariable String roomTypeId, @PathVariable String imageId) {
+        service.removeRoomTypeImage(roomTypeId, imageId);
+    }
+
+    @PatchMapping("/room-types/{roomTypeId}/images/{imageId}/primary")
+    public RoomTypeResponse setPrimaryRoomTypeImage(@PathVariable String roomTypeId, @PathVariable String imageId) {
+        return RoomTypeResponse.from(service.setPrimaryRoomTypeImage(roomTypeId, imageId));
     }
     @PutMapping("/room-types/{roomTypeId}/availability")
     public RoomAvailabilityResponse upsertAvailability(@PathVariable String roomTypeId,

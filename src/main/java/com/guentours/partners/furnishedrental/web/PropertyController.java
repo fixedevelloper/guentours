@@ -55,6 +55,28 @@ public class PropertyController {
         service.delete(propertyId);
     }
 
+    @PutMapping("/{propertyId}")
+    public PropertyResponse update(@PathVariable String propertyId, @Valid @RequestBody PropertyRegistrationRequest req) {
+        return PropertyResponse.from(service.update(propertyId, req));
+    }
+
+    @PostMapping("/{propertyId}/images")
+    @ResponseStatus(HttpStatus.CREATED)
+    public PropertyResponse addPropertyImage(@PathVariable String propertyId, @Valid @RequestBody ImageUploadRequest req) {
+        return PropertyResponse.from(service.addPropertyImage(propertyId, req));
+    }
+
+    @DeleteMapping("/{propertyId}/images/{imageId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deletePropertyImage(@PathVariable String propertyId, @PathVariable String imageId) {
+        service.removePropertyImage(propertyId, imageId);
+    }
+
+    @PatchMapping("/{propertyId}/images/{imageId}/primary")
+    public PropertyResponse setPrimaryPropertyImage(@PathVariable String propertyId, @PathVariable String imageId) {
+        return PropertyResponse.from(service.setPrimaryPropertyImage(propertyId, imageId));
+    }
+
     @PutMapping("/{propertyId}/availability")
     public PropertyAvailability upsertAvailability(@PathVariable String propertyId,
                                                    @Valid @RequestBody PropertyAvailabilityRequest req) {

@@ -1,13 +1,13 @@
 import { useMutation, type UseMutationOptions } from "@tanstack/react-query";
 
 import * as paymentApi from "@/lib/api/payment";
-import type { PaymentRequest, PaymentResponse } from "@/lib/api/types"; // Suppose qu'il existe un PaymentResponse
+import type { BookingPaymentRequest, PaymentResponse } from "@/lib/api/types"; // Suppose qu'il existe un PaymentResponse
 
 export function usePaymentMutation(
-    options?: UseMutationOptions<PaymentResponse, Error, PaymentRequest>
+    options?: UseMutationOptions<PaymentResponse, Error, BookingPaymentRequest>
 ) {
   return useMutation({
-    mutationFn: (request: PaymentRequest) => paymentApi.pay(request),
+    mutationFn: (request: BookingPaymentRequest) => paymentApi.pay(request),
     ...options,
   });
 }

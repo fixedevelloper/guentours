@@ -6,6 +6,7 @@ import com.guentours.partners.carrental.domain.VehicleAvailability;
 import com.guentours.partners.carrental.domain.VehicleCategory;
 import com.guentours.partners.carrental.repository.VehicleAvailabilityRepository;
 import com.guentours.partners.carrental.repository.VehicleRepository;
+import com.guentours.partners.carrental.web.ImageUploadRequest;
 import com.guentours.partners.carrental.web.VehicleAvailabilityRequest;
 import com.guentours.partners.carrental.web.VehicleRegistrationRequest;
 import org.springframework.data.domain.Page;
@@ -93,6 +94,52 @@ public class VehicleService {
     @Transactional
     public void activate(String id) {
         findById(id).activate();
+    }
+
+    @Transactional
+    public Vehicle update(String id, VehicleRegistrationRequest req) {
+        Vehicle vehicle = findById(id);
+        vehicle.update(
+                req.brand(),
+                req.model(),
+                req.year(),
+                parseCategory(req.category()),
+                parseTransmission(req.transmission()),
+                req.seats(),
+                req.airConditioning(),
+                req.pricePerDay(),
+                req.currency(),
+                req.unitsCount(),
+                req.pickupLocations()
+        );
+        return vehicleRepository.save(vehicle);
+    }
+
+    // --- Galerie d'images ---
+
+    @Transactional
+    public Vehicle addVehicleImage(String vehicleId, ImageUploadRequest req) {
+        Vehicle vehicle = findById(vehicleId);
+        vehicle.addImage(req.url(), req.caption(), req.displayOrder(), req.isPrimary());
+        return vehicleRepository.save(vehicle);
+    }
+
+    @Transactional
+    public void removeVehicleImage(String vehicleId, String imageId) {
+        Vehicle vehicle = findById(vehicleId);
+        vehicle.removeImage(imageId);
+        vehicleRepository.save(vehicle);
+    }
+
+    @Transactional
+    public Vehicle setPrimaryVehicleImage(String vehicleId, String imageId) {
+        Vehicle vehicle = findById(vehicleId);
+        boolean exists = vehicle.getImages().stream().anyMatch(img -> img.getId().equals(imageId));
+        if (!exists) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Image introuvable : " + imageId);
+        }
+        vehicle.setPrimaryImage(imageId);
+        return vehicleRepository.save(vehicle);
     }
 
     // --- Disponibilités ---

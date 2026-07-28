@@ -768,7 +768,9 @@
     "pickupDateLabel": "Pick-up date",
     "dropoffDateLabel": "Drop-off date",
     "timeLabel": "Time",
-    "searchBtn": "Search"
+    "searchBtn": "Search",
+    "locationHint": "Saisissez au moins 2 caractères",
+    "locationNoResults": "Aucun résultat trouvé"
   },
   "FurnishedRental": {
     "entirePlaceOnly": "Entire place only",
@@ -785,7 +787,9 @@
     "guestPlural": "guests",
     "bedroomsLabel": "Bedrooms",
     "bedroomsAny": "Any",
-    "searchBtn": "Search"
+    "searchBtn": "Search",
+    "locationHint": "Type at least 2 characters",
+    "locationNoResults": "No results found"
   },
   "FurnishedRentalPage": {
     "badge": "100% Inspected Furnished Stays",
@@ -832,5 +836,49 @@
     "ctaTitle": "Do you own a furnished apartment or villa?",
     "ctaSubtitle": "List your property on our platform and boost your rental income with full security.",
     "ctaBtn": "List My Property"
+  },
+  "RoomImages": {
+    "title": "Room gallery",
+    "roomId": "Room ID:",
+    "changeCover": "Select cover photo",
+    "photoCount": "{count, plural, =0 {0 photos} =1 {1 photo} other {# photos}}",
+    "uploadTitle": "Add visuals for this room",
+    "uploadDescription": "Showcase the bed, bathroom, and view from the room.",
+    "openGallery": "Open media library",
+    "loadingGallery": "Loading gallery...",
+    "errorLoadImages": "Unable to load this room's images.",
+    "sectionTitle": "Room photos",
+    "primaryImageHelp": "The photo marked \"Cover\" will appear first on the room listing.",
+    "primaryBadge": "Cover",
+    "setPrimaryTooltip": "Set as room cover photo",
+    "deleteTooltip": "Delete photo",
+    "imageAlt": "Room photo",
+    "modalTitle": "Select the room's cover photo",
+    "errorAddImage": "Unable to add this image to the gallery.",
+    "errorSetPrimary": "Unable to set this image as the cover photo.",
+    "errorDeleteImage": "Unable to delete this image."
+  },
+  "PartnerVehicles": {
+    "title": "My Vehicles",
+    "subtitle": "Manage your listings, photos, statuses, and availability.",
+    "addVehicle": "Add a vehicle",
+    "loading": "Loading vehicles...",
+    "emptyTitle": "No vehicles registered",
+    "emptyDescription": "You haven't added any vehicles yet. Add your first vehicle to start receiving bookings.",
+    "emptyAddBtn": "Add your first vehicle",
+    "colVehicle": "Vehicle",
+    "colCategory": "Category",
+    "colPrice": "Price / day",
+    "colStatus": "Status",
+    "colActions": "Actions",
+    "statusActive": "Active",
+    "statusSuspended": "Suspended",
+    "edit": "Edit",
+    "photos": "Photos",
+    "suspend": "Suspend",
+    "activate": "Activate",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this vehicle? This action cannot be undone.",
+    "pageInfo": "Page {page} of {totalPages} — {totalElements} vehicle(s)"
   }
 }

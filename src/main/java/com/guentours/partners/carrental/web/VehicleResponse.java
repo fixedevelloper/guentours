@@ -22,7 +22,9 @@ public record VehicleResponse(
         String currency,
         Integer unitsCount,
         List<String> pickupLocations,
-        ListingStatus status
+        ListingStatus status,
+        String coverImageUrl,
+        List<VehicleImageResponse> images
 ) {
     public static VehicleResponse from(Vehicle vehicle) {
         return new VehicleResponse(
@@ -39,7 +41,9 @@ public record VehicleResponse(
                 vehicle.getCurrency(),
                 vehicle.getUnitsCount(),
                 vehicle.getPickupLocations(),
-                vehicle.getStatus()
+                vehicle.getStatus(),
+                vehicle.getCoverImageUrl(),
+                vehicle.getImages().stream().map(VehicleImageResponse::from).toList()
         );
     }
 }

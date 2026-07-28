@@ -1,7 +1,9 @@
 package com.guentours.partners.hotel.web;
 
+import com.guentours.partners.hotel.domain.ListingStatus;
 import com.guentours.partners.hotel.domain.RoomType;
 import java.math.BigDecimal;
+import java.util.List;
 
 public record RoomTypeResponse(
         String id,
@@ -13,7 +15,9 @@ public record RoomTypeResponse(
         BigDecimal basePrice,
         String currency,
         Integer totalRooms,
-        String coverImageUrl
+        String coverImageUrl,
+        List<RoomImageResponse> images,
+        ListingStatus status
 ) {
     public static RoomTypeResponse from(RoomType r) {
         return new RoomTypeResponse(
@@ -26,7 +30,9 @@ public record RoomTypeResponse(
                 r.getBasePrice(),
                 r.getCurrency(),
                 r.getTotalRooms(),
-                r.getCoverImageUrl()
+                r.getCoverImageUrl(),
+                r.getImages().stream().map(RoomImageResponse::from).toList(),
+                r.getStatus()
         );
     }
 }

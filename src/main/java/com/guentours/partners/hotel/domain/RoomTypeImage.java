@@ -1,5 +1,6 @@
 package com.guentours.partners.hotel.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
@@ -10,6 +11,11 @@ public class RoomTypeImage {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "room_type_id", nullable = false)
+    @JsonIgnore // Évite la boucle de sérialisation circulaire RoomTypeImage -> RoomType -> RoomTypeImage
+    private RoomType roomType;
 
     @Column(nullable = false, length = 1024)
     private String url;
@@ -27,7 +33,8 @@ public class RoomTypeImage {
 
     protected RoomTypeImage() {}
 
-    public RoomTypeImage(String url, String caption, Integer displayOrder, boolean primary) {
+    public RoomTypeImage(RoomType roomType, String url, String caption, Integer displayOrder, boolean primary) {
+        this.roomType = roomType;
         this.url = url;
         this.caption = caption;
         this.displayOrder = displayOrder != null ? displayOrder : 0;
@@ -35,6 +42,7 @@ public class RoomTypeImage {
     }
 
     public String getId() { return id; }
+    public RoomType getRoomType() { return roomType; }
     public String getUrl() { return url; }
     public String getCaption() { return caption; }
     public Integer getDisplayOrder() { return displayOrder; }

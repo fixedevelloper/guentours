@@ -113,6 +113,21 @@ export interface HotelCityOption {
   longitude: number;
 }
 
+export interface HotelCityAdminResponse {
+  id: number;
+  cityName: string;
+  countryName: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface HotelCityUpsertRequest {
+  cityName: string;
+  countryName: string;
+  latitude: number;
+  longitude: number;
+}
+
 export interface ProviderQuote {
   offerId: string;
   providerType: ProviderType;
@@ -377,6 +392,14 @@ export interface FlightResponse {
 }
 // ---------- Partner: Hotels ----------
 
+export interface HotelImageResponse {
+  id: string;
+  url: string;
+  caption: string | null;
+  isPrimary: boolean;
+  displayOrder: number | null;
+}
+
 export interface HotelResponse {
   id: string;
   name: string;
@@ -385,35 +408,57 @@ export interface HotelResponse {
   starRating: number | null;
   status: "ACTIVE" | "SUSPENDED";
   coverImageUrl: string | null;
+  images: HotelImageResponse[];
 }
 // ---------- Partner: Vehicles ----------
 
 export type VehicleCategory = "ECONOMY" | "COMPACT" | "SUV" | "LUXURY" | "VAN" | "MINIBUS";
+export type Transmission = "MANUAL" | "AUTOMATIC";
+
+export interface VehicleImageResponse {
+  id: string;
+  url: string;
+  caption: string | null;
+  isPrimary: boolean;
+  displayOrder: number | null;
+}
 
 export interface VehicleResponse {
   id: string;
+  partnerId: string;
   brand: string;
   model: string;
+  year: number;
   category: VehicleCategory;
+  transmission: Transmission;
+  seats: number;
+  airConditioning: boolean;
   pricePerDay: number;
   currency: string;
   unitsCount: number;
+  pickupLocations: string[];
   status: "ACTIVE" | "SUSPENDED";
+  coverImageUrl: string | null;
+  images: VehicleImageResponse[];
+}
+
+export interface VehicleRegistrationRequest {
+  brand: string;
+  model: string;
+  year: number;
+  category: VehicleCategory;
+  transmission: Transmission;
+  seats: number;
+  airConditioning: boolean;
+  pricePerDay: number;
+  currency: string;
+  unitsCount: number;
+  pickupLocations: string[];
 }
 
 // ---------- Partner: Properties ----------
 
 export type PropertyType = "APARTMENT" | "VILLA" | "STUDIO" | "HOUSE";
-
-export interface PropertyResponse {
-  id: string;
-  title: string;
-  propertyType: PropertyType;
-  city: string;
-  pricePerNight: number;
-  currency: string;
-}
-
 
 /**
  * Statuts d'une annonce de location meublée
@@ -439,6 +484,14 @@ export interface PropertyFormData {
   description?: string;
 }
 
+export interface PropertyImageResponse {
+  id: string;
+  url: string;
+  caption: string | null;
+  isPrimary: boolean;
+  displayOrder: number | null;
+}
+
 /**
  * Interface de la réponse API Spring Boot pour une propriété
  */
@@ -446,8 +499,8 @@ export interface PropertyResponse extends PropertyFormData {
   id: string;
   partnerId: string;
   status: ListingStatus;
-  coverImageUrl?: string;
-  images?: string[];
+  coverImageUrl: string | null;
+  images: PropertyImageResponse[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -572,6 +625,14 @@ export interface RoomAvailabilityFormData {
   roomsAvailable: number;
 }
 
+export interface RoomImageResponse {
+  id: string;
+  url: string;
+  caption: string | null;
+  isPrimary: boolean;
+  displayOrder: number | null;
+}
+
 export interface RoomTypeResponse {
   id: string;
   name: string;
@@ -588,6 +649,7 @@ export interface RoomTypeResponse {
     quantity: number;
     coverImageUrl?: string;
     amenities: string[];
+  images: RoomImageResponse[];
   status: "ACTIVE" | "SUSPENDED";
 }
 export interface RoomAvailabilityResponse {

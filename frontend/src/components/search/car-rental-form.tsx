@@ -2,19 +2,19 @@
 
 import React, { useState } from "react";
 import {
-    MapPin,
     Calendar,
     Clock,
     Search,
     Car,
     UserCheck,
     ArrowRightLeft,
-    Check,
     Shield,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
-import {carSearchParamsToQuery} from "@/lib/search-params";
+import { carSearchParamsToQuery } from "@/lib/search-params";
+import { searchAirportSuggestions } from "@/lib/api/geo";
+import { PickLocationAutocomplete } from "@/components/search/pick-location-autocomplete";
 
 interface CarRentalFormProps {
     className?: string;
@@ -52,6 +52,14 @@ export function CarRentalForm({ className = "", onSearch }: CarRentalFormProps) 
     const [withDriver, setWithDriver] = useState(false);
     const [driverAge25Plus, setDriverAge25Plus] = useState(true);
 
+    const handlePickupDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newPickup = e.target.value;
+        setPickupDate(newPickup);
+        if (dropoffDate && newPickup > dropoffDate) {
+            setDropoffDate(newPickup);
+        }
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -67,27 +75,24 @@ export function CarRentalForm({ className = "", onSearch }: CarRentalFormProps) 
             driverAge25Plus,
         };
 
-        if (onSearch) {
-            onSearch(searchData);
-        } else {
-            router.push(`/car-rentals/search?${carSearchParamsToQuery(searchData)}`);
-        }
+        if (onSearch) onSearch(searchData);
+        else router.push(`/car-rentals/search?${carSearchParamsToQuery(searchData)}`);
     };
 
     return (
         <form
             onSubmit={handleSubmit}
-            className={`w-full rounded-3xl bg-background/95 p-4 sm:p-6 shadow-xl border border-border/60 backdrop-blur-xl ${className}`}
+            className={`w-full rounded-3xl border border-border/60 bg-background/90 p-4 shadow-xl backdrop-blur-xl sm:p-6 ${className}`}
         >
-            {/* 1. Options rapides (Toggles) */}
-            <div className="flex flex-wrap items-center gap-3 mb-5 text-xs sm:text-sm font-medium">
+            {/* Options rapides */}
+            <div className="mb-5 flex flex-wrap items-center gap-2 sm:gap-3 text-xs font-medium sm:text-sm">
                 <button
                     type="button"
-                    onClick={() => setDifferentDropoff(!differentDropoff)}
-                    className={`flex items-center gap-2 px-3.5 py-2 rounded-full border transition-all active:scale-95 ${
+                    onClick={() => setDifferentDropoff((v) => !v)}
+                    className={`flex items-center gap-2 rounded-full border px-3.5 py-2 transition-all active:scale-95 cursor-pointer ${
                         differentDropoff
-                            ? "bg-primary/10 border-primary text-primary font-semibold"
-                            : "bg-muted/40 border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted"
+                            ? "border-primary bg-primary/10 text-primary font-semibold"
+                            : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}
                 >
                     <ArrowRightLeft className="size-3.5" />
@@ -96,11 +101,11 @@ export function CarRentalForm({ className = "", onSearch }: CarRentalFormProps) 
 
                 <button
                     type="button"
-                    onClick={() => setWithDriver(!withDriver)}
-                    className={`flex items-center gap-2 px-3.5 py-2 rounded-full border transition-all active:scale-95 ${
+                    onClick={() => setWithDriver((v) => !v)}
+                    className={`flex items-center gap-2 rounded-full border px-3.5 py-2 transition-all active:scale-95 cursor-pointer ${
                         withDriver
-                            ? "bg-primary/10 border-primary text-primary font-semibold"
-                            : "bg-muted/40 border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted"
+                            ? "border-primary bg-primary/10 text-primary font-semibold"
+                            : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}
                 >
                     <UserCheck className="size-3.5" />
@@ -110,11 +115,11 @@ export function CarRentalForm({ className = "", onSearch }: CarRentalFormProps) 
                 {!withDriver && (
                     <button
                         type="button"
-                        onClick={() => setDriverAge25Plus(!driverAge25Plus)}
-                        className={`flex items-center gap-2 px-3.5 py-2 rounded-full border transition-all active:scale-95 ${
+                        onClick={() => setDriverAge25Plus((v) => !v)}
+                        className={`flex items-center gap-2 rounded-full border px-3.5 py-2 transition-all active:scale-95 cursor-pointer ${
                             driverAge25Plus
-                                ? "bg-muted/60 border-border/60 text-foreground"
-                                : "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 font-semibold"
+                                ? "border-border/60 bg-muted/60 text-foreground"
+                                : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold"
                         }`}
                     >
                         <Shield className="size-3.5" />
@@ -123,57 +128,44 @@ export function CarRentalForm({ className = "", onSearch }: CarRentalFormProps) 
                 )}
             </div>
 
-            {/* 2. Grille principale du formulaire */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3 sm:gap-4 items-end">
-                <div
-                    className={`${
-                        differentDropoff ? "lg:col-span-3" : "lg:col-span-4"
-                    } flex flex-col gap-1.5`}
-                >
-                    <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                        <MapPin className="size-3.5 text-primary" />
-                        {t("pickupLocationLabel")}
-                    </label>
-                    <div className="relative">
-                        <input
-                            type="text"
-                            required
-                            value={pickupLocation}
-                            onChange={(e) => setPickupLocation(e.target.value)}
-                            placeholder={t("pickupPlaceholder")}
-                            className="w-full h-12 pl-10 pr-4 text-sm font-medium rounded-2xl bg-muted/30 border border-border/80 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:text-muted-foreground/60"
-                        />
-                        <Car className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                    </div>
+            {/* Grille principale */}
+            <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-12 items-end">
+                {/* Lieu de prise en charge */}
+                <div className={differentDropoff ? "lg:col-span-3" : "lg:col-span-4"}>
+                    <PickLocationAutocomplete
+                        icon={<Car className="size-4 text-primary" />}
+                        label={t("pickupLocationLabel")}
+                        placeholder={t("pickupPlaceholder")}
+                        searchPlaceholder={t("pickupPlaceholder")}
+                        hintLabel={t("locationHint")}
+                        noResultsLabel={t("locationNoResults")}
+                        initialLabel=""
+                        fetchOptions={searchAirportSuggestions}
+                        onSelect={(option) => setPickupLocation(option.code)}
+                    />
                 </div>
 
+                {/* Lieu de restitution (si différent) */}
                 {differentDropoff && (
-                    <div className="lg:col-span-3 flex flex-col gap-1.5">
-                        <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                            <MapPin className="size-3.5 text-primary" />
-                            {t("dropoffLocationLabel")}
-                        </label>
-                        <div className="relative">
-                            <input
-                                type="text"
-                                required={differentDropoff}
-                                value={dropoffLocation}
-                                onChange={(e) => setDropoffLocation(e.target.value)}
-                                placeholder={t("dropoffPlaceholder")}
-                                className="w-full h-12 pl-10 pr-4 text-sm font-medium rounded-2xl bg-muted/30 border border-border/80 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:text-muted-foreground/60"
-                            />
-                            <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                        </div>
+                    <div className="lg:col-span-3">
+                        <PickLocationAutocomplete
+                            icon={<Car className="size-4 text-primary" />}
+                            label={t("dropoffLocationLabel")}
+                            placeholder={t("dropoffPlaceholder")}
+                            searchPlaceholder={t("dropoffPlaceholder")}
+                            hintLabel={t("locationHint")}
+                            noResultsLabel={t("locationNoResults")}
+                            initialLabel=""
+                            fetchOptions={searchAirportSuggestions}
+                            onSelect={(option) => setDropoffLocation(option.code)}
+                        />
                     </div>
                 )}
 
-                <div
-                    className={`${
-                        differentDropoff ? "lg:col-span-3" : "lg:col-span-3"
-                    } grid grid-cols-3 gap-2`}
-                >
+                {/* Date et heure de prise en charge */}
+                <div className="grid grid-cols-3 gap-2 lg:col-span-3">
                     <div className="col-span-2 flex flex-col gap-1.5">
-                        <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                        <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                             <Calendar className="size-3.5 text-primary" />
                             {t("pickupDateLabel")}
                         </label>
@@ -182,12 +174,13 @@ export function CarRentalForm({ className = "", onSearch }: CarRentalFormProps) 
                             required
                             min={today}
                             value={pickupDate}
-                            onChange={(e) => setPickupDate(e.target.value)}
-                            className="w-full h-12 px-3 text-xs sm:text-sm font-medium rounded-2xl bg-muted/30 border border-border/80 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                            onChange={handlePickupDateChange}
+                            className="h-12 w-full rounded-2xl border border-border/80 bg-muted/30 px-3 text-xs sm:text-sm font-medium outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
                         />
                     </div>
+
                     <div className="col-span-1 flex flex-col gap-1.5">
-                        <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                        <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                             <Clock className="size-3.5 text-primary" />
                             {t("timeLabel")}
                         </label>
@@ -196,18 +189,15 @@ export function CarRentalForm({ className = "", onSearch }: CarRentalFormProps) 
                             required
                             value={pickupTime}
                             onChange={(e) => setPickupTime(e.target.value)}
-                            className="w-full h-12 px-2 text-xs sm:text-sm font-medium rounded-2xl bg-muted/30 border border-border/80 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-center"
+                            className="h-12 w-full rounded-2xl border border-border/80 bg-muted/30 px-2 text-center text-xs sm:text-sm font-medium outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer"
                         />
                     </div>
                 </div>
 
-                <div
-                    className={`${
-                        differentDropoff ? "lg:col-span-3" : "lg:col-span-3"
-                    } grid grid-cols-3 gap-2`}
-                >
+                {/* Date et heure de restitution */}
+                <div className="grid grid-cols-3 gap-2 lg:col-span-3">
                     <div className="col-span-2 flex flex-col gap-1.5">
-                        <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                        <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                             <Calendar className="size-3.5 text-primary" />
                             {t("dropoffDateLabel")}
                         </label>
@@ -217,11 +207,12 @@ export function CarRentalForm({ className = "", onSearch }: CarRentalFormProps) 
                             min={pickupDate || today}
                             value={dropoffDate}
                             onChange={(e) => setDropoffDate(e.target.value)}
-                            className="w-full h-12 px-3 text-xs sm:text-sm font-medium rounded-2xl bg-muted/30 border border-border/80 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                            className="h-12 w-full rounded-2xl border border-border/80 bg-muted/30 px-3 text-xs sm:text-sm font-medium outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
                         />
                     </div>
+
                     <div className="col-span-1 flex flex-col gap-1.5">
-                        <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                        <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                             <Clock className="size-3.5 text-primary" />
                             {t("timeLabel")}
                         </label>
@@ -230,15 +221,16 @@ export function CarRentalForm({ className = "", onSearch }: CarRentalFormProps) 
                             required
                             value={dropoffTime}
                             onChange={(e) => setDropoffTime(e.target.value)}
-                            className="w-full h-12 px-2 text-xs sm:text-sm font-medium rounded-2xl bg-muted/30 border border-border/80 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-center"
+                            className="h-12 w-full rounded-2xl border border-border/80 bg-muted/30 px-2 text-center text-xs sm:text-sm font-medium outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer"
                         />
                     </div>
                 </div>
 
-                <div className={`${differentDropoff ? "lg:col-span-12" : "lg:col-span-2"}`}>
+                {/* Bouton de recherche */}
+                <div className={differentDropoff ? "lg:col-span-12 mt-2 lg:mt-0" : "lg:col-span-2"}>
                     <button
                         type="submit"
-                        className="w-full h-12 flex items-center justify-center gap-2 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 active:scale-[0.98] transition-all shadow-lg shadow-primary/25"
+                        className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 active:scale-[0.98] cursor-pointer"
                     >
                         <Search className="size-4" />
                         <span>{t("searchBtn")}</span>

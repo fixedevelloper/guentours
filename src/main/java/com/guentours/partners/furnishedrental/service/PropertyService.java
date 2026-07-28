@@ -4,6 +4,7 @@ import com.guentours.partners.furnishedrental.domain.Property;
 import com.guentours.partners.furnishedrental.domain.PropertyAvailability;
 import com.guentours.partners.furnishedrental.repository.PropertyAvailabilityRepository;
 import com.guentours.partners.furnishedrental.repository.PropertyRepository;
+import com.guentours.partners.furnishedrental.web.ImageUploadRequest;
 import com.guentours.partners.furnishedrental.web.PropertyAvailabilityRequest;
 import com.guentours.partners.furnishedrental.web.PropertyRegistrationRequest;
 import org.springframework.data.domain.Page;
@@ -77,6 +78,54 @@ public class PropertyService {
     @Transactional
     public void activate(String id) {
         findById(id).activate();
+    }
+
+    @Transactional
+    public Property update(String id, PropertyRegistrationRequest req) {
+        Property property = findById(id);
+        property.update(
+                req.title(),
+                req.propertyType(),
+                req.address(),
+                req.city(),
+                req.country(),
+                req.bedrooms(),
+                req.bathrooms(),
+                req.maxGuests(),
+                req.amenities(),
+                req.pricePerNight(),
+                req.currency(),
+                req.minStayNights(),
+                req.description()
+        );
+        return propertyRepository.save(property);
+    }
+
+    // --- Galerie d'images ---
+
+    @Transactional
+    public Property addPropertyImage(String propertyId, ImageUploadRequest req) {
+        Property property = findById(propertyId);
+        property.addImage(req.url(), req.caption(), req.displayOrder(), req.isPrimary());
+        return propertyRepository.save(property);
+    }
+
+    @Transactional
+    public void removePropertyImage(String propertyId, String imageId) {
+        Property property = findById(propertyId);
+        property.removeImage(imageId);
+        propertyRepository.save(property);
+    }
+
+    @Transactional
+    public Property setPrimaryPropertyImage(String propertyId, String imageId) {
+        Property property = findById(propertyId);
+        boolean exists = property.getImages().stream().anyMatch(img -> img.getId().equals(imageId));
+        if (!exists) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Image introuvable : " + imageId);
+        }
+        property.setPrimaryImage(imageId);
+        return propertyRepository.save(property);
     }
 
     // --- Disponibilités ---

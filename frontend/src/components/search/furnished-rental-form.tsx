@@ -8,13 +8,13 @@ import {
     Search,
     Home,
     Building2,
-    Sparkles,
     BedDouble,
-    ShieldCheck,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
-import {furnishedRentalSearchParamsToQuery} from "@/lib/search-params";
+import { furnishedRentalSearchParamsToQuery } from "@/lib/search-params";
+import { PickLocationAutocomplete } from "@/components/search/pick-location-autocomplete";
+import { searchAirportSuggestions } from "@/lib/api/geo";
 
 interface FurnishedRentalFormProps {
     className?: string;
@@ -51,6 +51,14 @@ export function FurnishedRentalForm({
     const [propertyType, setPropertyType] = useState("all");
     const [entirePlace, setEntirePlace] = useState(true);
 
+    const handleCheckInChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newCheckIn = e.target.value;
+        setCheckInDate(newCheckIn);
+        if (checkOutDate && newCheckIn > checkOutDate) {
+            setCheckOutDate(newCheckIn);
+        }
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -67,7 +75,9 @@ export function FurnishedRentalForm({
         if (onSearch) {
             onSearch(searchData);
         } else {
-            router.push(`/furnished-rentals/search?${furnishedRentalSearchParamsToQuery(searchData)}`);
+            router.push(
+                `/furnished-rentals/search?${furnishedRentalSearchParamsToQuery(searchData)}`
+            );
         }
     };
 
@@ -76,7 +86,7 @@ export function FurnishedRentalForm({
             onSubmit={handleSubmit}
             className={`w-full rounded-3xl bg-background/95 p-4 sm:p-6 shadow-xl border border-border/60 backdrop-blur-xl ${className}`}
         >
-            {/* 1. Filtres rapides (Type de logement & Logement entier) */}
+            {/* 1. Filtres rapides */}
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-5 text-xs sm:text-sm font-medium">
                 {/* Logement entier uniquement */}
                 <button
@@ -92,7 +102,7 @@ export function FurnishedRentalForm({
                     <span>{t("entirePlaceOnly")}</span>
                 </button>
 
-                {/* Sélecteur rapide de type de bien */}
+                {/* Sélecteur de type de bien */}
                 <div className="flex items-center gap-1 p-1 rounded-full bg-muted/40 border border-border/60">
                     {[
                         { id: "all", label: t("typeAll") },
@@ -118,28 +128,29 @@ export function FurnishedRentalForm({
 
             {/* 2. Grille principale du formulaire */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3 sm:gap-4 items-end">
-                {/* Destination / Ville / Quartier */}
+                {/* Destination */}
                 <div className="lg:col-span-4 flex flex-col gap-1.5">
                     <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
                         <MapPin className="size-3.5 text-primary" />
                         {t("locationLabel")}
                     </label>
                     <div className="relative">
-                        <input
-                            type="text"
-                            required
-                            value={location}
-                            onChange={(e) => setLocation(e.target.value)}
+                        <PickLocationAutocomplete
+                            icon={<Building2 className="size-4 text-primary" />}
+                            label={t("locationLabel")}
                             placeholder={t("locationPlaceholder")}
-                            className="w-full h-12 pl-10 pr-4 text-sm font-medium rounded-2xl bg-muted/30 border border-border/80 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:text-muted-foreground/60"
+                            searchPlaceholder={t("locationPlaceholder")}
+                            hintLabel={t("locationHint")}
+                            noResultsLabel={t("locationNoResults")}
+                            initialLabel=""
+                            fetchOptions={searchAirportSuggestions}
+                            onSelect={(option) => setLocation(option.code)}
                         />
-                        <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                     </div>
                 </div>
 
                 {/* Dates : Arrivée et Départ */}
                 <div className="lg:col-span-4 grid grid-cols-2 gap-2">
-                    {/* Arrivée */}
                     <div className="flex flex-col gap-1.5">
                         <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
                             <Calendar className="size-3.5 text-primary" />
@@ -150,12 +161,11 @@ export function FurnishedRentalForm({
                             required
                             min={today}
                             value={checkInDate}
-                            onChange={(e) => setCheckInDate(e.target.value)}
+                            onChange={handleCheckInChange}
                             className="w-full h-12 px-3 text-xs sm:text-sm font-medium rounded-2xl bg-muted/30 border border-border/80 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
                         />
                     </div>
 
-                    {/* Départ */}
                     <div className="flex flex-col gap-1.5">
                         <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
                             <Calendar className="size-3.5 text-primary" />
@@ -174,7 +184,6 @@ export function FurnishedRentalForm({
 
                 {/* Voyageurs & Chambres */}
                 <div className="lg:col-span-2 grid grid-cols-2 gap-2">
-                    {/* Nombre de personnes */}
                     <div className="flex flex-col gap-1.5">
                         <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
                             <Users className="size-3.5 text-primary" />
@@ -193,7 +202,6 @@ export function FurnishedRentalForm({
                         </select>
                     </div>
 
-                    {/* Chambres */}
                     <div className="flex flex-col gap-1.5">
                         <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
                             <BedDouble className="size-3.5 text-primary" />
@@ -213,11 +221,11 @@ export function FurnishedRentalForm({
                     </div>
                 </div>
 
-                {/* Bouton de Soumission */}
+                {/* Bouton de soumission */}
                 <div className="lg:col-span-2">
                     <button
                         type="submit"
-                        className="w-full h-12 flex items-center justify-center gap-2 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 active:scale-[0.98] transition-all shadow-lg shadow-primary/25"
+                        className="w-full h-12 flex items-center justify-center gap-2 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 active:scale-[0.98] transition-all shadow-lg shadow-primary/25 cursor-pointer"
                     >
                         <Search className="size-4" />
                         <span>{t("searchBtn")}</span>

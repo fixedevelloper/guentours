@@ -43,8 +43,13 @@ public class RoomType {
     @Column(length = 1024)
     private String coverImageUrl;
 
-    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
-    @JoinColumn(name = "room_type_id")
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ListingStatus status = ListingStatus.ACTIVE;
+
+    // Eager : RoomTypeResponse.from() lit cette collection dans le contrôleur, après la fermeture
+    // de la session Hibernate (open-in-view=false) - un fetch lazy y lèverait LazyInitializationException.
+    @OneToMany(mappedBy = "roomType", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @OrderBy("displayOrder ASC")
     private List<RoomTypeImage> images = new ArrayList<>();
 
@@ -68,7 +73,7 @@ public class RoomType {
     // --- Gestion des images de la chambre ---
 
     public void addImage(String url, String caption, Integer displayOrder, boolean isPrimary) {
-        RoomTypeImage image = new RoomTypeImage(url, caption, displayOrder, isPrimary);
+        RoomTypeImage image = new RoomTypeImage(this, url, caption, displayOrder, isPrimary);
         if (isPrimary) {
             this.images.forEach(img -> img.setPrimary(false));
             this.coverImageUrl = url;
@@ -80,9 +85,22 @@ public class RoomType {
         this.images.removeIf(img -> img.getId().equals(imageId));
     }
 
+    public void setPrimaryImage(String imageId) {
+        this.images.stream()
+                .filter(img -> img.getId().equals(imageId))
+                .findFirst()
+                .ifPresent(target -> {
+                    this.images.forEach(img -> img.setPrimary(img.getId().equals(imageId)));
+                    this.coverImageUrl = target.getUrl();
+                });
+    }
+
     public void setCoverImageUrl(String coverImageUrl) {
         this.coverImageUrl = coverImageUrl;
     }
+
+    public void suspend() { this.status = ListingStatus.SUSPENDED; }
+    public void activate() { this.status = ListingStatus.ACTIVE; }
 
     // --- Getters ---
 
@@ -98,4 +116,5 @@ public class RoomType {
     public Integer getTotalRooms() { return totalRooms; }
     public String getCoverImageUrl() { return coverImageUrl; }
     public List<RoomTypeImage> getImages() { return images; }
+    public ListingStatus getStatus() { return status; }
 }

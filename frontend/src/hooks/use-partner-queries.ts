@@ -10,7 +10,8 @@ import {
     FlightFormData,
     PageResponse, PartnerUpdateRequest,
     PropertyFormData,
-    RoomAvailabilityFormData, UpdatePartnerDto
+    RoomAvailabilityFormData, UpdatePartnerDto,
+    VehicleRegistrationRequest
 } from "../lib/api/types";
 import {PartnerRegistrationRequest} from "@/types/partner";
 
@@ -113,6 +114,14 @@ export function useDeleteHotelMutation(partnerId: string) {
 
 // --- Vehicles ---
 
+export function useCreateVehicleMutation(partnerId: string) {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (payload: VehicleRegistrationRequest) => partnerApi.createVehicle(partnerId, payload),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ["partner-vehicles", partnerId] }),
+    });
+}
+
 export function useVehiclesQuery(partnerId: string, page: number) {
     return useQuery({
         queryKey: ["partner-vehicles", partnerId, page],
@@ -142,6 +151,25 @@ export function useDeleteVehicleMutation(partnerId: string) {
     return useMutation({
         mutationFn: (vehicleId: string) => partnerApi.deleteVehicle(partnerId, vehicleId),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ["partner-vehicles", partnerId] }),
+    });
+}
+
+export function useVehicleQuery(partnerId: string, vehicleId: string) {
+    return useQuery({
+        queryKey: ["partner-vehicle", partnerId, vehicleId],
+        queryFn: () => partnerApi.getVehicle(partnerId, vehicleId),
+        enabled: Boolean(partnerId && vehicleId),
+    });
+}
+
+export function useUpdateVehicleMutation(partnerId: string, vehicleId: string) {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (payload: VehicleRegistrationRequest) => partnerApi.updateVehicle(partnerId, vehicleId, payload),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["partner-vehicles", partnerId] });
+            queryClient.invalidateQueries({ queryKey: ["partner-vehicle", partnerId, vehicleId] });
+        },
     });
 }
 
@@ -176,6 +204,25 @@ export function useDeletePropertyMutation(partnerId: string) {
     return useMutation({
         mutationFn: (propertyId: string) => partnerApi.deleteProperty(partnerId, propertyId),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ["partner-properties", partnerId] }),
+    });
+}
+
+export function usePropertyQuery(partnerId: string, propertyId: string) {
+    return useQuery({
+        queryKey: ["partner-property", partnerId, propertyId],
+        queryFn: () => partnerApi.getPropertyById(partnerId, propertyId),
+        enabled: Boolean(partnerId && propertyId),
+    });
+}
+
+export function useUpdatePropertyMutation(partnerId: string, propertyId: string) {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (payload: PropertyFormData) => partnerApi.updateProperty(partnerId, propertyId, payload),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["partner-properties", partnerId] });
+            queryClient.invalidateQueries({ queryKey: ["partner-property", partnerId, propertyId] });
+        },
     });
 }
 

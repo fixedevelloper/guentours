@@ -92,6 +92,17 @@ public class HotelService {
         hotelRepository.save(hotel);
     }
 
+    @Transactional
+    public Hotel setPrimaryHotelImage(String hotelId, String imageId) {
+        Hotel hotel = findById(hotelId);
+        boolean exists = hotel.getImages().stream().anyMatch(img -> img.getId().equals(imageId));
+        if (!exists) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Image introuvable : " + imageId);
+        }
+        hotel.setPrimaryImage(imageId);
+        return hotelRepository.save(hotel);
+    }
+
     // --- Types de chambres ---
 
     @Transactional
@@ -109,6 +120,17 @@ public class HotelService {
                 req.totalRooms(),
                 req.coverImageUrl() // Pris en compte
         );
+        return roomTypeRepository.save(roomType);
+    }
+
+    @Transactional
+    public RoomType updateRoomTypeStatus(String roomTypeId, ListingStatus status) {
+        RoomType roomType = findRoomTypeById(roomTypeId);
+        if (status == ListingStatus.SUSPENDED) {
+            roomType.suspend();
+        } else {
+            roomType.activate();
+        }
         return roomTypeRepository.save(roomType);
     }
 
@@ -137,6 +159,17 @@ public class HotelService {
         RoomType roomType = findRoomTypeById(roomTypeId);
         roomType.removeImage(imageId);
         roomTypeRepository.save(roomType);
+    }
+
+    @Transactional
+    public RoomType setPrimaryRoomTypeImage(String roomTypeId, String imageId) {
+        RoomType roomType = findRoomTypeById(roomTypeId);
+        boolean exists = roomType.getImages().stream().anyMatch(img -> img.getId().equals(imageId));
+        if (!exists) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Image introuvable : " + imageId);
+        }
+        roomType.setPrimaryImage(imageId);
+        return roomTypeRepository.save(roomType);
     }
 
     // --- Disponibilités ---

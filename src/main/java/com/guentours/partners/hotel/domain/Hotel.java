@@ -40,8 +40,10 @@ public class Hotel {
     @Column(name = "amenity")
     private List<String> amenities = new ArrayList<>();
 
-    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
-    @JoinColumn(name = "hotel_id")
+    // Chargée en eager : HotelResponse.from() lit cette collection dans le contrôleur, après la
+    // fermeture de la session Hibernate (open-in-view=false) - un fetch lazy y lèverait
+    // LazyInitializationException.
+    @OneToMany(mappedBy = "hotel", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @OrderBy("displayOrder ASC")
     private List<HotelImage> images = new ArrayList<>();
 
@@ -72,7 +74,7 @@ public class Hotel {
     // --- Méthodes métier pour la gestion des images ---
 
     public void addImage(String url, String caption, Integer displayOrder, boolean isPrimary) {
-        HotelImage image = new HotelImage(url, caption, displayOrder, isPrimary);
+        HotelImage image = new HotelImage(this, url, caption, displayOrder, isPrimary);
         if (isPrimary) {
             // S'assurer qu'une seule image est marquée comme principale
             this.images.forEach(img -> img.setPrimary(false));
@@ -83,6 +85,16 @@ public class Hotel {
 
     public void removeImage(String imageId) {
         this.images.removeIf(img -> img.getId().equals(imageId));
+    }
+
+    public void setPrimaryImage(String imageId) {
+        this.images.stream()
+                .filter(img -> img.getId().equals(imageId))
+                .findFirst()
+                .ifPresent(target -> {
+                    this.images.forEach(img -> img.setPrimary(img.getId().equals(imageId)));
+                    this.coverImageUrl = target.getUrl();
+                });
     }
 
     public void updateCoverImage(String coverImageUrl) {

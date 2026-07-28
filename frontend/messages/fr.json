@@ -773,7 +773,9 @@
     "pickupDateLabel": "Date de départ",
     "dropoffDateLabel": "Date de retour",
     "timeLabel": "Heure",
-    "searchBtn": "Rechercher"
+    "searchBtn": "Rechercher",
+    "locationHint": "Saisissez au moins 2 caractères",
+    "locationNoResults": "Aucun résultat trouvé"
   },
   "FurnishedRental": {
     "entirePlaceOnly": "Logement entier",
@@ -790,7 +792,10 @@
     "guestPlural": "pers.",
     "bedroomsLabel": "Chambres",
     "bedroomsAny": "Toutes",
-    "searchBtn": "Rechercher"
+    "searchBtn": "Rechercher",
+    "locationHint": "Saisissez au moins 2 caractères",
+    "locationNoResults": "Aucun résultat trouvé"
+
   },
   "FurnishedRentalPage": {
     "badge": "Logements meublés 100% contrôlés",
@@ -837,5 +842,49 @@
     "ctaTitle": "Vous possédez un appartement ou une villa meublée ?",
     "ctaSubtitle": "Mettez votre bien en location sur notre plateforme et maximisez vos revenus locatifs en toute sécurité.",
     "ctaBtn": "Publier mon logement"
+  },
+  "RoomImages": {
+    "title": "Galerie de la chambre",
+    "roomId": "ID Chambre :",
+    "changeCover": "Sélectionner la couverture",
+    "photoCount": "{count, plural, =0 {0 photo} =1 {1 photo} other {# photos}}",
+    "uploadTitle": "Ajoutez des visuels pour cette chambre",
+    "uploadDescription": "Mettez en valeur le lit, la salle de bain et la vue depuis la chambre.",
+    "openGallery": "Ouvrir la médiathèque",
+    "loadingGallery": "Chargement de la galerie...",
+    "errorLoadImages": "Impossible de charger les images de cette chambre.",
+    "sectionTitle": "Photos de la chambre",
+    "primaryImageHelp": "La photo marquée \"Couverture\" apparaîtra en premier dans la fiche de la chambre.",
+    "primaryBadge": "Couverture",
+    "setPrimaryTooltip": "Définir comme couverture de la chambre",
+    "deleteTooltip": "Supprimer la photo",
+    "imageAlt": "Photo de la chambre",
+    "modalTitle": "Sélectionner la couverture de la chambre",
+    "errorAddImage": "Impossible d'ajouter cette image à la galerie.",
+    "errorSetPrimary": "Impossible de définir cette image comme couverture.",
+    "errorDeleteImage": "Impossible de supprimer cette image."
+  },
+  "PartnerVehicles": {
+    "title": "Mes véhicules",
+    "subtitle": "Gérez vos annonces, photos, statuts et disponibilités.",
+    "addVehicle": "Ajouter un véhicule",
+    "loading": "Chargement des véhicules…",
+    "emptyTitle": "Aucun véhicule enregistré",
+    "emptyDescription": "Vous n'avez encore ajouté aucun véhicule. Ajoutez votre premier véhicule pour commencer à recevoir des réservations.",
+    "emptyAddBtn": "Ajouter votre premier véhicule",
+    "colVehicle": "Véhicule",
+    "colCategory": "Catégorie",
+    "colPrice": "Prix / jour",
+    "colStatus": "Statut",
+    "colActions": "Actions",
+    "statusActive": "Actif",
+    "statusSuspended": "Suspendu",
+    "edit": "Modifier",
+    "photos": "Photos",
+    "suspend": "Suspendre",
+    "activate": "Activer",
+    "delete": "Supprimer",
+    "deleteConfirm": "Supprimer ce véhicule ? Cette action est irréversible.",
+    "pageInfo": "Page {page} sur {totalPages} — {totalElements} véhicule(s)"
   }
 }
