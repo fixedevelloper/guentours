@@ -25,4 +25,22 @@ public record ChargeRequest(
                 ? cardNumber.substring(cardNumber.length() - 4)
                 : mobileNumber;
     }
+
+    /** Redacts the card PAN/CVV/expiry so an accidental log line never leaks them. */
+    @Override
+    public String toString() {
+        return "ChargeRequest[amount=%s, currency=%s, countryCode=%s, countryCurrency=%s, paymentMethod=%s, cardNumber=%s, cardHolderName=%s, expiry=REDACTED, cvv=REDACTED, mobileNumber=%s, customerEmail=%s, paymentReference=%s, customerIp=%s, billingAddress=%s]"
+                .formatted(amount, currency, countryCode, countryCurrency, paymentMethod,
+                        maskCardNumber(cardNumber), cardHolderName, mobileNumber, customerEmail,
+                        paymentReference, customerIp, billingAddress);
+    }
+
+    private static String maskCardNumber(String cardNumber) {
+        if (cardNumber == null) {
+            return null;
+        }
+        return cardNumber.length() >= 4
+                ? "*".repeat(cardNumber.length() - 4) + cardNumber.substring(cardNumber.length() - 4)
+                : "*".repeat(cardNumber.length());
+    }
 }

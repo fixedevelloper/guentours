@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
+import DOMPurify from "dompurify";
 import {
   MapPin,
   Star,
@@ -122,6 +123,10 @@ export function HotelDetailPageContent({
   const rating = hotel?.hotelRating ?? selectedOffer?.rating ?? initialRating;
   const reviewScore = hotel?.hotelReview ? parseFloat(hotel.hotelReview) : null;
   const descriptionContent = hotel?.description?.content;
+  const sanitizedDescription = useMemo(
+      () => (descriptionContent ? DOMPurify.sanitize(descriptionContent) : ""),
+      [descriptionContent]
+  );
   const facilities = hotel?.facilities || [];
 
   // Agrégation et extraction des URLs d'images (HotelImages + RoomImages)
@@ -209,7 +214,7 @@ export function HotelDetailPageContent({
                              [&>p]:mb-3 [&>b]:text-foreground [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:space-y-1 ${
                             !isDescExpanded ? "line-clamp-4" : ""
                         }`}
-                        dangerouslySetInnerHTML={{ __html: descriptionContent }}
+                        dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
                     />
                     {descriptionContent.length > 250 && (
                         <Button

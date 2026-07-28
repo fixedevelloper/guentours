@@ -451,7 +451,7 @@ public class TravelportClient implements TravelProviderClient {
 
         addOffer(session, request.offer());
 
-        for (com.guentours.provider.PassengerInfo passenger : request.passengers()) {
+        for (PassengerInfo passenger : request.passengers()) {
             addTraveler(session, toWorkbenchTraveler(passenger, request.contactEmail()));
         }
 
@@ -664,7 +664,7 @@ public class TravelportClient implements TravelProviderClient {
         headers.set(SESSION_HEADER, session);
     }
 
-    private TravelportWorkbenchRequests.Traveler toWorkbenchTraveler(com.guentours.provider.PassengerInfo passenger,
+    private TravelportWorkbenchRequests.Traveler toWorkbenchTraveler(PassengerInfo passenger,
                                                                      String contactEmail) {
         String[] nameParts = splitName(passenger.fullName());
         String passengerTypeCode = switch (passenger.type()) {

@@ -29,6 +29,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,7 +61,7 @@ class PaymentServiceTest {
     @BeforeEach
     void setUp() {
         paymentService = new PaymentService(paymentRepository, paymentGateway, bookingService, eventPublisher);
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     private BookingSummary fullPaymentBooking() {
@@ -79,8 +81,8 @@ class PaymentServiceTest {
     }
 
     private PaymentRequest cardRequest() {
-        return new PaymentRequest(BOOKING_ID, PaymentMethod.CARD, "4242424242424242",
-                "Jean Dupont", "12/28", "123", null);
+        return new PaymentRequest(BOOKING_ID, PaymentMethod.CARD, "CM", "XAF", "4242424242424242",
+                "Jean Dupont", "12/28", "123", null, null, null);
     }
 
     @Nested
@@ -106,7 +108,7 @@ class PaymentServiceTest {
         void shouldRejectInvalidCvv() {
             when(bookingService.getSummary(BOOKING_ID)).thenReturn(fullPaymentBooking());
             PaymentRequest invalidRequest = new PaymentRequest(BOOKING_ID, PaymentMethod.CARD,
-                    "4242424242424242", "Jean Dupont", "12/28", "12", null);
+                    "CM", "XAF", "4242424242424242", "Jean Dupont", "12/28", "12", null, null, null);
 
             assertThatThrownBy(() -> paymentService.pay(invalidRequest))
                     .isInstanceOf(BusinessException.class)
@@ -120,7 +122,7 @@ class PaymentServiceTest {
         void shouldRejectInvalidMobileNumber() {
             when(bookingService.getSummary(BOOKING_ID)).thenReturn(fullPaymentBooking());
             PaymentRequest invalidRequest = new PaymentRequest(BOOKING_ID, PaymentMethod.MOBILE_MONEY,
-                    null, null, null, null, "abc");
+                    "CM", "XAF", null, null, null, null, "abc", null, null);
 
             assertThatThrownBy(() -> paymentService.pay(invalidRequest))
                     .isInstanceOf(BusinessException.class)
@@ -178,13 +180,20 @@ class PaymentServiceTest {
             when(paymentGateway.charge(any(ChargeRequest.class))).thenReturn(
                     new ChargeResult(ChargeStatus.SUCCEEDED, "flw-ref-001", "4242", null, null));
 
+            // Payment is a mutable entity reused across both save() calls, so an ArgumentCaptor would
+            // only ever see its final state - snapshot the status at the time of each call instead.
+            List<PaymentStatus> savedStatuses = new ArrayList<>();
+            lenient().when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> {
+                Payment payment = invocation.getArgument(0);
+                savedStatuses.add(payment.getStatus());
+                return payment;
+            });
+
             paymentService.pay(cardRequest());
 
-            ArgumentCaptor<Payment> paymentCaptor = ArgumentCaptor.forClass(Payment.class);
-            verify(paymentRepository, times(2)).save(paymentCaptor.capture());
-
-            Payment firstSave = paymentCaptor.getAllValues().get(0);
-            assertThat(firstSave.getStatus()).isEqualTo(PaymentStatus.PENDING);
+            assertThat(savedStatuses).hasSize(2);
+            assertThat(savedStatuses.get(0)).isEqualTo(PaymentStatus.PENDING);
+            assertThat(savedStatuses.get(1)).isEqualTo(PaymentStatus.SUCCEEDED);
         }
     }
 
@@ -283,7 +292,7 @@ class PaymentServiceTest {
         @Test
         @DisplayName("confirme un paiement PENDING et déclenche les mêmes effets qu'un succès synchrone")
         void shouldConfirmPendingPaymentAndTriggerBookingConfirmation() {
-            Payment pendingPayment = new Payment(BOOKING_ID, PRICE, PaymentMethod.MOBILE_MONEY, "6512", false);
+            Payment pendingPayment = new Payment(BOOKING_ID, PRICE, PaymentMethod.MOBILE_MONEY, "6512", false, "CM", "XAF");
             pendingPayment.markPending("flw-ref-005");
             when(paymentRepository.findById("payment-1")).thenReturn(Optional.of(pendingPayment));
             when(bookingService.getSummary(BOOKING_ID)).thenReturn(fullPaymentBooking());
@@ -304,7 +313,7 @@ class PaymentServiceTest {
         @Test
         @DisplayName("ignore un callback si le paiement n'est plus PENDING (idempotence)")
         void shouldIgnoreCallbackIfAlreadyTerminal() {
-            Payment alreadySucceeded = new Payment(BOOKING_ID, PRICE, PaymentMethod.CARD, "4242", false);
+            Payment alreadySucceeded = new Payment(BOOKING_ID, PRICE, PaymentMethod.CARD, "4242", false, "CM", "XAF");
             alreadySucceeded.markSucceeded("flw-ref-006");
             when(paymentRepository.findById("payment-2")).thenReturn(Optional.of(alreadySucceeded));
 
@@ -333,9 +342,10 @@ class PaymentServiceTest {
     @Test
     @DisplayName("marque le paiement FAILED lors d'un callback d'échec (ex: timeout OTP Mobile Money)")
     void shouldMarkPaymentFailedOnFailedCallback() {
-        Payment pendingPayment = new Payment(BOOKING_ID, PRICE, PaymentMethod.MOBILE_MONEY, "6512", false);
+        Payment pendingPayment = new Payment(BOOKING_ID, PRICE, PaymentMethod.MOBILE_MONEY, "6512", false, "CM", "XAF");
         pendingPayment.markPending("flw-ref-007");
         when(paymentRepository.findById("payment-3")).thenReturn(Optional.of(pendingPayment));
+        when(bookingService.getSummary(BOOKING_ID)).thenReturn(fullPaymentBooking());
 
         ChargeResult failedResult = new ChargeResult(
                 ChargeStatus.FAILED, "flw-ref-007", "6512", "Délai de validation dépassé", null);
@@ -346,7 +356,9 @@ class PaymentServiceTest {
         assertThat(pendingPayment.getFailureReason()).isEqualTo("Délai de validation dépassé");
 
         // Aucun événement de succès ne doit être émis et la réservation reste inchangée
-        verifyNoInteractions(bookingService, eventPublisher);
+        verify(bookingService, never()).markPaidAndConfirm(anyString(), anyString(), anyString());
+        verify(bookingService, never()).markDepositPaid(anyString());
+        verifyNoInteractions(eventPublisher);
         verify(paymentRepository).save(pendingPayment);
     }
 }

@@ -34,7 +34,7 @@ public class SeatMapService {
     private final OfferCache offerCache;
     private final Map<ProviderType, TravelProviderClient> providerClients;
 
-    SeatMapService(OfferCache offerCache, List<TravelProviderClient> providerClients) {
+    public SeatMapService(OfferCache offerCache, List<TravelProviderClient> providerClients) {
         this.offerCache = offerCache;
         this.providerClients = providerClients.stream()
                 .collect(Collectors.toMap(TravelProviderClient::getType, Function.identity()));

@@ -18,11 +18,6 @@ public class CommissionPolicy {
     private final BigDecimal vehicleFeeAmount;
     private final BigDecimal propertyFeeAmount;
 
-    // Dans le constructeur, ajouter le paramètre :
-
-
-// Puis :
-
     public CommissionPolicy(@Value("${app.commission.flight-fee-amount:15}") BigDecimal flightFeeAmount,
                             @Value("${app.commission.hotel-fee-amount:15}") BigDecimal hotelFeeAmount,
                             @Value("${app.commission.vehicle-fee-amount:15}") BigDecimal vehicleFeeAmount,

@@ -66,6 +66,8 @@ class BookingFlowIntegrationTest {
                 {
                   "bookingId": "%s",
                   "paymentMethod": "CARD",
+                  "countryCode": "CM",
+                  "countryCurrency": "XAF",
                   "cardNumber": "4242424242421234",
                   "cardHolderName": "Jane Traveler",
                   "expiry": "12/30",

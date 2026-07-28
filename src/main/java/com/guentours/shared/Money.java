@@ -60,6 +60,6 @@ public record Money(BigDecimal amount, String currency) implements Comparable<Mo
     }
 
     public Money multiply(int i) {
-        return null;
+        return new Money(this.amount.multiply(BigDecimal.valueOf(i)), currency);
     }
 }

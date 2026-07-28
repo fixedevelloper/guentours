@@ -195,7 +195,7 @@ public class DirectClient implements TravelProviderClient {
     }
 
     private VehicleOffer toOffer(Vehicle vehicle, VehicleSearchCriteria criteria) {
-        long days = java.time.temporal.ChronoUnit.DAYS.between(criteria.rentalStart(), criteria.rentalEnd());
+        long days = ChronoUnit.DAYS.between(criteria.rentalStart(), criteria.rentalEnd());
         days = Math.max(days, 1);
 
         BigDecimal total = vehicle.getPricePerDay().multiply(BigDecimal.valueOf(days));
@@ -242,7 +242,7 @@ public class DirectClient implements TravelProviderClient {
     }
 
     private PropertyOffer toOffer(Property property, PropertySearchCriteria criteria) {
-        long nights = java.time.temporal.ChronoUnit.DAYS.between(criteria.checkIn(), criteria.checkOut());
+        long nights = ChronoUnit.DAYS.between(criteria.checkIn(), criteria.checkOut());
         nights = Math.max(nights, 1);
 
         BigDecimal total = property.getPricePerNight().multiply(BigDecimal.valueOf(nights));

@@ -6,6 +6,7 @@ import com.guentours.search.domain.HarmonizedPropertyOffer;
 import com.guentours.search.domain.PropertyHarmonizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
@@ -13,6 +14,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
+@Service
 public class PropertySearchService {
 
     private static final Logger log = LoggerFactory.getLogger(PropertySearchService.class);

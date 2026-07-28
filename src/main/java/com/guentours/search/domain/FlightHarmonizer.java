@@ -21,7 +21,7 @@ public class FlightHarmonizer {
     private final OfferCache offerCache;
     private final CommissionPolicy commissionPolicy;
 
-    FlightHarmonizer(OfferCache offerCache, CommissionPolicy commissionPolicy) {
+    public FlightHarmonizer(OfferCache offerCache, CommissionPolicy commissionPolicy) {
         this.offerCache = offerCache;
         this.commissionPolicy = commissionPolicy;
     }

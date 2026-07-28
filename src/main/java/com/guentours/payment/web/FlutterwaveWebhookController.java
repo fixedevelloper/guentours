@@ -13,6 +13,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
 @Slf4j
 @RestController
 @RequestMapping("/api/payments/webhooks/flutterwave")
@@ -31,7 +34,7 @@ public class FlutterwaveWebhookController {
             @RequestHeader(value = SIGNATURE_HEADER, required = false) String signature,
             @RequestBody FlutterwaveWebhookPayload payload) {
 
-        if (signature == null || !signature.equals(properties.webhookSecretHash())) {
+        if (signature == null || !constantTimeEquals(signature, properties.webhookSecretHash())) {
             log.warn("Webhook Flutterwave refusé : signature invalide ou absente.");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
@@ -95,5 +98,11 @@ public class FlutterwaveWebhookController {
         paymentService.confirmFromGatewayCallback(txRef, result);
 
         return ResponseEntity.ok().build();
+    }
+
+    private boolean constantTimeEquals(String signature, String expected) {
+        return MessageDigest.isEqual(
+                signature.getBytes(StandardCharsets.UTF_8),
+                expected.getBytes(StandardCharsets.UTF_8));
     }
 }

@@ -95,20 +95,20 @@ class PaymentPlanAndExpiryTest {
     @Test
     void paysWithMtnMobileMoneyAndOrangeMoney() throws Exception {
         String mtnBookingId = checkoutFlight("PAY_NOW");
-        JsonNode mtnPayment = payWithMobileMoney(mtnBookingId, "MTN_MOBILE_MONEY", "+237670000001");
+        JsonNode mtnPayment = payWithMobileMoney(mtnBookingId, "+237670000001");
         assertThat(mtnPayment.get("status").asText()).isEqualTo("SUCCEEDED");
-        assertThat(mtnPayment.get("paymentMethod").asText()).isEqualTo("MTN_MOBILE_MONEY");
+        assertThat(mtnPayment.get("paymentMethod").asText()).isEqualTo("MOBILE_MONEY");
 
         String orangeBookingId = checkoutFlight("PAY_NOW");
-        JsonNode orangePayment = payWithMobileMoney(orangeBookingId, "ORANGE_MONEY", "+237690000002");
+        JsonNode orangePayment = payWithMobileMoney(orangeBookingId, "+237690000002");
         assertThat(orangePayment.get("status").asText()).isEqualTo("SUCCEEDED");
-        assertThat(orangePayment.get("paymentMethod").asText()).isEqualTo("ORANGE_MONEY");
+        assertThat(orangePayment.get("paymentMethod").asText()).isEqualTo("MOBILE_MONEY");
     }
 
     @Test
     void mobileMoneyNumberEndingInZerosIsDeclined() throws Exception {
         String bookingId = checkoutFlight("PAY_NOW");
-        JsonNode payment = payWithMobileMoney(bookingId, "MTN_MOBILE_MONEY", "+237670000000");
+        JsonNode payment = payWithMobileMoney(bookingId, "+237670000000");
         assertThat(payment.get("status").asText()).isEqualTo("FAILED");
     }
 
@@ -151,8 +151,9 @@ class PaymentPlanAndExpiryTest {
     }
 
     private String checkoutHotel(String paymentPlan) throws Exception {
-        String url = "http://localhost:" + port + "/api/search/hotels?cityCode=Paris&checkIn="
-                + LocalDate.now().plusDays(30) + "&checkOut=" + LocalDate.now().plusDays(34) + "&adults=1&rooms=1";
+        String url = "http://localhost:" + port + "/api/search/hotels?cityCode=PAR&checkIn="
+                + LocalDate.now().plusDays(30) + "&checkOut=" + LocalDate.now().plusDays(34)
+                + "&adults=1&rooms=1&currency=XAF";
         ResponseEntity<String> searchResponse = restTemplate.getForEntity(url, String.class);
         JsonNode offers = objectMapper.readTree(searchResponse.getBody());
         String offerId = offers.get(0).get("bestOfferId").asText();
@@ -186,6 +187,8 @@ class PaymentPlanAndExpiryTest {
                 {
                   "bookingId": "%s",
                   "paymentMethod": "CARD",
+                  "countryCode": "CM",
+                  "countryCurrency": "XAF",
                   "cardNumber": "4242424242421234",
                   "cardHolderName": "Jane Traveler",
                   "expiry": "12/30",
@@ -197,14 +200,16 @@ class PaymentPlanAndExpiryTest {
         return objectMapper.readTree(response.getBody());
     }
 
-    private JsonNode payWithMobileMoney(String bookingId, String method, String mobileNumber) throws Exception {
+    private JsonNode payWithMobileMoney(String bookingId, String mobileNumber) throws Exception {
         String paymentBody = """
                 {
                   "bookingId": "%s",
-                  "paymentMethod": "%s",
+                  "paymentMethod": "MOBILE_MONEY",
+                  "countryCode": "CM",
+                  "countryCurrency": "XAF",
                   "mobileNumber": "%s"
                 }
-                """.formatted(bookingId, method, mobileNumber);
+                """.formatted(bookingId, mobileNumber);
         ResponseEntity<String> response = restTemplate.postForEntity(
                 "http://localhost:" + port + "/api/payments", jsonEntity(paymentBody), String.class);
         return objectMapper.readTree(response.getBody());

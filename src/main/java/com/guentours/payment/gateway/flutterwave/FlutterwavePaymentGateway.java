@@ -4,9 +4,11 @@ import com.guentours.payment.domain.PaymentMethod;
 import com.guentours.payment.gateway.ChargeRequest;
 import com.guentours.payment.gateway.ChargeResult;
 import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("!test")
 @Primary
 public class FlutterwavePaymentGateway implements com.guentours.payment.gateway.PaymentGateway {
 

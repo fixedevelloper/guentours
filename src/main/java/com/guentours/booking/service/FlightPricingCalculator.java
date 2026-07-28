@@ -27,6 +27,10 @@ public final class FlightPricingCalculator {
     }
 
     public static Money multiplyByPayingTravelers(Money price, List<BookedTraveler> travelers) {
-        return null;
+        long payingTravelers = travelers.stream()
+                .filter(t -> t.getType() != PassengerType.INFANT)
+                .count();
+
+        return new Money(price.amount().multiply(BigDecimal.valueOf(payingTravelers)), price.currency());
     }
 }

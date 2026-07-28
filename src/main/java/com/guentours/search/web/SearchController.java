@@ -6,6 +6,7 @@ import com.guentours.provider.VehicleSearchCriteria;
 import com.guentours.search.domain.*;
 import com.guentours.search.service.FlightSearchService;
 import com.guentours.search.service.HotelSearchService;
+import com.guentours.search.service.PropertySearchService;
 import com.guentours.search.service.SeatMapService;
 import com.guentours.search.service.VehicleSearchService;
 import jakarta.validation.Valid;
@@ -31,13 +32,16 @@ public class SearchController {
     private final HotelSearchService hotelSearchService;
     private final SeatMapService seatMapService;
     private final VehicleSearchService vehicleSearchService;
+    private final PropertySearchService propertySearchService;
 
     public SearchController(FlightSearchService flightSearchService, HotelSearchService hotelSearchService,
-                            SeatMapService seatMapService, VehicleSearchService vehicleSearchService) {
+                            SeatMapService seatMapService, VehicleSearchService vehicleSearchService,
+                            PropertySearchService propertySearchService) {
         this.flightSearchService = flightSearchService;
         this.hotelSearchService = hotelSearchService;
         this.seatMapService = seatMapService;
         this.vehicleSearchService = vehicleSearchService;
+        this.propertySearchService = propertySearchService;
     }
 
     @GetMapping("/flights")
@@ -91,7 +95,6 @@ public class SearchController {
                 category, withDriver, driverAge25Plus, currency
         )));
     }
-    // Constructeur : ajouter PropertySearchService propertySearchService
 
     @GetMapping("/properties")
     public ResponseEntity<List<HarmonizedPropertyOffer>> searchProperties(@Valid @ModelAttribute PropertySearchRequest request) {

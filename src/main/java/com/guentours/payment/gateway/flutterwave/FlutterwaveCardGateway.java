@@ -25,7 +25,6 @@ class FlutterwaveCardGateway {
     ChargeResult initiate(ChargeRequest request, String paymentReference) {
 
         String currency = request.currency() != null ? request.currency() : properties.defaultCurrency();
-// (inchangé par rapport à la version précédente déjà robuste)
 
         CardRequest cardRequest = new CardRequest(
                 request.cardNumber(),

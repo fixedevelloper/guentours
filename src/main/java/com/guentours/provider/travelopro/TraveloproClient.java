@@ -657,7 +657,7 @@ public class TraveloproClient implements TravelProviderClient {
 
         for (PassengerInfo guest : request.guests()) {
             String[] nameParts = splitName(guest.fullName());
-            if (guest.type() == com.guentours.provider.PassengerType.ADULT) {
+            if (guest.type() == PassengerType.ADULT) {
                 adultTitles.add("Mr");
                 adultFirst.add(nameParts[0]);
                 adultLast.add(nameParts[1]);

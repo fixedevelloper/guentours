@@ -39,7 +39,6 @@ public class UserImageController {
         service.delete(ownerId(authentication), imageId);
     }
 
-    /** ⚠️ Suppose que AppUserPrincipal expose getUserId() — à confirmer/ajuster. */
     private String ownerId(Authentication authentication) {
         AppUserPrincipal principal = (AppUserPrincipal) authentication.getPrincipal();
         return principal.getUserId();

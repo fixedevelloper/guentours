@@ -17,7 +17,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FlightHarmonizerTest {
 
     private final FlightHarmonizer harmonizer =
-            new FlightHarmonizer(new OfferCache(), new CommissionPolicy(BigDecimal.valueOf(15), BigDecimal.valueOf(15)));
+            new FlightHarmonizer(new OfferCache(), new CommissionPolicy(BigDecimal.valueOf(15), BigDecimal.valueOf(15),
+                    BigDecimal.valueOf(15), BigDecimal.valueOf(15)));
 
     @Test
     void mergesSameFlightQuotedByMultipleProvidersAndKeepsTheCheapestPrice() {

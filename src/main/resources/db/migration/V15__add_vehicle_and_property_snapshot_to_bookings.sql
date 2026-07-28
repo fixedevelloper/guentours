@@ -1,5 +1,3 @@
--- V{N}__add_vehicle_and_property_snapshot_to_bookings.sql
-
 ALTER TABLE bookings
     ADD COLUMN vehicle_brand VARCHAR(255),
     ADD COLUMN vehicle_model VARCHAR(255),
@@ -19,5 +17,3 @@ ALTER TABLE bookings
     ADD COLUMN bedrooms INTEGER,
     ADD COLUMN max_guests INTEGER,
     ADD COLUMN entire_place BOOLEAN;
-
-COMMENT ON COLUMN bookings.pickup_city IS 'Vehicle rental only. Reused city_code/check_in/check_out for property (see property_title/property_type/country/bedrooms/max_guests/entire_place).';
