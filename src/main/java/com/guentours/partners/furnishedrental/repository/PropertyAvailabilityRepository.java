@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface PropertyAvailabilityRepository extends JpaRepository<PropertyAvailability, String> {
     List<PropertyAvailability> findByPropertyIdAndStayDateBetween(String propertyId, LocalDate from, LocalDate to);
     Optional<PropertyAvailability> findByPropertyIdAndStayDate(String propertyId, LocalDate date);
+    List<PropertyAvailability> findByProperty_IdAndStayDateBetween(String propertyId, LocalDate start, LocalDate end);
 }

@@ -3,6 +3,8 @@ package com.guentours.search;
 import com.guentours.provider.*;
 import com.guentours.provider.dto.FlightPriceVerification;
 import com.guentours.provider.dto.HotelPriceVerification;
+import com.guentours.search.service.SeatMapService;
+import com.guentours.search.web.SeatMapResponse;
 import com.guentours.shared.Money;
 import org.junit.jupiter.api.Test;
 

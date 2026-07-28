@@ -1,23 +1,45 @@
 package com.guentours.partners.carrental.web;
 
 import com.guentours.partners.carrental.domain.ListingStatus;
+import com.guentours.partners.carrental.domain.Transmission;
 import com.guentours.partners.carrental.domain.Vehicle;
 import com.guentours.partners.carrental.domain.VehicleCategory;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public record VehicleResponse(
         String id,
+        String partnerId,
         String brand,
         String model,
         Integer year,
         VehicleCategory category,
+        Transmission transmission,
+        Integer seats,
+        Boolean airConditioning,
         BigDecimal pricePerDay,
+        String currency,
         Integer unitsCount,
+        List<String> pickupLocations,
         ListingStatus status
 ) {
-    public static VehicleResponse from(Vehicle v) {
-        return new VehicleResponse(v.getId(), v.getBrand(), v.getModel(), v.getYear(),
-                v.getCategory(), v.getPricePerDay(), v.getUnitsCount(), v.getStatus());
+    public static VehicleResponse from(Vehicle vehicle) {
+        return new VehicleResponse(
+                vehicle.getId(),
+                vehicle.getPartnerId(),
+                vehicle.getBrand(),
+                vehicle.getModel(),
+                vehicle.getYear(),
+                vehicle.getCategory(),
+                vehicle.getTransmission(),
+                vehicle.getSeats(),
+                vehicle.getAirConditioning(),
+                vehicle.getPricePerDay(),
+                vehicle.getCurrency(),
+                vehicle.getUnitsCount(),
+                vehicle.getPickupLocations(),
+                vehicle.getStatus()
+        );
     }
 }

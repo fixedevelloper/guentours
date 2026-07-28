@@ -58,4 +58,8 @@ public record Money(BigDecimal amount, String currency) implements Comparable<Mo
         requireSameCurrency(other);
         return this.amount.compareTo(other.amount);
     }
+
+    public Money multiply(int i) {
+        return null;
+    }
 }

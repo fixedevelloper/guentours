@@ -244,7 +244,7 @@ function ResellerMultiCityFlightsContent() {
                                     </Button>
                                 </div>
                             ) : (
-                                <FlightResultsList offers={filteredOffers} />
+                                <FlightResultsList offers={filteredOffers}  isReseller={true}/>
                             )}
                         </main>
                     </div>

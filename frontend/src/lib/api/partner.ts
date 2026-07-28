@@ -8,7 +8,7 @@ import type {
     FlightFormData,
     FlightResponse,
     HotelResponse,
-    PageResponse, PropertyFormData,
+    PageResponse, PartnerUpdateRequest, PropertyFormData,
     PropertyResponse, RoomAvailabilityFormData, RoomAvailabilityResponse,
     RoomTypeResponse,
     VehicleResponse,
@@ -16,6 +16,14 @@ import type {
 import { BookingResponse } from "./types";
 import { RoomTypeRequestPayload } from "../../components/partner/rooms/RoomForm";
 
+
+export async function getPartnerBookings(partnerId: string, page: number, size = 20) {
+    const { data } = await apiClient.get<PageResponse<BookingResponse>>(
+        `/api/partners/${partnerId}/bookings`,
+        { params: { page, size } }
+    );
+    return data;
+}
 // --- Flights ---
 
 export async function getPartnerFlights(partnerId: string, page: number, size = 20) {
@@ -186,6 +194,10 @@ export async function deleteProperty(partnerId: string, propertyId: string) {
 
 export async function createPartner(request: PartnerRegistrationRequest): Promise<PartnerResponse> {
     const { data } = await apiClient.post<PartnerResponse>("/api/partners/register", request);
+    return data;
+}
+export async function updatePartner(partnerId: string, payload: PartnerUpdateRequest) {
+    const { data } = await apiClient.patch<PartnerResponse>(`/api/partners/${partnerId}`, payload);
     return data;
 }
 

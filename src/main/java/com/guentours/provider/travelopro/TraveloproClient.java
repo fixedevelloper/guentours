@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.client.ClientHttpRequestFactories;
 import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.stereotype.Component;
@@ -21,6 +22,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
@@ -51,9 +53,13 @@ public class TraveloproClient implements TravelProviderClient {
     public TraveloproClient(RestClient.Builder restClientBuilder, ProviderProperties properties) {
         this.config = properties.getTravelopro();
 
+        // Configuration des timeouts distincts (par exemple 10s pour se connecter, 35s pour lire la réponse)
+        long connectTimeout = config.getTimeoutMillis() > 0 ? config.getTimeoutMillis() : 10_000L;
+        long readTimeout = config.getTimeoutMillis() > 0 ? config.getTimeoutMillis() : 35_000L;
+
         ClientHttpRequestFactorySettings timeoutSettings = ClientHttpRequestFactorySettings.DEFAULTS
-                .withConnectTimeout(Duration.ofMillis(config.getTimeoutMillis()))
-                .withReadTimeout(Duration.ofMillis(config.getTimeoutMillis()));
+                .withConnectTimeout(Duration.ofMillis(connectTimeout))
+                .withReadTimeout(Duration.ofMillis(readTimeout));
 
         MappingJackson2HttpMessageConverter jsonConverter = new MappingJackson2HttpMessageConverter();
         jsonConverter.setSupportedMediaTypes(List.of(
@@ -65,6 +71,7 @@ public class TraveloproClient implements TravelProviderClient {
         this.restClient = restClientBuilder
                 .baseUrl(config.getBaseUrl().isBlank() ? "https://travelnext.works" : config.getBaseUrl())
                 .requestFactory(ClientHttpRequestFactories.get(timeoutSettings))
+                .defaultHeader(HttpHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)") // Évite d'être bloqué par un WAF/Cloudflare
                 .messageConverters(converters -> {
                     converters.clear();
                     converters.add(jsonConverter);
@@ -147,32 +154,45 @@ public class TraveloproClient implements TravelProviderClient {
         String productId = offer.context("productId");
         String tokenId = offer.context("tokenId");
 
+        log.info("[Travelopro] SessionId: {}, TokenId: {}", sessionId, tokenId);
+
         // Validation défensive des paramètres requis
         if (sessionId == null || hotelId == null) {
             log.warn("[Travelopro] Paramètres de contexte manquants pour getRoomOffers (sessionId={}, hotelId={})", sessionId, hotelId);
             return List.of();
         }
 
+        // Construction du payload POST
+        TraveloproRoomRateRequest requestBody = new TraveloproRoomRateRequest(
+                sessionId,
+                hotelId,
+                productId,
+                tokenId
+        );
+
         try {
-            TraveloproRoomRateResponse response = restClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/api/hotel-api-v6/get_room_rates")
-                            .queryParam("sessionId", sessionId)
-                            .queryParam("hotelId", hotelId)
-                            .queryParamIfPresent("productId", Optional.ofNullable(productId))
-                            .queryParamIfPresent("tokenId", Optional.ofNullable(tokenId))
-                            .build())
+            TraveloproRoomRateResponse response = restClient.post()
+                    .uri("/api/hotel-api-v6/get_room_rates")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(requestBody)
                     .retrieve()
                     .body(TraveloproRoomRateResponse.class);
 
             log.debug("[Travelopro] Réponse reçue pour hotelId={} : {}", hotelId, response);
 
-            if (response == null || response.roomRates() == null) {
-                log.warn("[Travelopro] Réponse vide ou roomRates nul pour hotelId={}", hotelId);
+            if (response == null) {
+                log.warn("[Travelopro] Réponse nulle reçue pour hotelId={}", hotelId);
                 return List.of();
             }
 
-            return response.roomRates();
+            log.info("[Travelopro] Detail réponse : {}", response);
+
+            List<RoomOffer> offers = response.getRoomOffers();
+            if (offers.isEmpty()) {
+                log.warn("[Travelopro] Aucune offre de chambre trouvée pour hotelId={}", hotelId);
+            }
+
+            return offers;
 
         } catch (RestClientException e) {
             log.error("[Travelopro] Erreur lors de l'appel API get_room_rates pour hotelId={}: {}", hotelId, e.getMessage(), e);
@@ -258,7 +278,7 @@ public class TraveloproClient implements TravelProviderClient {
                         .build())
                 .retrieve()
                 .body(HotelDetail.class);
-
+        log.info(response.toString());
         // 3. Mapping/Retour du résultat (adapter selon la structure de HotelDetailResponse)
         return response != null ? response : null;
     }

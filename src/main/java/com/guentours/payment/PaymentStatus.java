@@ -1,7 +1,0 @@
-package com.guentours.payment;
-
-public enum PaymentStatus {
-    PENDING,
-    SUCCEEDED,
-    FAILED
-}

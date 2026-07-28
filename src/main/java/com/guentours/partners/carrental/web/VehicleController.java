@@ -19,7 +19,9 @@ public class VehicleController {
 
     private final VehicleService service;
 
-    public VehicleController(VehicleService service) { this.service = service; }
+    public VehicleController(VehicleService service) {
+        this.service = service;
+    }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -38,24 +40,30 @@ public class VehicleController {
     }
 
     @PatchMapping("/{vehicleId}/suspend")
-    public void suspend(@PathVariable String vehicleId) { service.suspend(vehicleId); }
+    public void suspend(@PathVariable String vehicleId) {
+        service.suspend(vehicleId);
+    }
 
     @PatchMapping("/{vehicleId}/activate")
-    public void activate(@PathVariable String vehicleId) { service.activate(vehicleId); }
+    public void activate(@PathVariable String vehicleId) {
+        service.activate(vehicleId);
+    }
 
     @DeleteMapping("/{vehicleId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable String vehicleId) { service.delete(vehicleId); }
+    public void delete(@PathVariable String vehicleId) {
+        service.delete(vehicleId);
+    }
 
     @PutMapping("/{vehicleId}/availability")
     public VehicleAvailability upsertAvailability(@PathVariable String vehicleId,
-                                                   @Valid @RequestBody VehicleAvailabilityRequest req) {
+                                                  @Valid @RequestBody VehicleAvailabilityRequest req) {
         return service.upsertAvailability(vehicleId, req);
     }
 
     @GetMapping("/{vehicleId}/availability")
     public List<VehicleAvailability> getAvailability(@PathVariable String vehicleId,
-                                                      @RequestParam LocalDate from, @RequestParam LocalDate to) {
+                                                     @RequestParam LocalDate from, @RequestParam LocalDate to) {
         return service.getAvailability(vehicleId, from, to);
     }
 }

@@ -8,19 +8,32 @@ import java.math.BigDecimal;
 
 public record PropertyResponse(
         String id,
+        String partnerId,
         String title,
         PropertyType propertyType,
         String city,
         String country,
         Integer bedrooms,
+        Integer bathrooms,
         Integer maxGuests,
         BigDecimal pricePerNight,
+        Integer minStayNights,
         ListingStatus status
 ) {
-    public static PropertyResponse from(Property p) {
+    public static PropertyResponse from(Property property) {
         return new PropertyResponse(
-                p.getId(), p.getTitle(), p.getPropertyType(), p.getCity(), p.getCountry(),
-                p.getBedrooms(), p.getMaxGuests(), p.getPricePerNight(), p.getStatus()
+                property.getId(),
+                property.getPartnerId(),
+                property.getTitle(),
+                property.getPropertyType(),
+                property.getCity(),
+                property.getCountry(),
+                property.getBedrooms(),
+                property.getBathrooms(),
+                property.getMaxGuests(),
+                property.getPricePerNight(),
+                property.getMinStayNights(),
+                property.getStatus()
         );
     }
 }

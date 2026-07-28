@@ -15,11 +15,22 @@ public class CommissionPolicy {
 
     private final BigDecimal flightFeeAmount;
     private final BigDecimal hotelFeeAmount;
+    private final BigDecimal vehicleFeeAmount;
+    private final BigDecimal propertyFeeAmount;
+
+    // Dans le constructeur, ajouter le paramètre :
+
+
+// Puis :
 
     public CommissionPolicy(@Value("${app.commission.flight-fee-amount:15}") BigDecimal flightFeeAmount,
-                             @Value("${app.commission.hotel-fee-amount:15}") BigDecimal hotelFeeAmount) {
+                            @Value("${app.commission.hotel-fee-amount:15}") BigDecimal hotelFeeAmount,
+                            @Value("${app.commission.vehicle-fee-amount:15}") BigDecimal vehicleFeeAmount,
+                            @Value("${app.commission.property-fee-amount:15}") BigDecimal propertyFeeAmount) {
         this.flightFeeAmount = flightFeeAmount;
         this.hotelFeeAmount = hotelFeeAmount;
+        this.vehicleFeeAmount = vehicleFeeAmount;
+        this.propertyFeeAmount = propertyFeeAmount;
     }
 
     public Money flightFee(String currency) {
@@ -30,6 +41,10 @@ public class CommissionPolicy {
         return new Money(hotelFeeAmount, currency);
     }
 
+    public Money vehicleFee(String currency) {
+        return new Money(vehicleFeeAmount, currency);
+    }
+
     /** Adds one flight fee to a provider price - once per flight segment (leg). */
     public Money addFlightFee(Money providerPrice) {
         return providerPrice.add(flightFee(providerPrice.currency()));
@@ -38,5 +53,18 @@ public class CommissionPolicy {
     /** Adds one hotel fee to a provider price - once per room booked. */
     public Money addHotelFee(Money providerPrice) {
         return providerPrice.add(hotelFee(providerPrice.currency()));
+    }
+
+    /** Adds one vehicle fee to a provider price - once per rental booked. */
+    public Money addVehicleFee(Money providerPrice) {
+        return providerPrice.add(vehicleFee(providerPrice.currency()));
+    }
+    public Money propertyFee(String currency) {
+        return new Money(propertyFeeAmount, currency);
+    }
+
+    /** Adds one property fee to a provider price - once per stay booked. */
+    public Money addPropertyFee(Money providerPrice) {
+        return providerPrice.add(propertyFee(providerPrice.currency()));
     }
 }

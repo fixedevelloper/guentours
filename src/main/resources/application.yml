@@ -62,6 +62,7 @@ app:
   booking:
     # How often unpaid/deposit-only holds past their provider ticketing deadline get auto-cancelled.
     expiry-check-interval-ms: ${APP_BOOKING_EXPIRY_CHECK_INTERVAL_MS:300000}
+    expiry-check-initial-delay-ms: ${APP_BOOKING_EXPIRY_DELAY_MS:60000}
 
   admin:
     # Seeds a default super-admin account on first boot (skipped once that email already exists),
@@ -108,6 +109,15 @@ app:
     # 30 days in milliseconds; initial delay of 0 populates airports/hotel_cities on first boot.
     sync-interval-ms: ${REFERENCE_DATA_SYNC_INTERVAL_MS:2592000000}
     sync-initial-delay-ms: ${REFERENCE_DATA_SYNC_INITIAL_DELAY_MS:0}
+  # application.yml
+  flutterwave:
+    secret-key: ${FLUTTERWAVE_SECRET_KEY}
+    public-key: ${FLUTTERWAVE_PUBLIC_KEY}
+    encryption-key: ${FLUTTERWAVE_ENCRYPTION_KEY}
+    webhook-secret-hash: ${FLUTTERWAVE_WEBHOOK_SECRET_HASH}
+    default-currency: XAF
+    default-country: CM
+    redirect-url: ${REDIRECT_URL:https://www.guenstravel.com/payments/redirect}
 
 server:
   port: ${SERVER_PORT:8080}

@@ -1,82 +1,100 @@
 package com.guentours.reseller.service;
 
-import com.guentours.reseller.domain.*;
-import com.guentours.shared.Money;
+import com.guentours.booking.domain.Booking;
+import com.guentours.booking.domain.BookingRepository;
+import com.guentours.reseller.domain.Reseller;
+import com.guentours.reseller.domain.ResellerCommissionEntry;
+import com.guentours.reseller.domain.ResellerCommissionRepository;
+import com.guentours.reseller.domain.ResellerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class ResellerCommissionService {
 
+    private final BookingRepository bookingRepository;
     private final ResellerRepository resellerRepository;
-    private final ResellerCommissionRepository commissionRepository;
+    private final ResellerCommissionRepository commissionEntryRepository;
 
     /**
-     * Crédite la commission du revendeur de manière idempotente lors de la confirmation d'une réservation.
-     * Conserve le taux de commission appliqué au moment de l'achat et crée l'entrée au statut PENDING.
-     *
-     * @param resellerId   L'identifiant du revendeur.
-     * @param bookingId    L'identifiant de la réservation.
-     * @param bookingPrice Le montant total payé pour la réservation (objet Money).
+     * Point d'entrée à appeler dès qu'une réservation passe à un statut payé/confirmé.
+     * Idempotent : si une commission existe déjà pour ce booking, on ne rejoue rien.
      */
     @Transactional
-    public void creditCommission(String resellerId, String bookingId, BigDecimal bookingPrice, String currency) {
-        if (commissionRepository.existsByBookingId(bookingId)) {
+    public void handleBookingPaymentConfirmed(String bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Réservation introuvable : " + bookingId));
+
+        String resellerId = booking.getResellerId();
+        if (resellerId == null) {
+            log.debug("Booking {} sans revendeur associé, aucune commission à générer.", bookingId);
             return;
         }
 
-        Reseller reseller = resellerRepository.findById(resellerId).orElse(null);
-        if (reseller == null || reseller.getStatus() != ResellerStatus.APPROVED) {
+        if (commissionEntryRepository.existsByBookingId(bookingId)) {
+            log.debug("Commission déjà générée pour le booking {}, on ignore (idempotence).", bookingId);
             return;
         }
 
-        // Le constructeur gère le calcul du montant et l'arrondi automatiquement
+        Reseller reseller = resellerRepository.findById(resellerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Revendeur introuvable : " + resellerId));
+
+        BigDecimal bookingAmount = booking.getPrice() != null ? booking.getPrice().amount() : BigDecimal.ZERO;
+        String currency = booking.getPrice() != null ? booking.getPrice().currency() : "XAF";
+
         ResellerCommissionEntry entry = new ResellerCommissionEntry(
-                resellerId,
+                reseller.getId(),
                 bookingId,
-                bookingPrice,
+                bookingAmount,
                 reseller.getCommissionRate(),
                 currency
         );
 
-        commissionRepository.save(entry);
-    }
-    /**
-     * Libère la commission vers le solde disponible (AVAILABLE) une fois le vol/séjour consommé.
-     *
-     * @param bookingId L'identifiant de la réservation.
-     */
-    @Transactional
-    public void releaseCommission(String bookingId) {
-        commissionRepository.findByBookingId(bookingId).ifPresentOrElse(
-                entry -> {
-                    entry.markPaid();
-                    log.info("Commission pour la réservation ID: {} débloquée au statut AVAILABLE.", bookingId);
-                },
-                () -> log.warn("Aucune commission trouvée à débloquer pour la réservation ID: {}", bookingId)
-        );
+        // Le paiement est confirmé : la commission devient immédiatement disponible pour retrait.
+        entry.approve();
+        commissionEntryRepository.save(entry);
+
+        reseller.creditWallet(entry.getAmount());
+        resellerRepository.save(reseller);
+
+        log.info("Commission de {} {} créditée au revendeur {} pour le booking {}",
+                entry.getAmount(), entry.getCurrency(), reseller.getId(), bookingId);
     }
 
     /**
-     * Annule la commission en cas d'annulation ou de remboursement de la réservation.
-     *
-     * @param bookingId L'identifiant de la réservation.
+     * À appeler si une réservation déjà commissionnée est annulée/remboursée :
+     * on annule la commission et on débite le wallet si elle avait déjà été créditée.
      */
     @Transactional
-    public void cancelCommission(String bookingId) {
-        commissionRepository.findByBookingId(bookingId).ifPresentOrElse(
-                entry -> {
-                    entry.cancel();
-                    log.info("Commission pour la réservation ID: {} marquée comme CANCELLED.", bookingId);
-                },
-                () -> log.warn("Aucune commission trouvée à annuler pour la réservation ID: {}", bookingId)
-        );
+    public void handleBookingCancelledOrRefunded(String bookingId) {
+        commissionEntryRepository.findByBookingId(bookingId).ifPresent(entry -> {
+            if (entry.getStatus().name().equals("PAID")) {
+                log.warn("Commission {} déjà versée, impossible de l'annuler automatiquement.", entry.getId());
+                return;
+            }
+            boolean wasAvailable = entry.getStatus().name().equals("AVAILABLE");
+            entry.cancel();
+            commissionEntryRepository.save(entry);
+
+            if (wasAvailable) {
+                Reseller reseller = resellerRepository.findById(entry.getResellerId())
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                                "Revendeur introuvable : " + entry.getResellerId()));
+                reseller.debitWallet(entry.getAmount());
+                resellerRepository.save(reseller);
+                log.info("Commission annulée, wallet du revendeur {} débité de {}", reseller.getId(), entry.getAmount());
+            }
+        });
     }
 }

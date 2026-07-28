@@ -4,7 +4,26 @@ import * as partnerApi from "@/lib/api/partner";
 import {HotelFormData} from "../types/hotel-form";
 import {createFlight, createHotel} from "../lib/api/partner";
 import {RoomTypeRequestPayload} from "../components/partner/rooms/RoomForm";
-import {AvailabilityFormData, FareFormData, FlightFormData, PropertyFormData, RoomAvailabilityFormData} from "../lib/api/types";
+import {
+    AvailabilityFormData, BookingResponse,
+    FareFormData,
+    FlightFormData,
+    PageResponse, PartnerUpdateRequest,
+    PropertyFormData,
+    RoomAvailabilityFormData, UpdatePartnerDto
+} from "../lib/api/types";
+import {PartnerRegistrationRequest} from "@/types/partner";
+
+
+
+export function useBookingsQuery(partnerId: string, page: number, size = 20) {
+    return useQuery<PageResponse<BookingResponse>>({
+        queryKey: ["partner-bookings", partnerId, page, size],
+        queryFn: () => partnerApi.getPartnerBookings(partnerId, page, size),
+        enabled: !!partnerId,
+    });
+}
+
 // --- Flights ---
 export function useCreateFlightMutation(partnerId: string) {
     const queryClient = useQueryClient();
@@ -173,12 +192,24 @@ export function useCreateHotel() {
         },
     });
 }
-export function usePartnerQuery(partnerId: string | null) {
+export function usePartnerQuery(partnerId: string | null | undefined) {
     return useQuery({
         queryKey: ["partner", partnerId],
         queryFn: () => partnerApi.getPartner(partnerId as string),
         enabled: Boolean(partnerId),
-        staleTime: 1000 * 60 * 5, // Optionnel: garde les données fraîches pendant 5 min
+        staleTime: 1000 * 60 * 5,
+    });
+}
+
+export function useUpdatePartnerMutation() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: ({ partnerId, data }: { partnerId: string; data: PartnerUpdateRequest }) =>
+            partnerApi.updatePartner(partnerId, data),
+        onSuccess: (_, variables) => {
+            // Rafraîchit le profil partenaire affiché (PartnerLayout, page paramètres, etc.)
+            queryClient.invalidateQueries({ queryKey: ["partner", variables.partnerId] });
+        },
     });
 }
 // --- Hotel Rooms ---

@@ -2,6 +2,8 @@ package com.guentours.provider;
 
 import com.guentours.provider.dto.FlightPriceVerification;
 import com.guentours.provider.dto.HotelPriceVerification;
+import com.guentours.provider.dto.PropertyPriceVerification;
+import com.guentours.provider.dto.VehiclePriceVerification;
 
 import java.util.List;
 
@@ -25,7 +27,23 @@ public interface TravelProviderClient {
 
     /** Must never throw for a plain "no results"/timeout - return an empty list instead. */
     List<HotelOffer> searchHotels(HotelSearchCriteria criteria);
+// Ajouts dans TravelProviderClient, à la suite de searchHotels
 
+    /**
+     * Must never throw for a plain "no results"/timeout - return an empty list instead.
+     * Default empty implementation: providers without car rental inventory don't need to override this.
+     */
+    default List<VehicleOffer> searchVehicles(VehicleSearchCriteria criteria) {
+        return List.of();
+    }
+
+    /**
+     * Must never throw for a plain "no results"/timeout - return an empty list instead.
+     * Default empty implementation: providers without furnished-rental inventory don't need to override this.
+     */
+    default List<PropertyOffer> searchProperties(PropertySearchCriteria criteria) {
+        return List.of();
+    }
     /**
      * Seat map for a previously-searched flight offer, used by the seat-selection step. Returns
      * {@code null} by default (provider exposes no seat data); adapters that integrate a real
@@ -76,7 +94,52 @@ public interface TravelProviderClient {
      * Reserves a hotel room (either on hold or immediate booking depending on provider policy).
      */
     ProviderBookingConfirmation createHotelHold(HotelBookingRequest request);
+// Ajouts dans TravelProviderClient.java, à la suite de searchProperties
 
+    /**
+     * Places a hold on the vehicle for the requested rental period. Default throws
+     * UnsupportedOperationException - only adapters that actually support car rental
+     * inventory (see searchVehicles) need to override this.
+     */
+    default ProviderBookingConfirmation createVehicleHold(VehicleBookingRequest request) {
+        throw new UnsupportedOperationException(getType() + " does not support vehicle bookings");
+    }
+
+    /**
+     * Places a hold on the property for the requested stay. Default throws
+     * UnsupportedOperationException - only adapters that actually support furnished-rental
+     * inventory (see searchProperties) need to override this.
+     */
+    default ProviderBookingConfirmation createPropertyHold(PropertyBookingRequest request) {
+        throw new UnsupportedOperationException(getType() + " does not support property bookings");
+    }
+
+    default void cancelVehicleBooking(String bookingRef) {
+        throw new UnsupportedOperationException(getType() + " does not support vehicle bookings");
+    }
+
+    default void cancelPropertyBooking(String bookingRef) {
+        throw new UnsupportedOperationException(getType() + " does not support property bookings");
+    }
+    // Ajouts dans TravelProviderClient.java, à la suite de createPropertyHold
+
+    /**
+     * Re-validates vehicle price/availability before the hold. Default throws
+     * UnsupportedOperationException - only adapters that support car rental inventory
+     * (see searchVehicles) need to override this.
+     */
+    default VehiclePriceVerification verifyVehiclePrice(VehicleOffer offer) {
+        throw new UnsupportedOperationException(getType() + " does not support vehicle bookings");
+    }
+
+    /**
+     * Re-validates property price/availability before the hold. Default throws
+     * UnsupportedOperationException - only adapters that support furnished-rental inventory
+     * (see searchProperties) need to override this.
+     */
+    default PropertyPriceVerification verifyPropertyPrice(PropertyOffer offer) {
+        throw new UnsupportedOperationException(getType() + " does not support property bookings");
+    }
     // ==========================================
     // 4. ÉMISSION / CONFIRMATION FINALE (Ticket / Issue)
     // ==========================================

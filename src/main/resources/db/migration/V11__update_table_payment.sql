@@ -1,0 +1,4 @@
+ALTER TABLE payments MODIFY COLUMN payment_method
+     enum ('CARD','MTN_MOBILE_MONEY','ORANGE_MONEY','MTN_MOBILE') NOT NULL;
+ALTER TABLE payments ADD COLUMN deposit_payment BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE payments ADD COLUMN updated_at datetime(6)

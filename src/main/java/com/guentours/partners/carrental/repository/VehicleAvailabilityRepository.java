@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface VehicleAvailabilityRepository extends JpaRepository<VehicleAvailability, String> {
     List<VehicleAvailability> findByVehicleIdAndRentDateBetween(String vehicleId, LocalDate from, LocalDate to);
     Optional<VehicleAvailability> findByVehicleIdAndRentDate(String vehicleId, LocalDate date);
+    List<VehicleAvailability> findByVehicle_IdAndRentDateBetween(String vehicleId, LocalDate start, LocalDate end);
 }

@@ -4,6 +4,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -15,4 +16,12 @@ public interface BookingRepository extends JpaRepository<Booking, String> {
     List<Booking> findByStatusInAndTicketingDeadlineBefore(List<BookingStatus> statuses, LocalDateTime cutoff);
     Page<Booking> findByPartnerId(String partnerId, Pageable pageable);
     Page<Booking> findByResellerId(String resellerId, Pageable pageable);
+    /**
+     * Recherche les réservations PAY_LATER non finalisées créées avant un instant donné.
+     */
+    List<Booking> findByPaymentPlanAndStatusInAndCreatedAtBefore(
+            PaymentPlan paymentPlan,
+            List<BookingStatus> statuses,
+            Instant expirationThreshold
+    );
 }

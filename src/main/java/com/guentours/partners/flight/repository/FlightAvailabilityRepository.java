@@ -10,4 +10,12 @@ import java.util.Optional;
 public interface FlightAvailabilityRepository extends JpaRepository<FlightAvailability, String> {
     List<FlightAvailability> findByFareIdAndFlightDateBetween(String fareId, LocalDate from, LocalDate to);
     Optional<FlightAvailability> findByFareIdAndFlightDate(String fareId, LocalDate date);
+
+    List<FlightAvailability> findByFare_Flight_OriginAirportCodeAndFare_Flight_DestinationAirportCode(
+            String origin,
+            String destination
+    );
 }
+
+
+

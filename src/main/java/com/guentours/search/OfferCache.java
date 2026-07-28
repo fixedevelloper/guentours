@@ -2,6 +2,8 @@ package com.guentours.search;
 
 import com.guentours.provider.FlightOffer;
 import com.guentours.provider.HotelOffer;
+import com.guentours.provider.PropertyOffer;
+import com.guentours.provider.VehicleOffer;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -29,6 +31,7 @@ public class OfferCache {
 
     private final Map<String, Entry<FlightOffer>> flightOffers = new ConcurrentHashMap<>();
     private final Map<String, Entry<HotelOffer>> hotelOffers = new ConcurrentHashMap<>();
+    private final Map<String, Entry<VehicleOffer>> vehicleOffers = new ConcurrentHashMap<>();
 
     public String cacheFlightOffer(FlightOffer offer) {
         String id = UUID.randomUUID().toString();
@@ -39,6 +42,12 @@ public class OfferCache {
     public String cacheHotelOffer(HotelOffer offer) {
         String id = UUID.randomUUID().toString();
         hotelOffers.put(id, new Entry<>(offer, Instant.now().toEpochMilli() + TTL_MILLIS));
+        return id;
+    }
+
+    public String cacheVehicleOffer(VehicleOffer offer) {
+        String id = UUID.randomUUID().toString();
+        vehicleOffers.put(id, new Entry<>(offer, Instant.now().toEpochMilli() + TTL_MILLIS));
         return id;
     }
 
@@ -58,9 +67,33 @@ public class OfferCache {
         return Optional.of(entry.value());
     }
 
+    public Optional<VehicleOffer> getVehicleOffer(String offerId) {
+        Entry<VehicleOffer> entry = vehicleOffers.get(offerId);
+        if (entry == null || entry.isExpired()) {
+            return Optional.empty();
+        }
+        return Optional.of(entry.value());
+    }
+    private final Map<String, Entry<PropertyOffer>> propertyOffers = new ConcurrentHashMap<>();
+
+    public String cachePropertyOffer(PropertyOffer offer) {
+        String id = UUID.randomUUID().toString();
+        propertyOffers.put(id, new Entry<>(offer, Instant.now().toEpochMilli() + TTL_MILLIS));
+        return id;
+    }
+
+    public Optional<PropertyOffer> getPropertyOffer(String offerId) {
+        Entry<PropertyOffer> entry = propertyOffers.get(offerId);
+        if (entry == null || entry.isExpired()) {
+            return Optional.empty();
+        }
+        return Optional.of(entry.value());
+    }
     @Scheduled(fixedRate = 5 * 60 * 1000)
     void evictExpired() {
         flightOffers.values().removeIf(Entry::isExpired);
         hotelOffers.values().removeIf(Entry::isExpired);
+        vehicleOffers.values().removeIf(Entry::isExpired);
+        propertyOffers.values().removeIf(Entry::isExpired);
     }
 }

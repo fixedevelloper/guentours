@@ -97,4 +97,8 @@ public class Property {
     public BigDecimal getPricePerNight() { return pricePerNight; }
     public Integer getMinStayNights() { return minStayNights; }
     public ListingStatus getStatus() { return status; }
+
+    public String getCurrency() {
+        return currency;
+    }
 }

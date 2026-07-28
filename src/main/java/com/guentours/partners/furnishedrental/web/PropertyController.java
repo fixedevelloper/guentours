@@ -1,6 +1,5 @@
 package com.guentours.partners.furnishedrental.web;
 
-import com.guentours.partners.furnishedrental.domain.Property;
 import com.guentours.partners.furnishedrental.domain.PropertyAvailability;
 import com.guentours.partners.furnishedrental.service.PropertyService;
 import jakarta.validation.Valid;
@@ -20,7 +19,9 @@ public class PropertyController {
 
     private final PropertyService service;
 
-    public PropertyController(PropertyService service) { this.service = service; }
+    public PropertyController(PropertyService service) {
+        this.service = service;
+    }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -39,24 +40,30 @@ public class PropertyController {
     }
 
     @PatchMapping("/{propertyId}/suspend")
-    public void suspend(@PathVariable String propertyId) { service.suspend(propertyId); }
+    public void suspend(@PathVariable String propertyId) {
+        service.suspend(propertyId);
+    }
 
     @PatchMapping("/{propertyId}/activate")
-    public void activate(@PathVariable String propertyId) { service.activate(propertyId); }
+    public void activate(@PathVariable String propertyId) {
+        service.activate(propertyId);
+    }
 
     @DeleteMapping("/{propertyId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable String propertyId) { service.delete(propertyId); }
+    public void delete(@PathVariable String propertyId) {
+        service.delete(propertyId);
+    }
 
     @PutMapping("/{propertyId}/availability")
     public PropertyAvailability upsertAvailability(@PathVariable String propertyId,
-                                                    @Valid @RequestBody PropertyAvailabilityRequest req) {
+                                                   @Valid @RequestBody PropertyAvailabilityRequest req) {
         return service.upsertAvailability(propertyId, req);
     }
 
     @GetMapping("/{propertyId}/availability")
     public List<PropertyAvailability> getAvailability(@PathVariable String propertyId,
-                                                       @RequestParam LocalDate from, @RequestParam LocalDate to) {
+                                                      @RequestParam LocalDate from, @RequestParam LocalDate to) {
         return service.getAvailability(propertyId, from, to);
     }
 }

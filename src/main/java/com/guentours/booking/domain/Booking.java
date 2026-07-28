@@ -8,6 +8,7 @@ import lombok.Getter;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -35,18 +36,12 @@ public class Booking {
     @Column(name = "provider_type", nullable = false, length = 30)
     private ProviderType providerType;
 
-    /** Référence externe vers un partenaire d'inventaire direct (module partners). */
     @Column(name = "partner_id", length = 36)
     private String partnerId;
 
-    /** Référence externe vers le revendeur/apporteur d'affaires (module reseller). */
     @Column(name = "reseller_id", length = 36)
     private String resellerId;
 
-    /**
-     * Identifiant unique de l'offre fournisseur au moment de la recherche.
-     * Utilise un LOB pour supporter les jetons longs (ex: FareSourceCode de Travelopro).
-     */
     @Lob
     @Column(name = "provider_offer_id", nullable = false)
     private String providerOfferId;
@@ -66,20 +61,18 @@ public class Booking {
     @Column(name = "arrival_time")
     private LocalDateTime arrivalTime;
 
-    /** Tronçons d'un itinéraire multi-destinations (MULTI_CITY). */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "booking_itinerary_legs", joinColumns = @JoinColumn(name = "booking_id"))
     @OrderColumn(name = "leg_position")
     private List<BookingFlightLeg> itineraryLegs = new ArrayList<>();
 
-    /** Codes PNR par tronçon pour un vol multi-destinations. */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "booking_leg_pnr_codes", joinColumns = @JoinColumn(name = "booking_id"))
     @Column(name = "pnr_code")
     @OrderColumn(name = "leg_position")
     private List<String> legPnrCodes = new ArrayList<>();
 
-    // --- Snapshot Hôtel (Populé si offerType == HOTEL) ---
+    // --- Snapshot Hôtel (Populé si offerType == HOTEL) ; cityCode/checkIn/checkOut réutilisés pour FURNISHED_RENTAL ---
     @Column(name = "hotel_name")
     private String hotelName;
 
@@ -92,9 +85,63 @@ public class Booking {
     @Column(name = "check_out")
     private LocalDate checkOut;
 
-    /** Classe de cabine (Vol) ou type de chambre (Hôtel). */
+    /** Classe de cabine (Vol), type de chambre (Hôtel), ou catégorie/type non repris ici pour véhicule/logement. */
     @Column(name = "fare_class")
     private String fareClass;
+
+    // --- Snapshot Véhicule (Populé si offerType == CAR_RENTAL) ---
+    @Column(name = "vehicle_brand")
+    private String vehicleBrand;
+
+    @Column(name = "vehicle_model")
+    private String vehicleModel;
+
+    @Column(name = "vehicle_category")
+    private String vehicleCategory;
+
+    @Column(name = "vehicle_transmission")
+    private String vehicleTransmission;
+
+    @Column(name = "vehicle_seats")
+    private Integer vehicleSeats;
+
+    @Column(name = "pickup_city")
+    private String pickupCity;
+
+    @Column(name = "dropoff_city")
+    private String dropoffCity;
+
+    @Column(name = "rental_start")
+    private LocalDate rentalStart;
+
+    @Column(name = "pickup_time")
+    private LocalTime pickupTime;
+
+    @Column(name = "rental_end")
+    private LocalDate rentalEnd;
+
+    @Column(name = "dropoff_time")
+    private LocalTime dropoffTime;
+
+    @Column(name = "with_driver")
+    private Boolean withDriver;
+
+    // --- Snapshot Logement meublé (Populé si offerType == FURNISHED_RENTAL) ---
+    @Column(name = "property_title")
+    private String propertyTitle;
+
+    @Column(name = "property_type")
+    private String propertyType;
+
+    private String country;
+
+    private Integer bedrooms;
+
+    @Column(name = "max_guests")
+    private Integer maxGuests;
+
+    @Column(name = "entire_place")
+    private Boolean entirePlace;
 
     @Embedded
     private Money price;
@@ -103,7 +150,6 @@ public class Booking {
     @Column(name = "payment_plan", nullable = false, length = 20)
     private PaymentPlan paymentPlan = PaymentPlan.PAY_NOW;
 
-    /** Frais d'acompte/réservation non remboursables pour l'option PAY_LATER. */
     @Embedded
     @AttributeOverrides({
             @AttributeOverride(name = "amount", column = @Column(name = "deposit_amount")),
@@ -215,6 +261,60 @@ public class Booking {
         return booking;
     }
 
+    public static Booking forVehicle(String userId, String contactEmail, ProviderType providerType,
+                                     String providerOfferId, String brand, String model, String category,
+                                     String transmission, int seats, String pickupCity, String dropoffCity,
+                                     LocalDate rentalStart, LocalTime pickupTime, LocalDate rentalEnd,
+                                     LocalTime dropoffTime, boolean withDriver, Money price,
+                                     List<BookedTraveler> drivers) {
+        Booking booking = new Booking();
+        booking.userId = userId;
+        booking.contactEmail = contactEmail;
+        booking.offerType = OfferType.CAR_RENTAL;
+        booking.providerType = providerType;
+        booking.providerOfferId = providerOfferId;
+        booking.vehicleBrand = brand;
+        booking.vehicleModel = model;
+        booking.vehicleCategory = category;
+        booking.vehicleTransmission = transmission;
+        booking.vehicleSeats = seats;
+        booking.pickupCity = pickupCity;
+        booking.dropoffCity = dropoffCity;
+        booking.rentalStart = rentalStart;
+        booking.pickupTime = pickupTime;
+        booking.rentalEnd = rentalEnd;
+        booking.dropoffTime = dropoffTime;
+        booking.withDriver = withDriver;
+        booking.price = price;
+        booking.travelers = drivers;
+        return booking;
+    }
+
+    public static Booking forProperty(String userId, String contactEmail, ProviderType providerType,
+                                      String providerOfferId, String title, String propertyType, String city,
+                                      String country, int bedrooms, int maxGuests, boolean entirePlace,
+                                      LocalDate checkIn, LocalDate checkOut, Money price,
+                                      List<BookedTraveler> guests) {
+        Booking booking = new Booking();
+        booking.userId = userId;
+        booking.contactEmail = contactEmail;
+        booking.offerType = OfferType.FURNISHED_RENTAL;
+        booking.providerType = providerType;
+        booking.providerOfferId = providerOfferId;
+        booking.propertyTitle = title;
+        booking.propertyType = propertyType;
+        booking.cityCode = city;
+        booking.country = country;
+        booking.bedrooms = bedrooms;
+        booking.maxGuests = maxGuests;
+        booking.entirePlace = entirePlace;
+        booking.checkIn = checkIn;
+        booking.checkOut = checkOut;
+        booking.price = price;
+        booking.travelers = guests;
+        return booking;
+    }
+
     @PreUpdate
     protected void onUpdate() {
         this.updatedAt = Instant.now();
@@ -224,12 +324,10 @@ public class Booking {
     // Logique Métier & Transitions d'état
     // =========================================================================
 
-    /** Associe cette réservation à un revendeur via son ID. */
     public void assignReseller(String resellerId) {
         this.resellerId = resellerId;
     }
 
-    /** Associe cette réservation à un partenaire d'inventaire direct. */
     public void assignPartner(String partnerId) {
         this.partnerId = partnerId;
     }
@@ -252,14 +350,10 @@ public class Booking {
         this.ticketingDeadline = earliestTicketingDeadline;
     }
 
-    /** Renvoie la liste de tous les codes PNR associés à la réservation. */
     public List<String> pnrCodes() {
         return legPnrCodes.isEmpty() ? List.of(providerConfirmationNumber) : legPnrCodes;
     }
 
-    /**
-     * Montant exigible immédiatement selon l'état actuel et l'option de paiement.
-     */
     public Money amountDue() {
         if (status == BookingStatus.DEPOSIT_PAID) {
             return price;

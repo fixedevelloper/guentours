@@ -2,23 +2,15 @@ package com.guentours.booking;
 
 import com.guentours.booking.domain.*;
 import com.guentours.booking.event.*;
+import com.guentours.booking.service.FlightPricingCalculator;
 import com.guentours.booking.web.CheckoutRequest;
 import com.guentours.booking.web.MultiCityCheckoutRequest;
 import com.guentours.booking.web.TravelerRequest;
-import com.guentours.provider.FinalHotelConfirmation;
-import com.guentours.provider.FinalTicketConfirmation;
-import com.guentours.provider.FlightBookingRequest;
-import com.guentours.provider.FlightOffer;
-import com.guentours.provider.HotelBookingRequest;
-import com.guentours.provider.HotelOffer;
-import com.guentours.provider.OfferExpiredException;
-import com.guentours.provider.PassengerInfo;
-import com.guentours.provider.PaymentDetails;
-import com.guentours.provider.ProviderBookingConfirmation;
-import com.guentours.provider.ProviderType;
-import com.guentours.provider.TravelProviderClient;
+import com.guentours.provider.*;
 import com.guentours.provider.dto.FlightPriceVerification;
 import com.guentours.provider.dto.HotelPriceVerification;
+import com.guentours.provider.dto.PropertyPriceVerification;
+import com.guentours.provider.dto.VehiclePriceVerification;
 import com.guentours.search.OfferCache;
 import com.guentours.shared.CommissionPolicy;
 import com.guentours.shared.Money;
@@ -59,9 +51,9 @@ public class BookingService {
     private final BigDecimal reservationFeeAmount;
 
     public BookingService(BookingRepository bookingRepository, UserService userService, OfferCache offerCache,
-                           List<TravelProviderClient> providerClients, BookingTrackingService trackingService,
-                           ApplicationEventPublisher events, CommissionPolicy commissionPolicy,
-                           @Value("${app.payment.reservation-fee:5000}") BigDecimal reservationFeeAmount) {
+                          List<TravelProviderClient> providerClients, BookingTrackingService trackingService,
+                          ApplicationEventPublisher events, CommissionPolicy commissionPolicy,
+                          @Value("${app.payment.reservation-fee:5000}") BigDecimal reservationFeeAmount) {
         this.bookingRepository = bookingRepository;
         this.userService = userService;
         this.offerCache = offerCache;
@@ -73,11 +65,6 @@ public class BookingService {
         this.reservationFeeAmount = reservationFeeAmount;
     }
 
-    /**
-     * Re-validates the offer with the provider and places a PNR/reservation hold on it
-     * before ever charging the customer - so a stale or oversold offer fails fast at
-     * checkout instead of surfacing as a payment that can't actually be honored.
-     */
     @Transactional
     public Booking checkout(CheckoutRequest request) {
         User user = userService.findOrCreateForCheckout(request.contactEmail(), request.contactFullName(),
@@ -89,26 +76,15 @@ public class BookingService {
         Booking booking = switch (request.offerType()) {
             case FLIGHT -> checkoutFlight(request, user, travelers, plan);
             case HOTEL -> checkoutHotel(request, user, travelers, plan);
-            case CAR_RENTAL -> null;
-            case FURNISHED_RENTAL -> null;
+            case CAR_RENTAL -> checkoutVehicle(request, user, travelers, plan);
+            case FURNISHED_RENTAL -> checkoutProperty(request, user, travelers, plan);
         };
-        // Dans ton BookingService existant, au moment de créer la Booking
-
-/*        if (promoCode != null && !promoCode.isBlank()) {
-            resellerService.findActiveByPromoCode(promoCode)
-                    .ifPresent(reseller -> booking.assignReseller(reseller.getId()));
-        }*/
 
         Booking saved = bookingRepository.save(booking);
         events.publishEvent(new BookingCreatedEvent(saved.getId()));
         return saved;
     }
 
-    /**
-     * Books every leg of a MULTI_CITY itinerary with the same provider (as returned by one
-     * {@code MultiCityItinerary}) into a single booking. If any leg's price/availability
-     * check or hold fails, every already-placed hold for this itinerary is voided.
-     */
     @Transactional
     public Booking checkoutMultiCity(MultiCityCheckoutRequest request) {
         User user = userService.findOrCreateForCheckout(request.contactEmail(), request.contactFullName(),
@@ -189,7 +165,8 @@ public class BookingService {
             throw new ProviderException("Unable to hold this flight with " + offer.providerType());
         }
 
-        Money priceWithFee = commissionPolicy.addFlightFee(offer.price());
+        Money totalOfferPrice = FlightPricingCalculator.multiplyByPayingTravelers(offer.price(), travelers);
+        Money priceWithFee = commissionPolicy.addFlightFee(totalOfferPrice);
         Booking booking = Booking.forFlight(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
                 offer.airline(), offer.flightNumber(), offer.origin(), offer.destination(),
                 offer.departureTime(), offer.arrivalTime(), offer.cabinClass(), priceWithFee, travelers);
@@ -215,7 +192,8 @@ public class BookingService {
             throw new ProviderException("Unable to hold this room with " + offer.providerType());
         }
 
-        Money priceWithFee = commissionPolicy.addHotelFee(offer.price());
+        Money totalOfferPrice = offer.price().multiply(request.quantityOrDefault());
+        Money priceWithFee = commissionPolicy.addHotelFee(totalOfferPrice);
         Booking booking = Booking.forHotel(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
                 offer.hotelName(), offer.cityCode(), offer.checkIn(), offer.checkOut(), offer.roomType(),
                 priceWithFee, travelers);
@@ -224,7 +202,65 @@ public class BookingService {
         return booking;
     }
 
-    /** The fixed, non-refundable reservation fee due up front for a PAY_LATER booking (never deducted from the price). */
+    /**
+     * ⚠️ Pas de vérification de prix/disponibilité en amont (pas de VehiclePriceVerification équivalent
+     * à FlightPriceVerification/HotelPriceVerification) — le hold lui-même échoue silencieusement
+     * (confirmed() == false) si l'inventaire a changé depuis la recherche. Comportement à valider :
+     * les vols/hôtels re-vérifient explicitement AVANT de tenter le hold, pas seulement au moment du hold.
+     */
+    private Booking checkoutVehicle(CheckoutRequest request, User user, List<BookedTraveler> travelers, PaymentPlan plan) {
+        VehicleOffer offer = offerCache.getVehicleOffer(request.offerId())
+                .orElseThrow(() -> new BusinessException("This vehicle offer has expired, please search again"));
+        TravelProviderClient client = clientFor(offer.providerType());
+
+        VehiclePriceVerification verification = client.verifyVehiclePrice(offer);
+        if (verification.priceChanged(offer.totalPrice()) || !verification.available()) {
+            throw new OfferExpiredException("This vehicle offer is no longer available at the quoted price, please search again");
+        }
+
+        List<PassengerInfo> drivers = toPassengers(travelers);
+        ProviderBookingConfirmation hold = client.createVehicleHold(
+                new VehicleBookingRequest(offer, drivers, request.contactEmail()));
+        if (!hold.confirmed()) {
+            throw new ProviderException("Unable to hold this vehicle with " + offer.providerType());
+        }
+
+        Money priceWithFee = commissionPolicy.addVehicleFee(offer.totalPrice());
+        Booking booking = Booking.forVehicle(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
+                offer.brand(), offer.model(), offer.category(), offer.transmission(), offer.seats(),
+                offer.pickupCity(), offer.dropoffCity(), offer.rentalStart(), offer.pickupTime(),
+                offer.rentalEnd(), offer.dropoffTime(), offer.withDriver(), priceWithFee, travelers);
+        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(priceWithFee.currency()) : null);
+        booking.markOnHold(hold.pnrCode(), hold.ticketingDeadline());
+        return booking;
+    }
+
+    private Booking checkoutProperty(CheckoutRequest request, User user, List<BookedTraveler> travelers, PaymentPlan plan) {
+        PropertyOffer offer = offerCache.getPropertyOffer(request.offerId())
+                .orElseThrow(() -> new BusinessException("This property offer has expired, please search again"));
+        TravelProviderClient client = clientFor(offer.providerType());
+
+        PropertyPriceVerification verification = client.verifyPropertyPrice(offer);
+        if (verification.priceChanged(offer.totalPrice()) || !verification.available()) {
+            throw new OfferExpiredException("This property offer is no longer available at the quoted price, please search again");
+        }
+
+        List<PassengerInfo> guests = toPassengers(travelers);
+        ProviderBookingConfirmation hold = client.createPropertyHold(
+                new PropertyBookingRequest(offer, guests, request.contactEmail()));
+        if (!hold.confirmed()) {
+            throw new ProviderException("Unable to hold this property with " + offer.providerType());
+        }
+
+        Money priceWithFee = commissionPolicy.addPropertyFee(offer.totalPrice());
+        Booking booking = Booking.forProperty(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
+                offer.title(), offer.propertyType(), offer.city(), offer.country(), offer.bedrooms(),
+                offer.maxGuests(), offer.entirePlace(), offer.checkIn(), offer.checkOut(), priceWithFee, travelers);
+        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(priceWithFee.currency()) : null);
+        booking.markOnHold(hold.pnrCode(), hold.ticketingDeadline());
+        return booking;
+    }
+
     private Money reservationFee(String currency) {
         return new Money(reservationFeeAmount, currency);
     }
@@ -234,14 +270,12 @@ public class BookingService {
                 .orElseThrow(() -> new NotFoundException("Booking not found: " + bookingId));
     }
 
-    /** Every booking made by the given account, most recent first - backs the customer dashboard. */
     public List<Booking> getForUser(String userId) {
         return bookingRepository.findByUserId(userId).stream()
                 .sorted(Comparator.comparing(Booking::getCreatedAt).reversed())
                 .toList();
     }
 
-    /** Every booking across every account, most recent first - backs the admin dashboard. */
     public List<Booking> getAll() {
         return bookingRepository.findAll().stream()
                 .sorted(Comparator.comparing(Booking::getCreatedAt).reversed())
@@ -252,13 +286,6 @@ public class BookingService {
         return BookingSummary.from(getById(bookingId));
     }
 
-    /**
-     * Called by the payment module right after a customer pays only the non-refundable reservation
-     * fee of a PAY_LATER booking. Unlike {@link #markPaidAndConfirm}, this does NOT trigger provider
-     * ticket issuance - the hold stays open until the full price is paid (or it lapses and gets
-     * auto-cancelled by {@link #cancelExpiredHolds()}). Fires {@link ReservationFeePaidEvent} so the
-     * fee is recorded as reservation commission.
-     */
     @Transactional
     public void markDepositPaid(String bookingId) {
         Booking booking = getById(bookingId);
@@ -271,13 +298,6 @@ public class BookingService {
         events.publishEvent(new ReservationFeePaidEvent(bookingId));
     }
 
-    /**
-     * Called by the payment module right after a charge succeeds for the full price (PAY_NOW)
-     * or the remaining balance (PAY_LATER, once the deposit was already paid). Marks the
-     * booking PAID immediately (fast path for the payment response) and publishes
-     * and drives provider ticket issuance - which can be slow - on a background thread, so the
-     * client follows progress via {@code GET /api/bookings/{id}/track} instead of blocking on it here.
-     */
     @Transactional
     public void markPaidAndConfirm(String bookingId, String paymentTransactionReference, String payerReferenceLast4) {
         Booking booking = getById(bookingId);
@@ -290,6 +310,14 @@ public class BookingService {
         events.publishEvent(new BookingPaidEvent(bookingId, paymentTransactionReference, payerReferenceLast4));
     }
 
+    /**
+     * ⚠️ CAR_RENTAL/FURNISHED_RENTAL n'ont pas de cycle hold→confirmation finale distinct chez DIRECT
+     * (le hold EST la confirmation, cf. DirectClient.createVehicleHold/createPropertyHold) — pas de
+     * méthode de finalisation dédiée sur TravelProviderClient pour ces deux types. On marque donc la
+     * réservation confirmée directement avec le providerConfirmationNumber déjà posé au hold, sans
+     * appel provider supplémentaire. Si un futur adaptateur GDS a un vrai cycle en 2 temps pour ces
+     * types, il faudra étendre TravelProviderClient avec les méthodes manquantes et revoir ce court-circuit.
+     */
     @Transactional
     public void confirmWithProvider(String bookingId, String paymentTransactionReference, String payerReferenceLast4) {
         Booking booking = getById(bookingId);
@@ -298,6 +326,14 @@ public class BookingService {
         trackingService.publish(bookingId, BookingStatus.CONFIRMING);
 
         try {
+            if (booking.getOfferType() == OfferType.CAR_RENTAL || booking.getOfferType() == OfferType.FURNISHED_RENTAL) {
+                booking.markConfirmed(booking.getProviderConfirmationNumber(), new ArrayList<>());
+                bookingRepository.save(booking);
+                trackingService.publish(bookingId, BookingStatus.CONFIRMED);
+                events.publishEvent(new BookingConfirmedEvent(booking.getId()));
+                return;
+            }
+
             TravelProviderClient client = clientFor(booking.getProviderType());
             PaymentDetails payment = new PaymentDetails(paymentTransactionReference, booking.getPrice(), payerReferenceLast4);
 
@@ -345,12 +381,15 @@ public class BookingService {
         }
 
         TravelProviderClient client = clientFor(booking.getProviderType());
-        if (booking.getOfferType() == OfferType.FLIGHT) {
-            for (String pnr : booking.pnrCodes()) {
-                client.cancelFlightBooking(pnr);
+        switch (booking.getOfferType()) {
+            case FLIGHT -> {
+                for (String pnr : booking.pnrCodes()) {
+                    client.cancelFlightBooking(pnr);
+                }
             }
-        } else {
-            client.cancelHotelBooking(booking.getProviderConfirmationNumber());
+            case HOTEL -> client.cancelHotelBooking(booking.getProviderConfirmationNumber());
+            case CAR_RENTAL -> client.cancelVehicleBooking(booking.getProviderConfirmationNumber());
+            case FURNISHED_RENTAL -> client.cancelPropertyBooking(booking.getProviderConfirmationNumber());
         }
 
         booking.markCancelled();
@@ -359,7 +398,6 @@ public class BookingService {
         return booking;
     }
 
-    /** Cancels every unpaid/deposit-only hold whose provider ticketing deadline has lapsed. */
     @Transactional
     public void cancelExpiredHolds() {
         List<Booking> expired = bookingRepository.findByStatusInAndTicketingDeadlineBefore(
@@ -375,7 +413,7 @@ public class BookingService {
     }
 
     public SseEmitter track(String bookingId) {
-        getById(bookingId); // 404s early if the booking doesn't exist
+        getById(bookingId);
         return trackingService.subscribe(bookingId);
     }
 

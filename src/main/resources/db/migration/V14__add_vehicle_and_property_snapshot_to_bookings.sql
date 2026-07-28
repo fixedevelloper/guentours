@@ -1,0 +1,23 @@
+-- V{N}__add_vehicle_and_property_snapshot_to_bookings.sql
+
+ALTER TABLE bookings
+    ADD COLUMN vehicle_brand VARCHAR(255),
+    ADD COLUMN vehicle_model VARCHAR(255),
+    ADD COLUMN vehicle_category VARCHAR(50),
+    ADD COLUMN vehicle_transmission VARCHAR(50),
+    ADD COLUMN vehicle_seats INTEGER,
+    ADD COLUMN pickup_city VARCHAR(255),
+    ADD COLUMN dropoff_city VARCHAR(255),
+    ADD COLUMN rental_start DATE,
+    ADD COLUMN pickup_time TIME,
+    ADD COLUMN rental_end DATE,
+    ADD COLUMN dropoff_time TIME,
+    ADD COLUMN with_driver BOOLEAN,
+    ADD COLUMN property_title VARCHAR(255),
+    ADD COLUMN property_type VARCHAR(50),
+    ADD COLUMN country VARCHAR(255),
+    ADD COLUMN bedrooms INTEGER,
+    ADD COLUMN max_guests INTEGER,
+    ADD COLUMN entire_place BOOLEAN;
+
+COMMENT ON COLUMN bookings.pickup_city IS 'Vehicle rental only. Reused city_code/check_in/check_out for property (see property_title/property_type/country/bedrooms/max_guests/entire_place).';

@@ -3,13 +3,12 @@ package com.guentours.reseller.service;
 import com.guentours.booking.BookingService;
 import com.guentours.booking.domain.Booking;
 import com.guentours.booking.domain.BookingRepository;
-import com.guentours.booking.web.CheckoutRequest;
 import com.guentours.booking.web.MultiCityCheckoutRequest;
 import com.guentours.reseller.domain.Reseller;
 import com.guentours.reseller.domain.ResellerRepository;
 import com.guentours.reseller.web.ResellerBookingResponse;
 import com.guentours.reseller.web.ResellerCheckoutRequest;
-import com.guentours.user.domain.User;
+import com.guentours.security.AppUserPrincipal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -27,67 +26,57 @@ public class ResellerBookingService {
     private final BookingRepository bookingRepository;
     private final ResellerRepository resellerRepository;
     private final ResellerService resellerService;
-    private final BookingService bookingService; // ton service réel — non vu dans ce fil
+    private final BookingService bookingService;
 
-    public ResellerBookingService(BookingRepository bookingRepository, ResellerRepository resellerRepository, ResellerService resellerService, BookingService bookingService /*, BookingService bookingService */) {
+    public ResellerBookingService(BookingRepository bookingRepository, ResellerRepository resellerRepository,
+                                  ResellerService resellerService, BookingService bookingService) {
         this.bookingRepository = bookingRepository;
         this.resellerRepository = resellerRepository;
         this.resellerService = resellerService;
-        // this.bookingService = bookingService;
         this.bookingService = bookingService;
     }
+
     /**
      * Récupère la liste paginée des réservations réalisées avec le code promo ou via l'espace d'un revendeur.
-     *
-     * @param resellerId Identifiant du revendeur
-     * @param pageable   Options de pagination et de tri
-     * @return Page des réservations associées au revendeur
      */
     public Page<Booking> findByResellerId(String resellerId, Pageable pageable) {
         log.debug("Récupération des réservations pour le revendeur ID: {}", resellerId);
-
-        // Validation de l'existence du revendeur
         if (!resellerRepository.existsById(resellerId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Aucun revendeur trouvé avec l'identifiant : " + resellerId
-            );
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Aucun revendeur trouvé avec l'identifiant : " + resellerId);
         }
-
         return bookingRepository.findByResellerId(resellerId, pageable);
     }
 
     /**
-     * Resolves the reseller from the promo code (if any and still APPROVED), delegates the
-     * actual hold creation to the platform's booking flow, then tags the resulting booking
-     * with resellerId so commission crediting can happen later at payment confirmation.
+     * Delegates the actual hold creation to the platform's booking flow, then tags the
+     * resulting booking with the connected reseller's id so commission crediting can happen
+     * later at payment confirmation.
      */
+    @Transactional
     public ResellerBookingResponse createBookingHold(ResellerCheckoutRequest req, Authentication authentication) {
-        User user = (User) authentication.getPrincipal();
-
-        Reseller reseller = resellerService.findById(user.getResellerId());
-
+        Reseller reseller = resolveConnectedReseller(authentication);
         Booking booking = bookingService.checkout(req.checkoutRequest());
-
-        if (reseller != null) {
-            booking.assignReseller(reseller.getId());
-            bookingRepository.save(booking);
-        }
-
-        return ResellerBookingResponse.from(booking);
+        booking.assignReseller(reseller.getId());
+        Booking saved = bookingRepository.save(booking);
+        return ResellerBookingResponse.from(saved);
     }
+
+    @Transactional
     public ResellerBookingResponse createBookingMultiCityHold(MultiCityCheckoutRequest req, Authentication authentication) {
-        User user = (User) authentication.getPrincipal();
-
-        Reseller reseller = resellerService.findById(user.getResellerId());
-
+        Reseller reseller = resolveConnectedReseller(authentication);
         Booking booking = bookingService.checkoutMultiCity(req);
+        booking.assignReseller(reseller.getId());
+        Booking saved = bookingRepository.save(booking);
+        return ResellerBookingResponse.from(saved);
+    }
 
-        if (reseller != null) {
-            booking.assignReseller(reseller.getId());
-            bookingRepository.save(booking);
+    /** Resolves the reseller behind the currently authenticated principal, or 403s if the account isn't a reseller. */
+    private Reseller resolveConnectedReseller(Authentication authentication) {
+        AppUserPrincipal principal = (AppUserPrincipal) authentication.getPrincipal();
+        String resellerId = principal.getResellerId();
+        if (resellerId == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Ce compte n'est pas un compte revendeur");
         }
-
-        return ResellerBookingResponse.from(booking);
+        return resellerService.findById(resellerId);
     }
 }

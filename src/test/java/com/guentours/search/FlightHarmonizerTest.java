@@ -2,6 +2,8 @@ package com.guentours.search;
 
 import com.guentours.provider.FlightOffer;
 import com.guentours.provider.ProviderType;
+import com.guentours.search.domain.FlightHarmonizer;
+import com.guentours.search.domain.HarmonizedFlightOffer;
 import com.guentours.shared.CommissionPolicy;
 import com.guentours.shared.Money;
 import org.junit.jupiter.api.Test;

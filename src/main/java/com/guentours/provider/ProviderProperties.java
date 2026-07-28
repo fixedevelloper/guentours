@@ -53,7 +53,7 @@ public class ProviderProperties {
         private String tokenUrl = "";
         /** Travelport access group (branch scope), sent as the XAUTH_TRAVELPORT_ACCESSGROUP header on every call. */
         private String accessGroup = "";
-        private long timeoutMillis = 5000;
+        private long timeoutMillis = 30000;
 
         public boolean isEnabled() {
             return enabled;

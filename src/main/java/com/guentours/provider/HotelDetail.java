@@ -20,7 +20,7 @@ public record HotelDetail(
         @JsonProperty("description") HotelDescription description,
         @JsonProperty("facilities") List<String> facilities,
         @JsonProperty("hotelImages") List<HotelImage> hotelImages,
-        @JsonProperty("hotelReview") HotelReviewSummary hotelReview
+        @JsonProperty("hotel_review") HotelReviewSummary hotelReview
 ) {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -37,33 +37,33 @@ public record HotelDetail(
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record HotelReviewSummary(
             @JsonProperty("rating") Double rating,
-            @JsonProperty("numReviews") Integer numReviews,
+            @JsonProperty("num_reviews") Integer numReviews,
             @JsonProperty("ranking") String ranking,
-            @JsonProperty("rankingString") String rankingString,
-            @JsonProperty("rateLocation") Double rateLocation,
-            @JsonProperty("rateSleep") Double rateSleep,
-            @JsonProperty("rateRoom") Double rateRoom,
-            @JsonProperty("rateService") Double rateService,
-            @JsonProperty("rateValue") Double rateValue,
-            @JsonProperty("rateCleanliness") Double rateCleanliness,
+            @JsonProperty("ranking_string") String rankingString,
+            @JsonProperty("rate_location") Double rateLocation,
+            @JsonProperty("rate_sleep") Double rateSleep,
+            @JsonProperty("rate_room") Double rateRoom,
+            @JsonProperty("rate_service") Double rateService,
+            @JsonProperty("rate_value") Double rateValue,
+            @JsonProperty("rate_cleanliness") Double rateCleanliness,
             @JsonProperty("reviews") List<Review> reviews
     ) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Review(
-            @JsonProperty("publishedDate") String publishedDate,
+            @JsonProperty("published_date") String publishedDate,
             @JsonProperty("rating") Integer rating,
-            @JsonProperty("travelDate") String travelDate,
+            @JsonProperty("travel_date") String travelDate,
             @JsonProperty("title") String title,
             @JsonProperty("text") String text,
-            @JsonProperty("tripType") String tripType,
+            @JsonProperty("trip_type") String tripType,
             @JsonProperty("user") User user
     ) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record User(
             @JsonProperty("username") String username,
-            @JsonProperty("userLocation") UserLocation userLocation
+            @JsonProperty("user_location") UserLocation userLocation
     ) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)

@@ -29,7 +29,10 @@ public class AppUserPrincipal implements UserDetails {
     public String getPartnerId() {
         return user.getPartnerId();
     }
-
+    /** Null for CUSTOMER/ADMIN/PARTNER_* accounts; set only for RESELLER accounts. */
+    public String getResellerId() {
+        return user.getResellerId();
+    }
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
