@@ -19,7 +19,7 @@ import java.time.Instant;
  * and refreshed a little ahead of its real expiry rather than fetched on every call.
  *
  * <p>Travelport serves OAuth on a different host than its APIs (e.g. {@code oauth.pp.travelport.com}
- * vs {@code api.pp.travelport.com}), so this uses its own {@link RestClient} pointed at the token
+ * vs {@code api.pp.travelport.net}), so this uses its own {@link RestClient} pointed at the token
  * host. Client authentication is {@code client_secret_basic} (client id/secret as an HTTP Basic
  * Authorization header, standard Travelport JSON API convention) - real sandbox testing confirmed
  * this: sending client id/secret in the form body instead (the {@code client_secret_post} method
@@ -54,15 +54,13 @@ class TravelportTokenProvider {
         body.add("grant_type", "password");
         body.add("username", config.getUsername());
         body.add("password", config.getPassword());
-        body.add("client_id", config.getApiKey());
-        body.add("client_secret", config.getApiSecret());
-       // body.add("scope", "openid");
-        log.error("[Travelport] params  {}: {}", config.getApiKey(), config.getApiSecret());
+        body.add("scope", "openid");
 
         TravelportTokenResponse response;
         try {
             response = restClient.post()
                     .uri(tokenUrl)
+                    .headers(h -> h.setBasicAuth(config.getApiKey(), config.getApiSecret()))
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .body(body)
                     .retrieve()
@@ -75,7 +73,6 @@ class TravelportTokenProvider {
         if (response == null || response.accessToken() == null) {
             throw new ProviderException("Travelport token exchange returned no access_token");
         }
-        log.error(response.toString());
 
         cachedAccessToken = response.accessToken();
         cachedTokenExpiresAt = Instant.now().plusSeconds(

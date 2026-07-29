@@ -1,5 +1,6 @@
 package com.guentours.provider.travelport;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guentours.provider.*;
 import com.guentours.provider.dto.FlightPriceVerification;
 import com.guentours.provider.dto.HotelPriceVerification;
@@ -15,7 +16,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -68,23 +71,34 @@ public class TravelportClient implements TravelProviderClient {
     private static final String PAYMENT_OFFER_BASE = "/air/paymentoffer/reservationworkbench";
     private static final List<String> HOTELS = List.of("Hotel Le Meridien", "Ibis Central");
     /**
-     * Requesting only "GDS" excludes every NDC-only carrier's content entirely (e.g. this vendor's
-     * own EMEA/Turkey test scope lists AA/UA/QF/SQ as NDC carriers, separate from its GDS carrier
-     * list) - both sources are requested so search isn't silently missing half the test scope.
+     * Every real Travelport JSON API sample request (including the vendor's own catalogproductofferings
+     * examples) sends {@code contentSourceList: ["GDS"]} only - "NDC" was added here on an unverified
+     * guess (from the test account's carrier list being split into "GDS carriers" vs "NDC carriers")
+     * and real sandbox testing showed it makes every search fail with a generic "1586 INVALID INPUT
+     * FORMAT", even for a single-passenger single-leg request that otherwise matches the vendor's
+     * working sample byte for byte. Reverted to "GDS" only; NDC-only carrier content is not reachable
+     * through this endpoint until the correct way to request it is confirmed against real docs.
      */
-    private static final List<String> CONTENT_SOURCES = List.of("GDS", "NDC");
+    private static final List<String> CONTENT_SOURCES = List.of("GDS");
+    private static final int ADULT_REPRESENTATIVE_AGE = 30;
+    private static final int CHILD_REPRESENTATIVE_AGE = 10;
+    private static final int INFANT_REPRESENTATIVE_AGE = 1;
+    private static final String TVPT_AUTHORITY = "TVPT";
 
     private final ProviderProperties.Vendor config;
     private final RestClient restClient;
     private final TravelportTokenProvider tokenProvider;
+    private final ObjectMapper objectMapper;
 
-    public TravelportClient(RestClient.Builder restClientBuilder, ProviderProperties properties) {
+    public TravelportClient(RestClient.Builder restClientBuilder, ProviderProperties properties,
+                             ObjectMapper objectMapper) {
         this.config = properties.getTravelport();
+        this.objectMapper = objectMapper;
         ClientHttpRequestFactorySettings timeoutSettings = ClientHttpRequestFactorySettings.DEFAULTS
                 .withConnectTimeout(Duration.ofMillis(config.getTimeoutMillis()))
                 .withReadTimeout(Duration.ofMillis(config.getTimeoutMillis()));
         this.restClient = restClientBuilder
-                .baseUrl(config.getBaseUrl().isBlank() ? "https://api.pp.travelport.com/11" : config.getBaseUrl())
+                .baseUrl(config.getBaseUrl().isBlank() ? "https://api.pp.travelport.net/11" : config.getBaseUrl())
                 .requestFactory(ClientHttpRequestFactories.get(timeoutSettings))
                 .build();
         this.tokenProvider = new TravelportTokenProvider(RestClient.builder(), config);
@@ -224,6 +238,8 @@ public class TravelportClient implements TravelProviderClient {
 
     private List<FlightOffer> callFlightApi(FlightSearchCriteria criteria) {
         TravelportSearchRequest request = buildSearchRequest(criteria);
+        log.info("[Travelport] flight search request for {}->{}: {}", criteria.origin(), criteria.destination(),
+                writeAsJson(request));
         TravelportSearchResponse response = restClient.post()
                 .uri("/air/catalog/search/catalogproductofferings")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
@@ -232,10 +248,21 @@ public class TravelportClient implements TravelProviderClient {
                 .header(SESSION_HEADER, UUID.randomUUID().toString())
                 .accept(MediaType.APPLICATION_JSON)
                 .body(request)
-                .retrieve()
-                .body(TravelportSearchResponse.class);
-
-        log.info("[Travelport] flight search response for {}->{}: {}", criteria.origin(), criteria.destination(), response);
+                .exchange((req, resp) -> {
+                    String raw = new String(resp.getBody().readAllBytes(), StandardCharsets.UTF_8);
+                    log.info("[Travelport] flight search raw response for {}->{}: {}",
+                            criteria.origin(), criteria.destination(), raw);
+                    if (raw.isBlank()) {
+                        return null;
+                    }
+                    try {
+                        return objectMapper.readValue(raw, TravelportSearchResponse.class);
+                    } catch (IOException e) {
+                        log.warn("[Travelport] Failed to parse flight search response for {}->{}: {}",
+                                criteria.origin(), criteria.destination(), e.getMessage());
+                        return null;
+                    }
+                });
 
         var body = response == null ? null : response.CatalogProductOfferingsResponse();
         if (body == null || body.CatalogProductOfferings() == null
@@ -247,15 +274,28 @@ public class TravelportClient implements TravelProviderClient {
         var offerings = body.CatalogProductOfferings();
 
         return offerings.CatalogProductOffering().stream()
-                .map(offering -> toFlightOffer(offerings, offering, flightsById, criteria))
+                .map(offering -> toFlightOffer(offerings, offering, flightsById, criteria, body.transactionId()))
                 .filter(Objects::nonNull)
                 .toList();
     }
 
-    /** Captures the Search identifiers the Add Offer reference payload needs back at booking time. */
+    /**
+     * Captures the Search identifiers the Add Offer reference payload and the pricing step's
+     * {@code CatalogProductOfferingSelection} both need back at booking/pricing time: the
+     * CatalogProductOfferings container id/Identifier, the chosen offering's own Identifier, the
+     * priced ProductBrandOffering's {@code productRef} (its {@code Product} list, confirmed against
+     * a real search response), and the segment count of that brand option's flightRefs (Travelport's
+     * own price-request sample shows {@code SegmentSequence} as 1..N for an N-segment itinerary).
+     */
     private Map<String, String> bookingContext(TravelportSearchResponse.CatalogProductOfferings offerings,
-                                               TravelportSearchResponse.CatalogProductOffering offering) {
+                                               TravelportSearchResponse.CatalogProductOffering offering,
+                                               TravelportSearchResponse.ProductBrandOffering pricedOffering,
+                                               int segmentCount,
+                                               String transactionId) {
         Map<String, String> context = new java.util.HashMap<>();
+        if (transactionId != null) {
+            context.put("transactionId", transactionId);
+        }
         if (offerings.id() != null) {
             context.put("catalogOfferingsId", offerings.id());
         }
@@ -268,6 +308,11 @@ public class TravelportClient implements TravelProviderClient {
         if (offering.Identifier() != null && offering.Identifier().value() != null) {
             context.put("offeringIdentifier", offering.Identifier().value());
         }
+        if (pricedOffering.Product() != null && !pricedOffering.Product().isEmpty()
+                && pricedOffering.Product().get(0).productRef() != null) {
+            context.put("productRef", pricedOffering.Product().get(0).productRef());
+        }
+        context.put("segmentCount", String.valueOf(segmentCount));
         return context;
     }
 
@@ -282,6 +327,15 @@ public class TravelportClient implements TravelProviderClient {
                 .flatMap(ref -> ref.Flight().stream())
                 .filter(flight -> flight.id() != null)
                 .collect(Collectors.toMap(TravelportSearchResponse.Flight::id, Function.identity(), (a, b) -> a));
+    }
+
+    /** Best-effort JSON rendering of an outgoing request body, for diagnostic logging only. */
+    private String writeAsJson(Object body) {
+        try {
+            return objectMapper.writeValueAsString(body);
+        } catch (Exception e) {
+            return String.valueOf(body);
+        }
     }
 
     private TravelportSearchRequest buildSearchRequest(FlightSearchCriteria criteria) {
@@ -303,13 +357,17 @@ public class TravelportClient implements TravelProviderClient {
                         new TravelportSearchRequest.Endpoint(criteria.origin())))
                 : List.of(outbound);
 
+        // Travelport's own documented sample always populates "age" on every PassengerCriteria entry
+        // (including ADT) - real per-traveler ages aren't collected until checkout, so these are
+        // representative ages within each type's range, only to satisfy that required field at
+        // search time; the real date of birth is validated later in BookingService.
         var passengers = new java.util.ArrayList<TravelportSearchRequest.PassengerCriteria>();
-        passengers.add(new TravelportSearchRequest.PassengerCriteria("PassengerCriteria", Math.max(criteria.adults(), 1), null, "ADT"));
+        passengers.add(new TravelportSearchRequest.PassengerCriteria("PassengerCriteria", Math.max(criteria.adults(), 1), ADULT_REPRESENTATIVE_AGE, "ADT"));
         if (criteria.children() > 0) {
-            passengers.add(new TravelportSearchRequest.PassengerCriteria("PassengerCriteria", criteria.children(), null, "CNN"));
+            passengers.add(new TravelportSearchRequest.PassengerCriteria("PassengerCriteria", criteria.children(), CHILD_REPRESENTATIVE_AGE, "CNN"));
         }
         if (criteria.infants() > 0) {
-            passengers.add(new TravelportSearchRequest.PassengerCriteria("PassengerCriteria", criteria.infants(), null, "INF"));
+            passengers.add(new TravelportSearchRequest.PassengerCriteria("PassengerCriteria", criteria.infants(), INFANT_REPRESENTATIVE_AGE, "INF"));
         }
 
         var request = new TravelportSearchRequest.CatalogProductOfferingsRequest(
@@ -333,7 +391,8 @@ public class TravelportClient implements TravelProviderClient {
     private FlightOffer toFlightOffer(TravelportSearchResponse.CatalogProductOfferings offerings,
                                        TravelportSearchResponse.CatalogProductOffering offering,
                                        Map<String, TravelportSearchResponse.Flight> flightsById,
-                                       FlightSearchCriteria criteria) {
+                                       FlightSearchCriteria criteria,
+                                       String transactionId) {
         if (offering == null || offering.ProductBrandOptions() == null || offering.ProductBrandOptions().isEmpty()) {
             return null;
         }
@@ -370,6 +429,8 @@ public class TravelportClient implements TravelProviderClient {
             return null;
         }
 
+        var pricedOffering = brandOption.ProductBrandOffering().get(0);
+
         return new FlightOffer(
                 getType(),
                 offering.id(),
@@ -382,18 +443,19 @@ public class TravelportClient implements TravelProviderClient {
                 first.classOfService() != null ? first.classOfService() : criteria.cabinClass(),
                 price,
                 9,
-                bookingContext(offerings, offering));
+                bookingContext(offerings, offering, pricedOffering, flights.size(), transactionId));
     }
 
     private Money extractPrice(TravelportSearchResponse.ProductBrandOptions brandOption, String fallbackCurrency) {
         if (brandOption.ProductBrandOffering() == null || brandOption.ProductBrandOffering().isEmpty()) {
             return null;
         }
-        var priced = brandOption.ProductBrandOffering().get(0).Price();
+        var priced = brandOption.ProductBrandOffering().get(0).BestCombinablePrice();
         if (priced == null || priced.TotalPrice() == null) {
             return null;
         }
-        String currency = priced.CurrencyCode() != null ? priced.CurrencyCode() : fallbackCurrency;
+        String currency = priced.CurrencyCode() != null && priced.CurrencyCode().value() != null
+                ? priced.CurrencyCode().value() : fallbackCurrency;
         if (currency == null) {
             return null;
         }
@@ -411,41 +473,91 @@ public class TravelportClient implements TravelProviderClient {
     /**
      * Re-prices/validates the chosen offering before booking (Travelport's pricing step). Reuses
      * the offer's quoted currency as the fallback and returns the fresh total; see
-     * {@link TravelportPriceRequest}'s Javadoc for the search-context caveat.
+     * {@link TravelportPriceRequest}'s Javadoc for the reference-payload shape this now sends.
      */
     private FlightPriceVerification callPriceApi(FlightOffer offer) {
-        var request = new TravelportPriceRequest(new TravelportPriceRequest.PriceProductsQueryRequest(
-                "PriceProductsQueryRequest",
-                List.of(new TravelportPriceRequest.CatalogProductOfferingSelection(
-                        "CatalogProductOfferingSelection",
-                        new TravelportPriceRequest.Identifier(offer.providerOfferId())))));
+        String catalogOfferingsIdentifierValue = offer.context("catalogOfferingsIdentifier");
+
+        var catalogOfferingsIdentifier = new TravelportPriceRequest.OfferingsRef("cpo_1",
+                catalogOfferingsIdentifierValue != null
+                        ? new TravelportPriceRequest.Identifier(catalogOfferingsIdentifierValue, TVPT_AUTHORITY)
+                        : null);
+
+        var offeringIdentifier = new TravelportPriceRequest.OfferingRef("cpo_1",
+                new TravelportPriceRequest.Identifier(offer.providerOfferId(), TVPT_AUTHORITY), "cpo_1");
+
+        var productBrandOfferingIdentifier = catalogOfferingsIdentifierValue != null
+                ? new TravelportPriceRequest.Identifier(catalogOfferingsIdentifierValue, TVPT_AUTHORITY)
+                : null;
+
+        String productRef = offer.context("productRef");
+        List<TravelportPriceRequest.ProductIdentifier> productIdentifiers = productRef != null
+                ? List.of(new TravelportPriceRequest.ProductIdentifier("product_" + productRef, "product_" + productRef,
+                        new TravelportPriceRequest.Identifier(productRef, TVPT_AUTHORITY)))
+                : null;
+
+        var request = new TravelportPriceRequest("OfferQueryBuildFromCatalogProductOfferings",
+                new TravelportPriceRequest.BuildFromCatalogProductOfferingsRequest(
+                        "BuildFromCatalogProductOfferingsRequestAir",
+                        catalogOfferingsIdentifier,
+                        List.of(new TravelportPriceRequest.CatalogProductOfferingSelection(
+                                "CatalogProductOfferingSelection",
+                                offeringIdentifier,
+                                productBrandOfferingIdentifier,
+                                productIdentifiers,
+                                List.of(1))),
+                        List.of(new TravelportPriceRequest.PassengerCriteria("PassengerCriteria", 1, "ADT", "psgr_1")),
+                        "Structured"),
+                new TravelportPriceRequest.PaymentCriteria(
+                        "PaymentCriteria", "123456", "VI", true, true, true, true),
+                4);
+        log.info("[Travelport] price request for offer {}: {}", offer.providerOfferId(), writeAsJson(request));
 
         TravelportPriceResponse response;
         try {
             response = restClient.post()
-                    .uri("/price/offers/buildfromcatalogproductofferings")
+                    .uri("/air/price/offers/buildfromcatalogproductofferings")
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
                     .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
                     .header(PCC_HEADER, config.getPseudoCityCode())
+                    .header("TraceId", "AirPrice_" + UUID.randomUUID())
+                    .headers(h -> {
+                        String transactionId = offer.context("transactionId");
+                        if (transactionId != null) {
+                            h.set("TransactionId", transactionId);
+                        }
+                    })
                     .accept(MediaType.APPLICATION_JSON)
                     .body(request)
-                    .retrieve()
-                    .body(TravelportPriceResponse.class);
+                    .exchange((req, resp) -> {
+                        String raw = new String(resp.getBody().readAllBytes(), StandardCharsets.UTF_8);
+                        log.info("[Travelport] price raw response for offer {}: {}", offer.providerOfferId(), raw);
+                        if (raw.isBlank()) {
+                            return null;
+                        }
+                        try {
+                            return objectMapper.readValue(raw, TravelportPriceResponse.class);
+                        } catch (IOException e) {
+                            log.warn("[Travelport] Failed to parse price response for offer {}: {}",
+                                    offer.providerOfferId(), e.getMessage());
+                            return null;
+                        }
+                    });
         } catch (RestClientException e) {
             throw new ProviderException("Travelport price re-check failed for offer "
                     + offer.providerOfferId() + ": " + e.getMessage());
         }
         log.info("[Travelport] price response for offer {}: {}", offer.providerOfferId(), response);
 
-        var pricedOffer = response == null || response.OffersResponse() == null
-                || response.OffersResponse().Offer() == null || response.OffersResponse().Offer().isEmpty()
-                ? null : response.OffersResponse().Offer().get(0);
+        var pricedOffer = response == null || response.OfferListResponse() == null
+                || response.OfferListResponse().OfferID() == null || response.OfferListResponse().OfferID().isEmpty()
+                ? null : response.OfferListResponse().OfferID().get(0);
         if (pricedOffer == null || pricedOffer.Price() == null || pricedOffer.Price().TotalPrice() == null) {
             return new FlightPriceVerification(offer.providerOfferId(), null, false, 0, null);
         }
 
-        String currency = pricedOffer.Price().CurrencyCode() != null
-                ? pricedOffer.Price().CurrencyCode() : offer.price().currency();
+        String currency = pricedOffer.Price().CurrencyCode() != null && pricedOffer.Price().CurrencyCode().value() != null
+                ? pricedOffer.Price().CurrencyCode().value() : offer.price().currency();
         Money freshPrice = new Money(BigDecimal.valueOf(pricedOffer.Price().TotalPrice()), currency);
         return new FlightPriceVerification(offer.providerOfferId(), freshPrice, true, 9,
                 "Refer to the fare rules returned with this offer");
@@ -471,8 +583,10 @@ public class TravelportClient implements TravelProviderClient {
 
         addOffer(session, request.offer());
 
+        int travelerNumber = 1;
         for (PassengerInfo passenger : request.passengers()) {
-            addTraveler(session, toWorkbenchTraveler(passenger, request.contactEmail()));
+            addTraveler(session, toWorkbenchTraveler(passenger, request.contactEmail(), request.contactPhone(), travelerNumber));
+            travelerNumber++;
         }
 
         // Commit with no payment -> books the itinerary and creates the PNR.
@@ -486,21 +600,26 @@ public class TravelportClient implements TravelProviderClient {
     }
 
     /**
-     * Workbench Commit ({@code POST /air/book/reservation/reservations/{workbenchId}}). With no
-     * payment in the workbench it books and creates the PNR; with {@code Issuance=Ticket} (payment
-     * present) it issues the tickets.
+     * Workbench Commit ({@code POST /air/book/reservation/reservations/{workbenchId}}), matching a
+     * real production reference client. With {@code payLaterInd=true} and no {@code Issuance} param
+     * it books and creates the PNR; with {@code Issuance=Ticket} and {@code payLaterInd=false}
+     * (payment already applied) it issues the tickets. {@code autoDeleteDate} is set 3 days out, the
+     * reference's own retention window.
      */
     private TravelportReservationResponse commit(String session, boolean issueTicket) {
+        String autoDeleteDate = LocalDate.now().plusDays(3).toString();
         String uri = issueTicket
-                ? RESERVATIONS_BASE + "/{session}?Issuance=Ticket&DocumentValue=Retain"
-                : RESERVATIONS_BASE + "/{session}";
+                ? RESERVATIONS_BASE + "/{session}?autoDeleteDate={autoDeleteDate}&Issuance=Ticket&DocumentValue=Retain&payLaterInd=false"
+                : RESERVATIONS_BASE + "/{session}?autoDeleteDate={autoDeleteDate}&DocumentValue=Retain&payLaterInd=true";
+        var body = new TravelportCommitRequest(true, true, true, false, true, true,
+                "AcceptOfferPriceDifference", "GUENS TRAVEL", true);
         TravelportReservationResponse response;
         try {
             response = restClient.post()
-                    .uri(uri, session)
+                    .uri(uri, session, autoDeleteDate)
                     .headers(h -> workbenchHeaders(h, session))
                     .accept(MediaType.APPLICATION_JSON)
-                    .body(new TravelportCommitRequest("GUENTOURS", true, true))
+                    .body(body)
                     .retrieve()
                     .body(TravelportReservationResponse.class);
         } catch (RestClientException e) {
@@ -548,31 +667,59 @@ public class TravelportClient implements TravelProviderClient {
     }
 
     /**
-     * Add Offer (reference payload): adds the searched offer to the workbench by its identifiers.
-     * Uses the CatalogProductOfferings container id + Identifier and the offering Identifier captured
-     * from the Search response ({@link FlightOffer#context}) when available, falling back to the
-     * offering id in every position for offers that carried no such context.
+     * Add Offer (reference payload): adds the searched offer to the workbench by its identifiers,
+     * matching a real production reference client's request shape (see
+     * {@link TravelportAddOfferRequest}'s Javadoc). Uses the CatalogProductOfferings container id +
+     * Identifier and the priced product's {@code productRef} captured from the Search response
+     * ({@link FlightOffer#context}) when available, falling back to the offering id / container
+     * identifier in every position the reference itself falls back on when it lacks finer-grained
+     * ids for this step.
      */
     private void addOffer(String session, FlightOffer offer) {
         String offeringId = offer.providerOfferId();
         String containerId = offer.context("catalogOfferingsId") != null
                 ? offer.context("catalogOfferingsId") : offeringId;
-        String authority = offer.context("identifierAuthority");
-        var containerIdentifier = offer.context("catalogOfferingsIdentifier") != null
-                ? new TravelportAddOfferRequest.Identifier(offer.context("catalogOfferingsIdentifier"), authority) : null;
+        String authority = offer.context("identifierAuthority") != null
+                ? offer.context("identifierAuthority") : TVPT_AUTHORITY;
+        String catalogOfferingsIdentifierValue = offer.context("catalogOfferingsIdentifier");
+        var containerIdentifier = catalogOfferingsIdentifierValue != null
+                ? new TravelportAddOfferRequest.Identifier(catalogOfferingsIdentifierValue, authority) : null;
         var offeringIdentifier = offer.context("offeringIdentifier") != null
-                ? new TravelportAddOfferRequest.Identifier(offer.context("offeringIdentifier"), authority) : null;
+                ? new TravelportAddOfferRequest.Identifier(offer.context("offeringIdentifier"), authority)
+                : containerIdentifier;
+        var productBrandOfferingIdentifier = containerIdentifier;
+
+        String productRef = offer.context("productRef");
+        List<TravelportAddOfferRequest.ProductIdentifier> productIdentifiers = productRef != null
+                ? List.of(new TravelportAddOfferRequest.ProductIdentifier("product_" + productRef, "product_" + productRef,
+                        new TravelportAddOfferRequest.Identifier(productRef, authority)))
+                : null;
+
+        int segmentCount = 1;
+        try {
+            if (offer.context("segmentCount") != null) {
+                segmentCount = Integer.parseInt(offer.context("segmentCount"));
+            }
+        } catch (NumberFormatException ignored) {
+            // keep the 1-segment default
+        }
+        List<Integer> segmentSequence = java.util.stream.IntStream.rangeClosed(1, segmentCount).boxed().toList();
 
         var request = new TravelportAddOfferRequest(
-                "OfferQueryBuildFromCatalogProductOfferings",
-                new TravelportAddOfferRequest.BuildFromCatalogProductOfferingsRequest(
-                        "BuildFromCatalogProductOfferingsRequestAir",
-                        new TravelportAddOfferRequest.OfferingsRef(containerId, containerIdentifier),
-                        List.of(new TravelportAddOfferRequest.CatalogProductOfferingSelection(
-                                "CatalogProductOfferingSelection",
-                                new TravelportAddOfferRequest.OfferingRef(offeringId, offeringIdentifier, offeringId),
-                                null))),
-                4);
+                new TravelportAddOfferRequest.OfferQueryBuildFromCatalogProductOfferings(
+                        "OfferQueryBuildFromCatalogProductOfferings",
+                        new TravelportAddOfferRequest.PaymentCriteria("PaymentCriteria", true, true, true, true),
+                        new TravelportAddOfferRequest.BuildFromCatalogProductOfferingsRequest(
+                                "BuildFromCatalogProductOfferingsRequestAir",
+                                new TravelportAddOfferRequest.OfferingsRef(containerId, containerIdentifier),
+                                List.of(new TravelportAddOfferRequest.CatalogProductOfferingSelection(
+                                        "CatalogProductOfferingSelection",
+                                        new TravelportAddOfferRequest.OfferingRef(offeringId, offeringIdentifier, offeringId),
+                                        productBrandOfferingIdentifier,
+                                        productIdentifiers,
+                                        segmentSequence))),
+                        4));
+        log.info("[Travelport] add offer request for {}: {}", offeringId, writeAsJson(request));
 
         TravelportOfferListResponse response;
         try {
@@ -583,6 +730,7 @@ public class TravelportClient implements TravelProviderClient {
                     .body(request)
                     .retrieve()
                     .body(TravelportOfferListResponse.class);
+
         } catch (RestClientException e) {
             throw new ProviderException("Travelport add offer failed for " + offeringId + ": " + e.getMessage());
         }
@@ -659,14 +807,19 @@ public class TravelportClient implements TravelProviderClient {
         }
     }
 
+    private static final String FORM_OF_PAYMENT_ID = "formOfPayment_1";
+
     /**
      * Add Form of Payment: adds a cash FOP to the workbench, our internal transaction reference in
      * {@code FreeText}. {@code POST /air/payment/reservationworkbench/{session}/formofpayment}.
-     * Returns the FOP reference (id/ref) for the subsequent Add Payment step, or {@code null}.
+     * Self-assigns {@link #FORM_OF_PAYMENT_ID} as both {@code id} and {@code FormOfPaymentRef} (a
+     * production reference client does the same) so Add Payment can reference it directly; falls
+     * back to whatever id the response itself reports, if any, in case Travelport reassigns one.
      */
     private String addFormOfPayment(String session, PaymentDetails payment) {
         var fop = new TravelportFormOfPaymentRequest(
-                "FormOfPaymentCash", true, true, null, "GuenTours txn " + payment.transactionReference());
+                "FormOfPaymentCash", FORM_OF_PAYMENT_ID, FORM_OF_PAYMENT_ID, true, true, null,
+                "GuenTours txn " + payment.transactionReference());
         TravelportFormOfPaymentResponse response;
         try {
             response = restClient.post()
@@ -684,9 +837,10 @@ public class TravelportClient implements TravelProviderClient {
         var created = response == null || response.FormOfPaymentResponse() == null
                 ? null : response.FormOfPaymentResponse().FormOfPayment();
         if (created == null) {
-            return null;
+            return FORM_OF_PAYMENT_ID;
         }
-        return created.FormOfPaymentRef() != null ? created.FormOfPaymentRef() : created.id();
+        String reportedRef = created.FormOfPaymentRef() != null ? created.FormOfPaymentRef() : created.id();
+        return reportedRef != null ? reportedRef : FORM_OF_PAYMENT_ID;
     }
 
     /**
@@ -696,9 +850,10 @@ public class TravelportClient implements TravelProviderClient {
     private void addPayment(String session, PaymentDetails payment, String fopRef) {
         var request = new TravelportPaymentRequest(
                 "Payment",
+                "payment_1",
                 new TravelportPaymentRequest.Amount(
-                        payment.amount().amount().doubleValue(), payment.amount().currency()),
-                new TravelportPaymentRequest.FormOfPaymentIdentifier("FormOfPaymentPaymentCash", fopRef, fopRef));
+                        payment.amount().currency(), 2, "Charged", payment.amount().amount().doubleValue()),
+                new TravelportPaymentRequest.FormOfPaymentIdentifier(fopRef, fopRef));
         try {
             restClient.post()
                     .uri("{base}/{session}/payments", PAYMENT_OFFER_BASE, session)
@@ -719,8 +874,15 @@ public class TravelportClient implements TravelProviderClient {
         headers.set(SESSION_HEADER, session);
     }
 
-    private TravelportWorkbenchRequests.Traveler toWorkbenchTraveler(PassengerInfo passenger,
-                                                                     String contactEmail) {
+    /**
+     * Matches a real production reference client's Add Traveler payload. That reference derives
+     * {@code gender} from a civility title ("Mme" -> Female, else Male) our domain doesn't collect,
+     * so this defaults to "Male" until a real gender/title field exists; the same reference
+     * hardcodes a Cameroon calling code ("237") and city code ("DLA") rather than deriving them, so
+     * this does the same instead of guessing a richer derivation.
+     */
+    private TravelportWorkbenchRequests.Traveler toWorkbenchTraveler(PassengerInfo passenger, String contactEmail,
+                                                                      String contactPhone, int travelerNumber) {
         String[] nameParts = splitName(passenger.fullName());
         String passengerTypeCode = switch (passenger.type()) {
             case ADULT -> "ADT";
@@ -729,12 +891,32 @@ public class TravelportClient implements TravelProviderClient {
         };
         var personName = new TravelportWorkbenchRequests.PersonName(
                 "PersonNameDetail", null, nameParts[0], null, nameParts[1]);
+        String birthDate = passenger.dateOfBirth() != null ? passenger.dateOfBirth().toString() : null;
+
+        String cleanPhone = contactPhone != null ? contactPhone.replaceAll("[^0-9]", "") : "670000000";
+        var telephone = new TravelportWorkbenchRequests.Telephone(
+                "Telephone", "237", cleanPhone, "tel_" + travelerNumber, "DLA", "Mobile");
+
+        var travelDocument = new TravelportWorkbenchRequests.TravelDocument(
+                "TravelDocumentDetail",
+                passenger.passportNumber() != null ? passenger.passportNumber().toUpperCase() : "N0000000",
+                "Passport",
+                passenger.passportExpiryDate() != null ? passenger.passportExpiryDate().toString()
+                        : LocalDate.now().plusYears(3).toString(),
+                passenger.passportIssueCountry() != null ? passenger.passportIssueCountry().toUpperCase() : "CM",
+                birthDate,
+                "Male");
+
         return new TravelportWorkbenchRequests.Traveler(
                 "Traveler",
-                passenger.dateOfBirth() != null ? passenger.dateOfBirth().toString() : null,
+                "Male",
+                birthDate,
+                "trav_" + travelerNumber,
                 passengerTypeCode,
                 personName,
-                contactEmail != null ? List.of(new TravelportWorkbenchRequests.Email(contactEmail)) : null);
+                List.of(telephone),
+                contactEmail != null ? List.of(new TravelportWorkbenchRequests.Email(contactEmail)) : null,
+                List.of(travelDocument));
     }
 
     private String[] splitName(String fullName) {
@@ -900,8 +1082,9 @@ public class TravelportClient implements TravelProviderClient {
      * hold deadline for hotels here, so a conservative 24h policy default is applied.
      */
     private ProviderBookingConfirmation callHotelReservationApi(HotelBookingRequest request) {
-        List<TravelportWorkbenchRequests.Traveler> travelers = request.guests().stream()
-                .map(g -> toWorkbenchTraveler(g, request.contactEmail()))
+        List<PassengerInfo> guests = request.guests();
+        List<TravelportWorkbenchRequests.Traveler> travelers = java.util.stream.IntStream.range(0, guests.size())
+                .mapToObj(i -> toWorkbenchTraveler(guests.get(i), request.contactEmail(), null, i + 1))
                 .toList();
         var reservation = new TravelportWorkbenchRequests.Reservation(
                 "Reservation",

@@ -2,6 +2,7 @@ package com.guentours.provider.travelport;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 
 import java.util.List;
 
@@ -12,15 +13,20 @@ import java.util.List;
  * not wrapped in a field of that name), with the actual query under
  * {@code CatalogProductOfferingsRequest}. One {@code SearchCriteriaFlight} entry per leg
  * (two for a round trip), a {@code PassengerCriteria} per passenger type, and an optional
- * {@code SearchModifiersAir} for carrier preferences.
+ * {@code SearchModifiersAir} for carrier preferences. Every vendor sample puts {@code @type} as
+ * the first key of each object, so {@code @JsonPropertyOrder} pins that order explicitly rather
+ * than relying on Jackson's default record-component ordering.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonPropertyOrder({"@type", "CatalogProductOfferingsRequest"})
 record TravelportSearchRequest(
         @JsonProperty("@type") String type,
         CatalogProductOfferingsRequest CatalogProductOfferingsRequest
 ) {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"@type", "maxNumberOfUpsellsToReturn", "offersPerPage", "contentSourceList",
+            "PassengerCriteria", "SearchCriteriaFlight", "SearchModifiersAir"})
     record CatalogProductOfferingsRequest(
             @JsonProperty("@type") String type,
             Integer maxNumberOfUpsellsToReturn,
@@ -33,6 +39,7 @@ record TravelportSearchRequest(
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"@type", "number", "age", "passengerTypeCode"})
     record PassengerCriteria(
             @JsonProperty("@type") String type,
             int number,
@@ -42,6 +49,7 @@ record TravelportSearchRequest(
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"@type", "departureDate", "From", "To"})
     record SearchCriteriaFlight(
             @JsonProperty("@type") String type,
             String departureDate,
@@ -55,6 +63,7 @@ record TravelportSearchRequest(
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"@type", "CarrierPreference"})
     record SearchModifiersAir(
             @JsonProperty("@type") String type,
             List<CarrierPreference> CarrierPreference
@@ -62,6 +71,7 @@ record TravelportSearchRequest(
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"@type", "preferenceType", "carriers"})
     record CarrierPreference(
             @JsonProperty("@type") String type,
             String preferenceType,

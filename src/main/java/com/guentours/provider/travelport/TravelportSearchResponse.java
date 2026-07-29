@@ -13,9 +13,10 @@ import java.util.List;
  * {@code ReferenceListFlight} - the two must be cross-referenced by flight id to resolve an
  * offering's real flights. {@code Result.Error} carries per-request errors ("No flights found").
  *
- * <p>The verified sample was a mock with placeholder values, so the internals of the priced
- * {@code ProductBrandOffering.Price} and of each {@code ReferenceListFlight.Flight} entry were
- * not fully populated; those field names still need confirming against a real priced response.
+ * <p>Pricing lives under {@code ProductBrandOffering.BestCombinablePrice.TotalPrice} (the currency
+ * is itself a nested {@code {"value": "TRY", "decimalPlace": 2}} object, not a flat string) -
+ * confirmed against a real priced sandbox response; an earlier guess of a flat "Price" field was
+ * always null and silently dropped every offer downstream.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 record TravelportSearchResponse(CatalogProductOfferingsResponse CatalogProductOfferingsResponse) {
@@ -60,11 +61,22 @@ record TravelportSearchResponse(CatalogProductOfferingsResponse CatalogProductOf
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record ProductBrandOffering(Price Price) {
+    record ProductBrandOffering(BestCombinablePrice BestCombinablePrice, List<ProductID> Product) {
     }
 
+    /** The {@code productRef} is threaded through to the pricing step's {@code ProductIdentifier}. */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record Price(Double TotalPrice, String CurrencyCode) {
+    record ProductID(String productRef) {
+    }
+
+    /** Real field is {@code BestCombinablePrice}, not the "Price" this was originally guessed as. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record BestCombinablePrice(Double TotalPrice, CurrencyCode CurrencyCode) {
+    }
+
+    /** Travelport wraps the ISO 4217 code as {@code {"value": "TRY", "decimalPlace": 2}}, not a flat string. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record CurrencyCode(String value, Integer decimalPlace) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

@@ -4,19 +4,28 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
  * Body of Travelport's Workbench Commit
- * ({@code POST /air/book/reservation/reservations/{workbenchId}}), matching a verified real sample.
- * Committing with no payment books and creates the PNR; committing with payment (plus
- * {@code ?Issuance=Ticket}) issues the tickets.
+ * ({@code POST /air/book/reservation/reservations/{workbenchId}}), matching a real production
+ * reference client. Committing with {@code payLaterInd=true} (no {@code Issuance} query param)
+ * books and creates the PNR; committing again on the same locator with {@code Issuance=Ticket} and
+ * {@code payLaterInd=false} (once payment has been collected) issues the tickets. The query
+ * parameters live alongside this body in {@link TravelportClient#commit}.
  *
- * <p>Only the fields GuenTours sets are modelled: {@code ReceivedFrom} (the agent/source of
- * record), {@code scheduleChangeAcceptedInd} (accept minor schedule changes rather than fail the
- * commit) and {@code errorWhenOfferPriceChangesInd} (fail if the price moved from what was quoted
- * to the customer, rather than silently book a different fare).
+ * <p>{@code ReceivedFrom} is this agency's signature on the booking (max 11 chars per the
+ * reference's own comment, though its own value is longer - kept verbatim since it's presumably
+ * what the account expects). The other booleans/enum all come from the reference's fixed defaults:
+ * accept minor schedule changes and re-prices rather than fail the commit outright, but still fail
+ * if the offer's price itself changed from what was quoted to the customer.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 record TravelportCommitRequest(
-        String ReceivedFrom,
         Boolean scheduleChangeAcceptedInd,
+        Boolean errorWhenOfferPriceCancelledInd,
+        Boolean inhibitResidualDocumentIssuanceInd,
+        Boolean enableTwoStepCommitInd,
+        Boolean overrideMCTInd,
+        Boolean errorWhenScheduleChangesInd,
+        String scheduleChangeReprice,
+        String ReceivedFrom,
         Boolean errorWhenOfferPriceChangesInd
 ) {
 }

@@ -39,7 +39,15 @@ class TravelportSearchResponseTest {
                                         "flightRefs": [ "s1", "s2" ],
                                         "ProductBrandOffering": [
                                             {
-                                                "Price": { "TotalPrice": 245.6, "CurrencyCode": "USD" }
+                                                "@type": "ProductBrandOffering",
+                                                "BestCombinablePrice": {
+                                                    "@type": "BestCombinablePriceDetail",
+                                                    "CurrencyCode": { "decimalPlace": 2, "value": "TRY" },
+                                                    "Base": 5248,
+                                                    "TotalTaxes": 5827.15,
+                                                    "TotalFees": 0,
+                                                    "TotalPrice": 11075.15
+                                                }
                                             }
                                         ]
                                     }
@@ -98,8 +106,9 @@ class TravelportSearchResponseTest {
 
         var brandOption = offering.ProductBrandOptions().get(0);
         assertThat(brandOption.flightRefs()).containsExactly("s1", "s2");
-        assertThat(brandOption.ProductBrandOffering().get(0).Price().TotalPrice()).isEqualTo(245.6);
-        assertThat(brandOption.ProductBrandOffering().get(0).Price().CurrencyCode()).isEqualTo("USD");
+        var price = brandOption.ProductBrandOffering().get(0).BestCombinablePrice();
+        assertThat(price.TotalPrice()).isEqualTo(11075.15);
+        assertThat(price.CurrencyCode().value()).isEqualTo("TRY");
 
         var referenceList = body.ReferenceList().get(0);
         assertThat(referenceList.type()).isEqualTo("ReferenceListFlight");

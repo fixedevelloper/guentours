@@ -2,6 +2,7 @@ package com.guentours.provider.travelport;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 
 import java.util.List;
 
@@ -25,6 +26,7 @@ final class TravelportWorkbenchRequests {
 
     /** New Workbench body ({@code @type: Reservation}) - the container committed into a PNR. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"@type", "Offer", "Traveler", "FormOfPayment", "Payment"})
     record Reservation(
             @JsonProperty("@type") String type,
             List<Offer> Offer,
@@ -35,6 +37,7 @@ final class TravelportWorkbenchRequests {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"@type", "id", "offerRef", "Identifier", "ContentSource"})
     record Offer(
             @JsonProperty("@type") String type,
             String id,
@@ -48,17 +51,30 @@ final class TravelportWorkbenchRequests {
     record Identifier(String value, String authority) {
     }
 
+    /**
+     * Matches a real production reference client's Add Traveler payload: {@code gender} and an
+     * {@code id} (e.g. {@code trav_1}) alongside the fields already modelled, plus a
+     * {@code Telephone} entry and a {@code TravelDocument} (passport) entry - both absent from the
+     * earlier, minimal version of this DTO.
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"@type", "gender", "birthDate", "id", "passengerTypeCode", "PersonName", "Telephone",
+            "Email", "TravelDocument"})
     record Traveler(
             @JsonProperty("@type") String type,
+            String gender,
             String birthDate,
+            String id,
             String passengerTypeCode,
             PersonName PersonName,
-            List<Email> Email
+            List<Telephone> Telephone,
+            List<Email> Email,
+            List<TravelDocument> TravelDocument
     ) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"@type", "Prefix", "Given", "Middle", "Surname"})
     record PersonName(
             @JsonProperty("@type") String type,
             String Prefix,
@@ -69,7 +85,32 @@ final class TravelportWorkbenchRequests {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"@type", "countryAccessCode", "phoneNumber", "id", "cityCode", "role"})
+    record Telephone(
+            @JsonProperty("@type") String type,
+            String countryAccessCode,
+            String phoneNumber,
+            String id,
+            String cityCode,
+            String role
+    ) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     record Email(String value) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"@type", "docNumber", "docType", "expireDate", "issueCountry", "birthDate", "Gender"})
+    record TravelDocument(
+            @JsonProperty("@type") String type,
+            String docNumber,
+            String docType,
+            String expireDate,
+            String issueCountry,
+            String birthDate,
+            String Gender
+    ) {
     }
 
     /**
@@ -78,6 +119,7 @@ final class TravelportWorkbenchRequests {
      * Travelport via its own account and the internal transaction reference is kept as a remark.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"@type", "id", "reservationFOPInd", "activeInd"})
     record FormOfPayment(
             @JsonProperty("@type") String type,
             String id,
@@ -87,6 +129,7 @@ final class TravelportWorkbenchRequests {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonPropertyOrder({"@type", "Amount", "remark"})
     record Payment(
             @JsonProperty("@type") String type,
             Amount Amount,

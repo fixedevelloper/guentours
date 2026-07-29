@@ -22,9 +22,11 @@ class TravelportHotelReservationRequestTest {
                 "Reservation",
                 List.of(new TravelportWorkbenchRequests.Offer("Offer", "offer_1", "offer_1", null, "GDS")),
                 List.of(new TravelportWorkbenchRequests.Traveler(
-                        "Traveler", "1990-05-01", "ADT",
+                        "Traveler", "Female", "1990-05-01", "trav_1", "ADT",
                         new TravelportWorkbenchRequests.PersonName("PersonNameDetail", null, "Jane", null, "Doe"),
-                        List.of(new TravelportWorkbenchRequests.Email("jane.doe@example.com")))),
+                        null,
+                        List.of(new TravelportWorkbenchRequests.Email("jane.doe@example.com")),
+                        null)),
                 null,
                 null);
 
