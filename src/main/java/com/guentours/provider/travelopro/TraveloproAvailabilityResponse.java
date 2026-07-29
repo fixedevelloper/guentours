@@ -20,6 +20,7 @@ record TraveloproAvailabilityResponse(AirSearchResponse AirSearchResponse) {
     record FareItinerary(
             AirItineraryFareInfo AirItineraryFareInfo,
             String DirectionInd,
+            Boolean IsPassportMandatory,
             List<OriginDestinationOptionsEntry> OriginDestinationOptions,
             String ValidatingAirlineCode
     ) {}

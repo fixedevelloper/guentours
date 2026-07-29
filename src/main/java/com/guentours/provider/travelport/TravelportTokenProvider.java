@@ -2,10 +2,14 @@ package com.guentours.provider.travelport;
 
 import com.guentours.provider.ProviderProperties;
 import com.guentours.shared.exception.ProviderException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.time.Instant;
 
@@ -16,11 +20,15 @@ import java.time.Instant;
  *
  * <p>Travelport serves OAuth on a different host than its APIs (e.g. {@code oauth.pp.travelport.com}
  * vs {@code api.pp.travelport.com}), so this uses its own {@link RestClient} pointed at the token
- * host, and the {@code password} grant carries the client id/secret in the form body (not a Basic
- * header). Verify grant params/scope against your Travelport onboarding details.
+ * host. Client authentication is {@code client_secret_basic} (client id/secret as an HTTP Basic
+ * Authorization header, standard Travelport JSON API convention) - real sandbox testing confirmed
+ * this: sending client id/secret in the form body instead (the {@code client_secret_post} method
+ * this previously used) got "invalid_client: Client authentication failed" from Travelport's
+ * authorization server every time.
  */
 class TravelportTokenProvider {
 
+    private static final Logger log = LoggerFactory.getLogger(TravelportTokenProvider.class);
     private static final long EXPIRY_SAFETY_MARGIN_SECONDS = 60;
     private static final String DEFAULT_TOKEN_URL = "https://oauth.pp.travelport.com/oauth/oauth20/token";
 
@@ -48,18 +56,26 @@ class TravelportTokenProvider {
         body.add("password", config.getPassword());
         body.add("client_id", config.getApiKey());
         body.add("client_secret", config.getApiSecret());
-        body.add("scope", "openid");
+       // body.add("scope", "openid");
+        log.error("[Travelport] params  {}: {}", config.getApiKey(), config.getApiSecret());
 
-        TravelportTokenResponse response = restClient.post()
-                .uri(tokenUrl)
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(body)
-                .retrieve()
-                .body(TravelportTokenResponse.class);
+        TravelportTokenResponse response;
+        try {
+            response = restClient.post()
+                    .uri(tokenUrl)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(body)
+                    .retrieve()
+                    .body(TravelportTokenResponse.class);
+        } catch (RestClientException e) {
+            log.error("[Travelport] token exchange failed at {}: {}", tokenUrl, e.getMessage());
+            throw new ProviderException("Travelport token exchange failed: " + e.getMessage());
+        }
 
         if (response == null || response.accessToken() == null) {
             throw new ProviderException("Travelport token exchange returned no access_token");
         }
+        log.error(response.toString());
 
         cachedAccessToken = response.accessToken();
         cachedTokenExpiresAt = Instant.now().plusSeconds(

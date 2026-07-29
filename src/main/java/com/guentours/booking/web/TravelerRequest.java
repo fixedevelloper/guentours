@@ -12,6 +12,12 @@ public record TravelerRequest(
         String passportNumber,
         @NotNull PassengerType type,
         /** Seat picked at the seat-selection checkout step (FLIGHT only); null if none was assigned. */
-        String seatNumber
+        String seatNumber,
+        /** ISO 3166-1 alpha-2 nationality; required by some providers' flight booking APIs (e.g. Travelopro). */
+        String nationality,
+        /** ISO 3166-1 alpha-2 passport-issuing country; optional, requested by some flight booking APIs. */
+        String passportIssueCountry,
+        /** Passport expiry date; optional, requested by some flight booking APIs. */
+        LocalDate passportExpiryDate
 ) {
 }

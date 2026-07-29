@@ -35,7 +35,9 @@ public class Hotel {
     @Column(length = 1024)
     private String coverImageUrl;
 
-    @ElementCollection
+    // Eager : HotelResponse.from() lit cette collection dans le contrôleur, après la fermeture
+    // de la session Hibernate (open-in-view=false) - un fetch lazy y lèverait LazyInitializationException.
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "hotel_amenities", joinColumns = @JoinColumn(name = "hotel_id"))
     @Column(name = "amenity")
     private List<String> amenities = new ArrayList<>();
@@ -66,6 +68,19 @@ public class Hotel {
         this.starRating = starRating;
         this.description = description;
         this.coverImageUrl = coverImageUrl;
+        this.amenities = amenities != null ? amenities : new ArrayList<>();
+        this.checkInTime = checkInTime;
+        this.checkOutTime = checkOutTime;
+    }
+
+    public void update(String name, String address, String city, String country, Integer starRating,
+                       String description, List<String> amenities, LocalTime checkInTime, LocalTime checkOutTime) {
+        this.name = name;
+        this.address = address;
+        this.city = city;
+        this.country = country;
+        this.starRating = starRating;
+        this.description = description;
         this.amenities = amenities != null ? amenities : new ArrayList<>();
         this.checkInTime = checkInTime;
         this.checkOutTime = checkOutTime;

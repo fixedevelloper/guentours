@@ -1,11 +1,13 @@
 package com.guentours.provider.travelopro;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guentours.provider.*;
 import com.guentours.provider.dto.FlightPriceVerification;
 import com.guentours.provider.dto.HotelDetailResponse;
 import com.guentours.provider.dto.HotelPriceVerification;
 import com.guentours.search.OfferCache;
 import com.guentours.shared.Money;
+import com.guentours.shared.exception.BusinessException;
 import com.guentours.shared.exception.ProviderException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,9 +20,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
@@ -49,9 +54,11 @@ public class TraveloproClient implements TravelProviderClient {
 
     private final ProviderProperties.Vendor config;
     private final RestClient restClient;
+    private final ObjectMapper objectMapper;
 
-    public TraveloproClient(RestClient.Builder restClientBuilder, ProviderProperties properties) {
+    public TraveloproClient(RestClient.Builder restClientBuilder, ProviderProperties properties, ObjectMapper objectMapper) {
         this.config = properties.getTravelopro();
+        this.objectMapper = objectMapper;
 
         // Configuration des timeouts distincts (par exemple 10s pour se connecter, 35s pour lire la réponse)
         long connectTimeout = config.getTimeoutMillis() > 0 ? config.getTimeoutMillis() : 10_000L;
@@ -118,6 +125,20 @@ public class TraveloproClient implements TravelProviderClient {
         }
 
     }
+
+    @Override
+    public ProviderSeatMap seatMap(FlightOffer offer) {
+        if (config.isMockMode()) {
+            return null;
+        }
+        String sessionId = offer.context("sessionId");
+        if (sessionId == null) {
+            log.warn("No sessionId in providerContext for Travelopro offer {}, skipping seat map", offer.providerOfferId());
+            return null;
+        }
+        return callExtraServicesSeatMap(sessionId, offer.providerOfferId());
+    }
+
     @Override
     public FlightPriceVerification verifyFlightPrice(FlightOffer offer) {
         if (config.isMockMode()) {
@@ -267,20 +288,24 @@ public class TraveloproClient implements TravelProviderClient {
         String productId =  offer.context("productId");
         String tokenId =  offer.context("tokenId");
 
-        // 2. Construction propre de l'URL via UriBuilder (gestion automatique de l'encodage)
-        HotelDetail response = restClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/api/hotel-api-v6/hotelDetails")
-                        .queryParam("sessionId", sessionId)
-                        .queryParam("hotelId", hotelId)
-                        .queryParam("productId", productId)
-                        .queryParam("tokenId", tokenId)
-                        .build())
-                .retrieve()
-                .body(HotelDetail.class);
-        log.info(response.toString());
-        // 3. Mapping/Retour du résultat (adapter selon la structure de HotelDetailResponse)
-        return response != null ? response : null;
+        try {
+            // 2. Construction propre de l'URL via UriBuilder (gestion automatique de l'encodage)
+            HotelDetail response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/api/hotel-api-v6/hotelDetails")
+                            .queryParam("sessionId", sessionId)
+                            .queryParam("hotelId", hotelId)
+                            .queryParam("productId", productId)
+                            .queryParam("tokenId", tokenId)
+                            .build())
+                    .retrieve()
+                    .body(HotelDetail.class);
+            log.info("[Travelopro] hotelDetails response for hotelId={}: {}", hotelId, response);
+            return response;
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelopro hotel details lookup failed for hotelId=" + hotelId
+                    + ": " + e.getMessage());
+        }
     }
     private List<FlightOffer> callFlightApi(FlightSearchCriteria criteria) {
         TraveloproAvailabilityRequest request = buildAvailabilityRequest(criteria);
@@ -291,7 +316,7 @@ public class TraveloproClient implements TravelProviderClient {
                 .retrieve()
                 .body(TraveloproAvailabilityResponse.class);
 
-        log.info(response.toString());
+        log.info("[Travelopro] availability response: {}", response);
         var result = response == null || response.AirSearchResponse() == null
                 ? null : response.AirSearchResponse().AirSearchResult();
         if (result == null || result.FareItineraries() == null) {
@@ -327,16 +352,40 @@ public class TraveloproClient implements TravelProviderClient {
 
         TraveloproRevalidateRequest request = new TraveloproRevalidateRequest(sessionId, offer.providerOfferId());
 
-        TraveloproRevalidateResponse response = restClient.post()
-                .uri("/api/aeroVE5/revalidate")
-                .body(request)
-                .retrieve()
-                .body(TraveloproRevalidateResponse.class);
+        TraveloproRevalidateResponse response;
+        try {
+            // Reads the raw body first (instead of letting the message converter deserialize
+            // straight into TraveloproRevalidateResponse) so a shape we haven't modeled - e.g. an
+            // error envelope instead of AirRevalidateResponse - is still visible in the logs rather
+            // than silently coming through as an all-null record and being reported as "unavailable".
+            response = restClient.post()
+                    .uri("/api/aeroVE5/revalidate")
+                    .body(request)
+                    .exchange((req, resp) -> {
+                        String raw = new String(resp.getBody().readAllBytes(), StandardCharsets.UTF_8);
+                        log.info("[Travelopro] revalidate raw response for offer {}: {}", offer.providerOfferId(), raw);
+                        if (raw.isBlank()) {
+                            return null;
+                        }
+                        try {
+                            return objectMapper.readValue(raw, TraveloproRevalidateResponse.class);
+                        } catch (IOException e) {
+                            log.warn("[Travelopro] Failed to parse revalidate response for offer {}: {}",
+                                    offer.providerOfferId(), e.getMessage());
+                            return null;
+                        }
+                    });
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelopro price revalidation failed for offer "
+                    + offer.providerOfferId() + ": " + e.getMessage());
+        }
 
         var result = response == null || response.AirRevalidateResponse() == null
                 ? null : response.AirRevalidateResponse().AirRevalidateResult();
 
         if (result == null || !Boolean.TRUE.equals(result.IsValid())) {
+            log.warn("[Travelopro] revalidate reported the offer as invalid/unavailable for {} (result={})",
+                    offer.providerOfferId(), result);
             return new FlightPriceVerification(offer.providerOfferId(), null, false, 0, null);
         }
 
@@ -373,6 +422,88 @@ public class TraveloproClient implements TravelProviderClient {
                 .map(baggage -> String.join(", ", baggage))
                 .orElse(null);
     }
+    /**
+     * Fetches the real seat map via {@code aeroVE5/extra_services} and flattens its per-sector,
+     * per-deck, per-row layout into the canonical {@link ProviderSeatMap} grid. Only the first
+     * sector (the outbound leg) is used: a round-trip search is already collapsed into a single
+     * {@link FlightOffer} upstream (see {@link #toFlightOffer}), so there is no per-leg seat
+     * selection step to feed a second sector into - merging both would silently overwrite one
+     * leg's availability with the other's under the same seat numbers.
+     */
+    private ProviderSeatMap callExtraServicesSeatMap(String sessionId, String fareSourceCode) {
+        TraveloproExtraServicesRequest request = new TraveloproExtraServicesRequest(sessionId, fareSourceCode);
+        TraveloproExtraServicesResponse response;
+        try {
+            response = restClient.post()
+                    .uri("/api/aeroVE5/extra_services")
+                    .body(request)
+                    .retrieve()
+                    .body(TraveloproExtraServicesResponse.class);
+        } catch (RestClientException e) {
+            log.warn("Travelopro extra_services (seat map) call failed, falling back to a simulated seat map: {}",
+                    e.getMessage());
+            return null;
+        }
+
+        if (response == null || !Boolean.TRUE.equals(response.success()) || response.ExtraServicesData() == null
+                || response.ExtraServicesData().DynamicSeat() == null
+                || response.ExtraServicesData().DynamicSeat().isEmpty()) {
+            return null;
+        }
+
+        var sector = response.ExtraServicesData().DynamicSeat().get(0);
+        if (sector.DeckSeats() == null) {
+            return null;
+        }
+
+        List<ProviderSeat> seats = new ArrayList<>();
+        Set<String> columns = new TreeSet<>();
+        int maxRow = 0;
+
+        for (var deck : sector.DeckSeats()) {
+            if (deck.RowSeats() == null) continue;
+            for (var row : deck.RowSeats()) {
+                if (row.Seats() == null) continue;
+                for (var seat : row.Seats()) {
+                    String rowNo = seat.RowNo() != null ? seat.RowNo() : row.RowNo();
+                    String seatNo = seat.SeatNo();
+                    if (rowNo == null || seatNo == null) continue;
+
+                    maxRow = Math.max(maxRow, parseRowNumber(rowNo));
+                    columns.add(seatNo);
+                    boolean available = seat.AvailabilityType() != null && "1".equals(seat.AvailabilityType().Code());
+                    seats.add(new ProviderSeat(rowNo + seatNo, available, toSeatPrice(seat.Fare())));
+                }
+            }
+        }
+
+        if (seats.isEmpty()) {
+            return null;
+        }
+        return new ProviderSeatMap(maxRow, new ArrayList<>(columns), seats);
+    }
+
+    private int parseRowNumber(String rowNo) {
+        try {
+            return Integer.parseInt(rowNo.trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** Null for a free/included seat (no amount, or a zero/blank amount); otherwise the chargeable price. */
+    private Money toSeatPrice(TraveloproExtraServicesResponse.Fare fare) {
+        if (fare == null || fare.Amount() == null || fare.CurrencyCode() == null) {
+            return null;
+        }
+        try {
+            BigDecimal amount = new BigDecimal(fare.Amount());
+            return amount.signum() > 0 ? new Money(amount, fare.CurrencyCode()) : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
     private TraveloproAvailabilityRequest buildAvailabilityRequest(FlightSearchCriteria criteria) {
         String journeyType = switch (criteria.journeyType()) {
             case ONE_WAY -> "OneWay";
@@ -434,7 +565,19 @@ public class TraveloproClient implements TravelProviderClient {
         var totalFare = itinerary.AirItineraryFareInfo().ItinTotalFares().TotalFare();
         Money price = new Money(new BigDecimal(totalFare.Amount()), totalFare.CurrencyCode());
 
-        Map<String, String> context = sessionId != null ? Map.of("sessionId", sessionId) : Map.of();
+        // Captured here (rather than re-read from the revalidate response at booking time) because
+        // FlightOffer is immutable and cached as-is from search: createFlightHold only ever sees the
+        // offer object exactly as it was cached, never anything derived from verifyFlightPrice's result.
+        Map<String, String> context = new HashMap<>();
+        if (sessionId != null) {
+            context.put("sessionId", sessionId);
+        }
+        if (itinerary.AirItineraryFareInfo().FareType() != null) {
+            context.put("fareType", itinerary.AirItineraryFareInfo().FareType());
+        }
+        if (itinerary.IsPassportMandatory() != null) {
+            context.put("isPassportMandatory", itinerary.IsPassportMandatory().toString());
+        }
 
         return new FlightOffer(
                 getType(),
@@ -589,11 +732,17 @@ public class TraveloproClient implements TravelProviderClient {
                 config.getUsername(), config.getPassword(), config.getAccessMode(), config.getClientIp(),
                 offer.context("sessionId"), productId, offer.context("tokenId"), hotelId);
 
-        TraveloproRoomRatesResponse response = restClient.post()
-                .uri("/api/hotel-api-v6/get_room_rates")
-                .body(request)
-                .retrieve()
-                .body(TraveloproRoomRatesResponse.class);
+        TraveloproRoomRatesResponse response;
+        try {
+            response = restClient.post()
+                    .uri("/api/hotel-api-v6/get_room_rates")
+                    .body(request)
+                    .retrieve()
+                    .body(TraveloproRoomRatesResponse.class);
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelopro room rates lookup failed for hotelId=" + hotelId
+                    + ": " + e.getMessage());
+        }
 
         if (response == null || response.roomRates() == null
                 || response.roomRates().perBookingRates() == null) {
@@ -628,11 +777,16 @@ public class TraveloproClient implements TravelProviderClient {
                 request.contactEmail(), null, null,
                 buildPaxDetails(request));
 
-        TraveloproHotelBookResponse response = restClient.post()
-                .uri("/api/hotel-api-v6/hotel_book")
-                .body(bookRequest)
-                .retrieve()
-                .body(TraveloproHotelBookResponse.class);
+        TraveloproHotelBookResponse response;
+        try {
+            response = restClient.post()
+                    .uri("/api/hotel-api-v6/hotel_book")
+                    .body(bookRequest)
+                    .retrieve()
+                    .body(TraveloproHotelBookResponse.class);
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelopro hotel booking failed: " + e.getMessage());
+        }
 
         if (response == null || !"CONFIRMED".equalsIgnoreCase(response.status())) {
             String reason = response == null ? "no response"
@@ -684,38 +838,104 @@ public class TraveloproClient implements TravelProviderClient {
     }
 
     /**
-     * Holds the fare quoted at search time ({@code FareSourceCode}) against a PNR without
+     * Holds the fare quoted at search time ({@code fare_source_code}) against a PNR without
      * ticketing it yet - {@link #issueFlightTicket} converts the hold into e-tickets once
      * payment has cleared. Travelopro's Book response doesn't carry an explicit hold
      * expiry in this best-effort contract, so a conservative 30-minute policy default is
-     * applied here; tighten it once the real Book API docs confirm an actual deadline field.
+     * applied only as a fallback when {@code TktTimeLimit} is missing or unparseable.
      */
     private ProviderBookingConfirmation callBookApi(FlightBookingRequest request) {
         TraveloproBookRequest bookRequest = buildBookRequest(request);
-        TraveloproBookResponse bookResponse = restClient.post()
-                .uri("/api/aeroVE5/booking")
-                .body(bookRequest)
-                .retrieve()
-                .body(TraveloproBookResponse.class);
+        TraveloproBookResponse bookResponse;
+        log.error(bookRequest.toString());
+        try {
+            // Reads the raw body first - see callFlightPriceVerification for why: a shape we
+            // haven't modeled deserializes into an all-null record with ignoreUnknown=true, and
+            // "unknown error" alone doesn't say whether that's what happened here.
+            bookResponse = restClient.post()
+                    .uri("/api/aeroVE5/booking")
+                    .body(bookRequest)
+                    .exchange((req, resp) -> {
+                        String raw = new String(resp.getBody().readAllBytes(), StandardCharsets.UTF_8);
+                        log.info("[Travelopro] booking raw response for offer {}: status={} contentType={} body={}",
+                                request.offer().providerOfferId(), resp.getStatusCode(),
+                                resp.getHeaders().getContentType(), raw);
+                        if (raw.isBlank()) {
+                            return null;
+                        }
+                        try {
+                            return objectMapper.readValue(raw, TraveloproBookResponse.class);
+                        } catch (IOException e) {
+                            log.warn("[Travelopro] Failed to parse booking response for offer {}: {}",
+                                    request.offer().providerOfferId(), e.getMessage());
+                            return null;
+                        }
+                    });
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelopro booking failed: " + e.getMessage());
+        }
 
-        var bookResult = bookResponse == null ? null : bookResponse.BookResult();
-        if (bookResult == null || !"Success".equalsIgnoreCase(bookResult.Status())) {
-            String reason = bookResult != null && bookResult.Message() != null ? bookResult.Message() : "unknown error";
+        var bookResult = bookResponse == null || bookResponse.BookFlightResponse() == null
+                ? null : bookResponse.BookFlightResponse().BookFlightResult();
+
+        // PENDING is a valid, holdable outcome too (booking accepted but not yet ticketed) - the
+        // same "hold, ticket later" lifecycle Booking.markOnHold already models for CONFIRMED.
+        boolean accepted = bookResult != null
+                && ("CONFIRMED".equalsIgnoreCase(bookResult.Status()) || "PENDING".equalsIgnoreCase(bookResult.Status()));
+
+        if (!accepted) {
+            String reason;
+            if (bookResult != null && bookResult.firstErrorMessage() != null) {
+                reason = bookResult.firstErrorMessage();
+            } else if (bookResponse != null && bookResponse.Errors() != null
+                    && bookResponse.Errors().describe() != null) {
+                reason = bookResponse.Errors().describe();
+            } else {
+                reason = "unknown error";
+            }
+            log.warn("[Travelopro] booking failed for offer {}: {}", request.offer().providerOfferId(), reason);
+            // Every validation-style rejection seen from this vendor so far reads "<field> required"
+            // (e.g. "countryCode required", "PassengerNationality details is required for this
+            // airline") - a data/input problem the customer or our own request-building can act on,
+            // not a provider outage. Surfaced as a BusinessException (409, actionable) instead of the
+            // generic ProviderException (502, framed as "the provider is down") used for everything
+            // else - a genuinely opaque "unknown error" still falls through to that default.
+            if (reason.toLowerCase(Locale.ROOT).contains("required")) {
+                throw new BusinessException("Travelopro booking failed: " + reason);
+            }
             throw new ProviderException("Travelopro booking failed: " + reason);
         }
 
-        return new ProviderBookingConfirmation(getType(), bookResult.PNR(), LocalDateTime.now().plusMinutes(30), true);
+        return new ProviderBookingConfirmation(getType(), bookResult.UniqueID(),
+                parseTicketingDeadline(bookResult.TktTimeLimit()), true);
+    }
+
+    private LocalDateTime parseTicketingDeadline(String tktTimeLimit) {
+        if (tktTimeLimit == null || tktTimeLimit.isBlank()) {
+            return LocalDateTime.now().plusMinutes(30);
+        }
+        try {
+            return LocalDateTime.parse(tktTimeLimit);
+        } catch (DateTimeParseException e) {
+            log.warn("[Travelopro] Unparseable TktTimeLimit '{}', defaulting to a 30-minute hold", tktTimeLimit);
+            return LocalDateTime.now().plusMinutes(30);
+        }
     }
 
     private FinalTicketConfirmation callTicketApi(String pnrCode) {
         TraveloproTicketRequest ticketRequest = new TraveloproTicketRequest(
                 config.getUsername(), config.getPassword(), config.getAccessMode(), config.getClientIp(), pnrCode);
 
-        TraveloproTicketResponse ticketResponse = restClient.post()
-                .uri("/api/aeroVE5/ticket")
-                .body(ticketRequest)
-                .retrieve()
-                .body(TraveloproTicketResponse.class);
+        TraveloproTicketResponse ticketResponse;
+        try {
+            ticketResponse = restClient.post()
+                    .uri("/api/aeroVE5/ticket")
+                    .body(ticketRequest)
+                    .retrieve()
+                    .body(TraveloproTicketResponse.class);
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelopro ticketing failed: " + e.getMessage());
+        }
 
         var ticketResult = ticketResponse == null ? null : ticketResponse.TicketResult();
         if (ticketResult == null || !"Success".equalsIgnoreCase(ticketResult.Status())) {
@@ -728,34 +948,159 @@ public class TraveloproClient implements TravelProviderClient {
         return new FinalTicketConfirmation(getType(), pnr, ticketNumbers, true);
     }
 
+    /** Default international calling code used when neither nationality nor phone yields one - Cameroon, this platform's primary market. */
+    private static final String DEFAULT_COUNTRY_CODE = "237";
+
+    /** ISO 3166-1 alpha-2 -> ITU-T E.164 country calling code, for the markets this platform actually serves. */
+    private static final Map<String, String> CALLING_CODES = Map.ofEntries(
+            Map.entry("CM", "237"), Map.entry("NG", "234"), Map.entry("GH", "233"), Map.entry("CI", "225"),
+            Map.entry("SN", "221"), Map.entry("ML", "223"), Map.entry("TD", "235"), Map.entry("CF", "236"),
+            Map.entry("GA", "241"), Map.entry("CG", "242"), Map.entry("CD", "243"), Map.entry("AO", "244"),
+            Map.entry("GW", "245"), Map.entry("SC", "248"), Map.entry("SD", "249"), Map.entry("RW", "250"),
+            Map.entry("ET", "251"), Map.entry("SO", "252"), Map.entry("DJ", "253"), Map.entry("KE", "254"),
+            Map.entry("TZ", "255"), Map.entry("UG", "256"), Map.entry("BI", "257"), Map.entry("MZ", "258"),
+            Map.entry("ZM", "260"), Map.entry("MG", "261"), Map.entry("ZW", "263"), Map.entry("NA", "264"),
+            Map.entry("MW", "265"), Map.entry("LS", "266"), Map.entry("BW", "267"), Map.entry("SZ", "268"),
+            Map.entry("KM", "269"), Map.entry("ZA", "27"), Map.entry("ER", "291"), Map.entry("MA", "212"),
+            Map.entry("DZ", "213"), Map.entry("TN", "216"), Map.entry("LY", "218"), Map.entry("GM", "220"),
+            Map.entry("MR", "222"), Map.entry("BF", "226"), Map.entry("NE", "227"), Map.entry("TG", "228"),
+            Map.entry("BJ", "229"), Map.entry("MU", "230"), Map.entry("LR", "231"), Map.entry("SL", "232"),
+            Map.entry("CV", "238"), Map.entry("ST", "239"), Map.entry("GQ", "240"), Map.entry("SS", "211"),
+            Map.entry("EG", "20"), Map.entry("FR", "33"), Map.entry("BE", "32"), Map.entry("DE", "49"),
+            Map.entry("GB", "44"), Map.entry("IT", "39"), Map.entry("ES", "34"), Map.entry("PT", "351"),
+            Map.entry("NL", "31"), Map.entry("CH", "41"), Map.entry("SE", "46"), Map.entry("NO", "47"),
+            Map.entry("DK", "45"), Map.entry("IE", "353"), Map.entry("RU", "7"), Map.entry("PL", "48"),
+            Map.entry("GR", "30"), Map.entry("US", "1"), Map.entry("CA", "1"), Map.entry("BR", "55"),
+            Map.entry("MX", "52"), Map.entry("AE", "971"), Map.entry("SA", "966"), Map.entry("CN", "86"),
+            Map.entry("IN", "91"), Map.entry("TR", "90"), Map.entry("LB", "961"), Map.entry("QA", "974")
+    );
+
+    /** Placeholder area/postal code sent when the vendor won't accept an empty value - this platform collects neither. */
+    private static final String PLACEHOLDER_AREA_CODE = "010";
+    private static final String PLACEHOLDER_POST_CODE = "0000";
+
+    /**
+     * {@code flight_session_id}/{@code fareType}/{@code isPassportMandatory} come from the offer's
+     * providerContext, captured at search time in {@link #toFlightOffer} - the offer object handed
+     * to {@code createFlightHold} is exactly what was cached at search, never anything refreshed by
+     * {@link #verifyFlightPrice}. {@code areaCode}/{@code postCode} have no equivalent in our
+     * checkout form (an Indian-style STD/postal concept this platform's international customers
+     * don't have), so a placeholder is sent rather than an empty value or a fabricated real one.
+     * {@code countryCode} is documented as optional but real sandbox testing confirmed the vendor
+     * rejects the booking without it ("countryCode required"). {@code fare_source_code_inbound} is
+     * likewise marked required despite being "applicable for round-trip bookings" only - same
+     * pattern already seen with {@code paxDetails.child}/{@code infant} (also documented "required"
+     * yet only meaningful when applicable): sent as an empty string rather than omitted for a
+     * one-way booking, since omitting a documented-required key appears to trigger this vendor's
+     * generic "Invalid JSON request" rejection. Auth fields at the root mirror every other
+     * Travelopro endpoint in this adapter - see {@link TraveloproBookRequest}'s class Javadoc.
+     */
     private TraveloproBookRequest buildBookRequest(FlightBookingRequest request) {
-        List<TraveloproBookRequest.Passenger> passengers = request.passengers().stream()
-                .map(this::toTraveloproPassenger)
-                .toList();
-        return new TraveloproBookRequest(
-                config.getUsername(),
-                config.getPassword(),
-                config.getAccessMode(),
-                config.getClientIp(),
-                request.offer().providerOfferId(),
+        FlightOffer offer = request.offer();
+
+        TraveloproBookRequest.FlightBookingInfo flightBookingInfo = new TraveloproBookRequest.FlightBookingInfo(
+                offer.context("sessionId"),
+                offer.providerOfferId(),
+                offer.context("isPassportMandatory"),
+                PLACEHOLDER_AREA_CODE,
+                countryCallingCode(request.passengers(), request.contactPhone()),
+                offer.context("fareType"),
+                "");
+
+        TraveloproBookRequest.PaxInfo paxInfo = new TraveloproBookRequest.PaxInfo(
+                "GT-" + UUID.randomUUID().toString().substring(0, 8),
+                PLACEHOLDER_POST_CODE,
                 request.contactEmail(),
-                passengers);
+                request.contactPhone(),
+                "",
+                List.of(buildFlightPaxDetail(request.passengers())));
+
+        return new TraveloproBookRequest(
+                config.getUsername(), config.getPassword(), config.getAccessMode(), config.getClientIp(),
+                flightBookingInfo, paxInfo);
     }
 
-    private TraveloproBookRequest.Passenger toTraveloproPassenger(PassengerInfo passenger) {
-        String[] nameParts = splitName(passenger.fullName());
-        String paxType = switch (passenger.type()) {
-            case ADULT -> "Adult";
-            case CHILD -> "Child";
-            case INFANT -> "Infant";
-        };
-        return new TraveloproBookRequest.Passenger(
-                "Mr",
-                nameParts[0],
-                nameParts[1],
-                paxType,
-                passenger.dateOfBirth() != null ? passenger.dateOfBirth().toString() : null,
-                passenger.passportNumber());
+    /**
+     * Primarily looks up the first adult passenger's nationality in {@link #CALLING_CODES} - reliable
+     * because that value comes from a controlled ISO2 selector, not free text. Falls back to parsing
+     * a "+&lt;code&gt; ..." formatted {@code contactPhone} only when no nationality was given, and
+     * only accepts a candidate of plausible length (1-3 digits, the real range of ITU country calling
+     * codes): a phone with no space between the code and the rest of the number (e.g.
+     * "+237657285050", with no delimiter at all) must not be mistaken for a 12-digit "calling code".
+     */
+    private String countryCallingCode(List<PassengerInfo> passengers, String contactPhone) {
+        String byNationality = passengers.stream()
+                .filter(p -> p.type() == PassengerType.ADULT)
+                .map(PassengerInfo::nationality)
+                .filter(Objects::nonNull)
+                .map(n -> CALLING_CODES.get(n.toUpperCase()))
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+        if (byNationality != null) {
+            return byNationality;
+        }
+
+        String byPhone = parseCallingCodeFromPhone(contactPhone);
+        return byPhone != null ? byPhone : DEFAULT_COUNTRY_CODE;
+    }
+
+    private String parseCallingCodeFromPhone(String contactPhone) {
+        if (contactPhone == null) {
+            return null;
+        }
+        String trimmed = contactPhone.trim();
+        if (!trimmed.startsWith("+")) {
+            return null;
+        }
+        String afterPlus = trimmed.substring(1);
+        int spaceIdx = afterPlus.indexOf(' ');
+        String candidate = spaceIdx > 0 ? afterPlus.substring(0, spaceIdx) : afterPlus;
+        boolean plausible = !candidate.isEmpty() && candidate.length() <= 3
+                && candidate.chars().allMatch(Character::isDigit);
+        return plausible ? candidate : null;
+    }
+
+    private TraveloproBookRequest.PaxDetail buildFlightPaxDetail(List<PassengerInfo> passengers) {
+        return new TraveloproBookRequest.PaxDetail(
+                buildFlightPaxGroup(passengers, PassengerType.ADULT, "Mr"),
+                buildFlightPaxGroup(passengers, PassengerType.CHILD, "Master"),
+                buildFlightPaxGroup(passengers, PassengerType.INFANT, "Master"));
+    }
+
+    /**
+     * Column-oriented arrays for every passenger of {@code type} - always returned, with empty
+     * arrays when there are none, never {@code null}/omitted: Travelopro's docs mark {@code adult}/
+     * {@code child}/{@code infant} as structurally required ("Yes"), and a real sandbox test
+     * confirmed omitting the absent ones causes a generic "Invalid JSON request" rejection.
+     */
+    private TraveloproBookRequest.PaxGroup buildFlightPaxGroup(List<PassengerInfo> passengers, PassengerType type,
+                                                               String title) {
+        List<PassengerInfo> matching = passengers.stream().filter(p -> p.type() == type).toList();
+
+        List<String> titles = new ArrayList<>();
+        List<String> firstNames = new ArrayList<>();
+        List<String> lastNames = new ArrayList<>();
+        List<String> dobs = new ArrayList<>();
+        List<String> nationalities = new ArrayList<>();
+        List<String> passportNumbers = new ArrayList<>();
+        List<String> passportIssueCountries = new ArrayList<>();
+        List<String> passportExpiryDates = new ArrayList<>();
+
+        for (PassengerInfo passenger : matching) {
+            String[] nameParts = splitName(passenger.fullName());
+            titles.add(title);
+            firstNames.add(nameParts[0]);
+            lastNames.add(nameParts[1]);
+            dobs.add(passenger.dateOfBirth() != null ? passenger.dateOfBirth().toString() : null);
+            nationalities.add(passenger.nationality());
+            passportNumbers.add(passenger.passportNumber());
+            passportIssueCountries.add(passenger.passportIssueCountry());
+            passportExpiryDates.add(passenger.passportExpiryDate() != null ? passenger.passportExpiryDate().toString() : null);
+        }
+
+        return new TraveloproBookRequest.PaxGroup(titles, firstNames, lastNames, dobs, nationalities, passportNumbers,
+                passportIssueCountries, passportExpiryDates);
     }
 
     private String[] splitName(String fullName) {

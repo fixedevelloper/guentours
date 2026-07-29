@@ -28,17 +28,33 @@ public class BookedTraveler {
     @Column(name = "seat_number")
     private String seatNumber;
 
+    /** ISO 3166-1 alpha-2 nationality; required by some providers' flight booking APIs (e.g. Travelopro). */
+    @Column(name = "nationality")
+    private String nationality;
+
+    /** ISO 3166-1 alpha-2 passport-issuing country; optional, requested by some flight booking APIs. */
+    @Column(name = "passport_issue_country")
+    private String passportIssueCountry;
+
+    /** Passport expiry date; optional, requested by some flight booking APIs. */
+    @Column(name = "passport_expiry_date")
+    private LocalDate passportExpiryDate;
+
     protected BookedTraveler() {
         // JPA
     }
 
     public BookedTraveler(String fullName, LocalDate dateOfBirth, String passportNumber, PassengerType type,
-                           String seatNumber) {
+                           String seatNumber, String nationality, String passportIssueCountry,
+                           LocalDate passportExpiryDate) {
         this.fullName = fullName;
         this.dateOfBirth = dateOfBirth;
         this.passportNumber = passportNumber;
         this.type = type;
         this.seatNumber = seatNumber;
+        this.nationality = nationality;
+        this.passportIssueCountry = passportIssueCountry;
+        this.passportExpiryDate = passportExpiryDate;
     }
 
     public String getFullName() {
@@ -59,5 +75,17 @@ public class BookedTraveler {
 
     public String getSeatNumber() {
         return seatNumber;
+    }
+
+    public String getNationality() {
+        return nationality;
+    }
+
+    public String getPassportIssueCountry() {
+        return passportIssueCountry;
+    }
+
+    public LocalDate getPassportExpiryDate() {
+        return passportExpiryDate;
     }
 }

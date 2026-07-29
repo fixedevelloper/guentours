@@ -90,6 +90,7 @@ public class BookingService {
         User user = userService.findOrCreateForCheckout(request.contactEmail(), request.contactFullName(),
                 request.contactPhone());
         List<BookedTraveler> travelers = toBookedTravelers(request.travelers());
+        validateFlightTravelers(travelers);
         PaymentPlan plan = request.paymentPlan() == null ? PaymentPlan.PAY_NOW : request.paymentPlan();
         List<PassengerInfo> passengers = toPassengers(travelers);
 
@@ -115,7 +116,7 @@ public class BookingService {
                             "This flight offer is no longer available at the quoted price, please search again");
                 }
                 ProviderBookingConfirmation hold = client.createFlightHold(
-                        new FlightBookingRequest(offer, passengers, request.contactEmail()));
+                        new FlightBookingRequest(offer, passengers, request.contactEmail(), request.contactPhone()));
                 if (!hold.confirmed()) {
                     throw new ProviderException("Unable to hold this flight with " + providerType);
                 }
@@ -149,6 +150,7 @@ public class BookingService {
     }
 
     private Booking checkoutFlight(CheckoutRequest request, User user, List<BookedTraveler> travelers, PaymentPlan plan) {
+        validateFlightTravelers(travelers);
         FlightOffer offer = offerCache.getFlightOffer(request.offerId())
                 .orElseThrow(() -> new BusinessException("This flight offer has expired, please search again"));
         TravelProviderClient client = clientFor(offer.providerType());
@@ -160,7 +162,7 @@ public class BookingService {
 
         List<PassengerInfo> passengers = toPassengers(travelers);
         ProviderBookingConfirmation hold = client.createFlightHold(
-                new FlightBookingRequest(offer, passengers, request.contactEmail()));
+                new FlightBookingRequest(offer, passengers, request.contactEmail(), request.contactPhone()));
         if (!hold.confirmed()) {
             throw new ProviderException("Unable to hold this flight with " + offer.providerType());
         }
@@ -427,13 +429,31 @@ public class BookingService {
 
     private List<BookedTraveler> toBookedTravelers(List<TravelerRequest> travelers) {
         return travelers.stream()
-                .map(t -> new BookedTraveler(t.fullName(), t.dateOfBirth(), t.passportNumber(), t.type(), t.seatNumber()))
+                .map(t -> new BookedTraveler(t.fullName(), t.dateOfBirth(), t.passportNumber(), t.type(),
+                        t.seatNumber(), t.nationality(), t.passportIssueCountry(), t.passportExpiryDate()))
                 .toList();
     }
 
     private List<PassengerInfo> toPassengers(List<BookedTraveler> travelers) {
         return travelers.stream()
-                .map(t -> new PassengerInfo(t.getFullName(), t.getDateOfBirth(), t.getPassportNumber(), t.getType()))
+                .map(t -> new PassengerInfo(t.getFullName(), t.getDateOfBirth(), t.getPassportNumber(), t.getType(),
+                        t.getNationality(), t.getPassportIssueCountry(), t.getPassportExpiryDate()))
                 .toList();
+    }
+
+    /**
+     * Flight-only: date of birth and nationality are optional on {@link BookedTraveler} because it's
+     * shared with hotel/vehicle/property checkouts, which don't need them - but real GDS booking
+     * testing confirmed both are actually required for flights (e.g. Travelopro rejects a booking
+     * with "PassengerNationality details is required for this airline"). Checked here, before any
+     * provider call, so an incomplete submission fails fast with a clear, actionable message instead
+     * of a confusing provider-side rejection deep in the booking flow.
+     */
+    private void validateFlightTravelers(List<BookedTraveler> travelers) {
+        boolean incomplete = travelers.stream()
+                .anyMatch(t -> t.getDateOfBirth() == null || t.getNationality() == null || t.getNationality().isBlank());
+        if (incomplete) {
+            throw new BusinessException("Date of birth and nationality are required for every traveler on a flight booking");
+        }
     }
 }

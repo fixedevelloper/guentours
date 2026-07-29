@@ -76,6 +76,23 @@ public class HotelService {
         findById(id).activate();
     }
 
+    @Transactional
+    public Hotel update(String id, HotelRegistrationRequest req) {
+        Hotel hotel = findById(id);
+        hotel.update(
+                req.name(),
+                req.address(),
+                req.city(),
+                req.country(),
+                req.starRating(),
+                req.description(),
+                req.amenities(),
+                req.checkInTime(),
+                req.checkOutTime()
+        );
+        return hotelRepository.save(hotel);
+    }
+
     // --- Galeries d'images : Hôtel ---
 
     @Transactional

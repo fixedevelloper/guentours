@@ -11,6 +11,7 @@ import com.guentours.shared.Money;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 
 public record BookingResponse(
@@ -40,6 +41,24 @@ public record BookingResponse(
         LocalDate checkIn,
         LocalDate checkOut,
         String fareClass,
+        String vehicleBrand,
+        String vehicleModel,
+        String vehicleCategory,
+        String vehicleTransmission,
+        Integer vehicleSeats,
+        String pickupCity,
+        String dropoffCity,
+        LocalDate rentalStart,
+        LocalTime pickupTime,
+        LocalDate rentalEnd,
+        LocalTime dropoffTime,
+        Boolean withDriver,
+        String propertyTitle,
+        String propertyType,
+        String country,
+        Integer bedrooms,
+        Integer maxGuests,
+        Boolean entirePlace,
         Instant createdAt
 ) {
     public static BookingResponse from(Booking booking) {
@@ -55,6 +74,13 @@ public record BookingResponse(
                 booking.getETicketNumbers(), legs, booking.getFailureReason(), travelers,
                 booking.getAirline(), booking.getFlightNumber(), booking.getOrigin(), booking.getDestination(),
                 booking.getDepartureTime(), booking.getArrivalTime(), booking.getHotelName(), booking.getCityCode(),
-                booking.getCheckIn(), booking.getCheckOut(), booking.getFareClass(), booking.getCreatedAt());
+                booking.getCheckIn(), booking.getCheckOut(), booking.getFareClass(),
+                booking.getVehicleBrand(), booking.getVehicleModel(), booking.getVehicleCategory(),
+                booking.getVehicleTransmission(), booking.getVehicleSeats(), booking.getPickupCity(),
+                booking.getDropoffCity(), booking.getRentalStart(), booking.getPickupTime(),
+                booking.getRentalEnd(), booking.getDropoffTime(), booking.getWithDriver(),
+                booking.getPropertyTitle(), booking.getPropertyType(), booking.getCountry(),
+                booking.getBedrooms(), booking.getMaxGuests(), booking.getEntirePlace(),
+                booking.getCreatedAt());
     }
 }

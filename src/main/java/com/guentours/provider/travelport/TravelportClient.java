@@ -13,6 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -66,6 +67,12 @@ public class TravelportClient implements TravelProviderClient {
     /** Payment-to-offer operations on a workbench, e.g. Add Payment (verified endpoint base). */
     private static final String PAYMENT_OFFER_BASE = "/air/paymentoffer/reservationworkbench";
     private static final List<String> HOTELS = List.of("Hotel Le Meridien", "Ibis Central");
+    /**
+     * Requesting only "GDS" excludes every NDC-only carrier's content entirely (e.g. this vendor's
+     * own EMEA/Turkey test scope lists AA/UA/QF/SQ as NDC carriers, separate from its GDS carrier
+     * list) - both sources are requested so search isn't silently missing half the test scope.
+     */
+    private static final List<String> CONTENT_SOURCES = List.of("GDS", "NDC");
 
     private final ProviderProperties.Vendor config;
     private final RestClient restClient;
@@ -192,13 +199,17 @@ public class TravelportClient implements TravelProviderClient {
             log.info("Mock-cancelled Travelport flight PNR {}", pnrCode);
             return;
         }
-        restClient.delete()
-                .uri(RESERVATIONS_BASE + "/{locator}", pnrCode)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
-                .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
-                .header(PCC_HEADER, config.getPseudoCityCode())
-                .retrieve()
-                .toBodilessEntity();
+        try {
+            restClient.delete()
+                    .uri(RESERVATIONS_BASE + "/{locator}", pnrCode)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                    .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
+                    .header(PCC_HEADER, config.getPseudoCityCode())
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelport cancellation failed for PNR " + pnrCode + ": " + e.getMessage());
+        }
         log.info("Cancelled Travelport reservation {}", pnrCode);
     }
 
@@ -223,6 +234,8 @@ public class TravelportClient implements TravelProviderClient {
                 .body(request)
                 .retrieve()
                 .body(TravelportSearchResponse.class);
+
+        log.info("[Travelport] flight search response for {}->{}: {}", criteria.origin(), criteria.destination(), response);
 
         var body = response == null ? null : response.CatalogProductOfferingsResponse();
         if (body == null || body.CatalogProductOfferings() == null
@@ -303,7 +316,7 @@ public class TravelportClient implements TravelProviderClient {
                 "CatalogProductOfferingsRequestAir",
                 1,
                 15,
-                List.of("GDS"),
+                CONTENT_SOURCES,
                 passengers,
                 legs,
                 null);
@@ -407,15 +420,22 @@ public class TravelportClient implements TravelProviderClient {
                         "CatalogProductOfferingSelection",
                         new TravelportPriceRequest.Identifier(offer.providerOfferId())))));
 
-        TravelportPriceResponse response = restClient.post()
-                .uri("/price/offers/buildfromcatalogproductofferings")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
-                .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
-                .header(PCC_HEADER, config.getPseudoCityCode())
-                .accept(MediaType.APPLICATION_JSON)
-                .body(request)
-                .retrieve()
-                .body(TravelportPriceResponse.class);
+        TravelportPriceResponse response;
+        try {
+            response = restClient.post()
+                    .uri("/price/offers/buildfromcatalogproductofferings")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                    .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
+                    .header(PCC_HEADER, config.getPseudoCityCode())
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(TravelportPriceResponse.class);
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelport price re-check failed for offer "
+                    + offer.providerOfferId() + ": " + e.getMessage());
+        }
+        log.info("[Travelport] price response for offer {}: {}", offer.providerOfferId(), response);
 
         var pricedOffer = response == null || response.OffersResponse() == null
                 || response.OffersResponse().Offer() == null || response.OffersResponse().Offer().isEmpty()
@@ -474,13 +494,20 @@ public class TravelportClient implements TravelProviderClient {
         String uri = issueTicket
                 ? RESERVATIONS_BASE + "/{session}?Issuance=Ticket&DocumentValue=Retain"
                 : RESERVATIONS_BASE + "/{session}";
-        return restClient.post()
-                .uri(uri, session)
-                .headers(h -> workbenchHeaders(h, session))
-                .accept(MediaType.APPLICATION_JSON)
-                .body(new TravelportCommitRequest("GUENTOURS", true, true))
-                .retrieve()
-                .body(TravelportReservationResponse.class);
+        TravelportReservationResponse response;
+        try {
+            response = restClient.post()
+                    .uri(uri, session)
+                    .headers(h -> workbenchHeaders(h, session))
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(new TravelportCommitRequest("GUENTOURS", true, true))
+                    .retrieve()
+                    .body(TravelportReservationResponse.class);
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelport commit failed: " + e.getMessage());
+        }
+        log.info("[Travelport] commit response (issueTicket={}) for session {}: {}", issueTicket, session, response);
+        return response;
     }
 
     private String confirmationFrom(TravelportReservationResponse response) {
@@ -507,13 +534,17 @@ public class TravelportClient implements TravelProviderClient {
 
     /** New Workbench: {@code POST /air/book/session/reservationworkbench} with a Reservation body. */
     private void newWorkbench(String session, TravelportWorkbenchRequests.Reservation reservation) {
-        restClient.post()
-                .uri(WORKBENCH_BASE)
-                .headers(h -> workbenchHeaders(h, session))
-                .accept(MediaType.APPLICATION_JSON)
-                .body(reservation)
-                .retrieve()
-                .toBodilessEntity();
+        try {
+            restClient.post()
+                    .uri(WORKBENCH_BASE)
+                    .headers(h -> workbenchHeaders(h, session))
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(reservation)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelport new workbench failed: " + e.getMessage());
+        }
     }
 
     /**
@@ -543,13 +574,19 @@ public class TravelportClient implements TravelProviderClient {
                                 null))),
                 4);
 
-        TravelportOfferListResponse response = restClient.post()
-                .uri("{base}/{session}/offers/buildfromcatalogproductofferings", WORKBENCH_AIROFFER_BASE, session)
-                .headers(h -> workbenchHeaders(h, session))
-                .accept(MediaType.APPLICATION_JSON)
-                .body(request)
-                .retrieve()
-                .body(TravelportOfferListResponse.class);
+        TravelportOfferListResponse response;
+        try {
+            response = restClient.post()
+                    .uri("{base}/{session}/offers/buildfromcatalogproductofferings", WORKBENCH_AIROFFER_BASE, session)
+                    .headers(h -> workbenchHeaders(h, session))
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(TravelportOfferListResponse.class);
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelport add offer failed for " + offeringId + ": " + e.getMessage());
+        }
+        log.info("[Travelport] add offer response for {}: {}", offeringId, response);
 
         boolean added = response != null && response.OfferListResponse() != null
                 && response.OfferListResponse().OfferID() != null
@@ -565,13 +602,17 @@ public class TravelportClient implements TravelProviderClient {
      * {@code .../travelers/list} endpoint is the alternative for many travelers at once.
      */
     private void addTraveler(String session, TravelportWorkbenchRequests.Traveler traveler) {
-        restClient.post()
-                .uri("{base}/{session}/travelers", WORKBENCH_TRAVELER_BASE, session)
-                .headers(h -> workbenchHeaders(h, session))
-                .accept(MediaType.APPLICATION_JSON)
-                .body(traveler)
-                .retrieve()
-                .toBodilessEntity();
+        try {
+            restClient.post()
+                    .uri("{base}/{session}/travelers", WORKBENCH_TRAVELER_BASE, session)
+                    .headers(h -> workbenchHeaders(h, session))
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(traveler)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelport add traveler failed: " + e.getMessage());
+        }
     }
 
     /**
@@ -606,12 +647,16 @@ public class TravelportClient implements TravelProviderClient {
      * {@code POST /air/book/session/reservationworkbench/buildfromlocator?Locator={pnr}} (no body).
      */
     private void postCommitWorkbench(String session, String locator) {
-        restClient.post()
-                .uri(WORKBENCH_BASE + "/buildfromlocator?Locator={locator}", locator)
-                .headers(h -> workbenchHeaders(h, session))
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .toBodilessEntity();
+        try {
+            restClient.post()
+                    .uri(WORKBENCH_BASE + "/buildfromlocator?Locator={locator}", locator)
+                    .headers(h -> workbenchHeaders(h, session))
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelport post-commit workbench failed for locator " + locator + ": " + e.getMessage());
+        }
     }
 
     /**
@@ -622,13 +667,19 @@ public class TravelportClient implements TravelProviderClient {
     private String addFormOfPayment(String session, PaymentDetails payment) {
         var fop = new TravelportFormOfPaymentRequest(
                 "FormOfPaymentCash", true, true, null, "GuenTours txn " + payment.transactionReference());
-        TravelportFormOfPaymentResponse response = restClient.post()
-                .uri("{base}/{session}/formofpayment?authorizePaymentInd=true", PAYMENT_BASE, session)
-                .headers(h -> workbenchHeaders(h, session))
-                .accept(MediaType.APPLICATION_JSON)
-                .body(fop)
-                .retrieve()
-                .body(TravelportFormOfPaymentResponse.class);
+        TravelportFormOfPaymentResponse response;
+        try {
+            response = restClient.post()
+                    .uri("{base}/{session}/formofpayment?authorizePaymentInd=true", PAYMENT_BASE, session)
+                    .headers(h -> workbenchHeaders(h, session))
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(fop)
+                    .retrieve()
+                    .body(TravelportFormOfPaymentResponse.class);
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelport add form of payment failed: " + e.getMessage());
+        }
+        log.info("[Travelport] form of payment response for session {}: {}", session, response);
 
         var created = response == null || response.FormOfPaymentResponse() == null
                 ? null : response.FormOfPaymentResponse().FormOfPayment();
@@ -648,13 +699,17 @@ public class TravelportClient implements TravelProviderClient {
                 new TravelportPaymentRequest.Amount(
                         payment.amount().amount().doubleValue(), payment.amount().currency()),
                 new TravelportPaymentRequest.FormOfPaymentIdentifier("FormOfPaymentPaymentCash", fopRef, fopRef));
-        restClient.post()
-                .uri("{base}/{session}/payments", PAYMENT_OFFER_BASE, session)
-                .headers(h -> workbenchHeaders(h, session))
-                .accept(MediaType.APPLICATION_JSON)
-                .body(request)
-                .retrieve()
-                .toBodilessEntity();
+        try {
+            restClient.post()
+                    .uri("{base}/{session}/payments", PAYMENT_OFFER_BASE, session)
+                    .headers(h -> workbenchHeaders(h, session))
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelport add payment failed: " + e.getMessage());
+        }
     }
 
     private void workbenchHeaders(HttpHeaders headers, String session) {
@@ -707,7 +762,7 @@ public class TravelportClient implements TravelProviderClient {
                 "PropertiesQuerySearch",
                 criteria.checkIn().toString(),
                 criteria.checkOut().toString(),
-                "EUR",
+                criteria.currency() != null ? criteria.currency() : "EUR",
                 List.of(guests),
                 new TravelportHotelSearchRequest.SearchBy("SearchByCityCode", criteria.cityCode(),
                         new TravelportHotelSearchRequest.SearchRadius(25, "Kilometers")),
@@ -722,6 +777,8 @@ public class TravelportClient implements TravelProviderClient {
                 .body(new TravelportHotelSearchRequest(query))
                 .retrieve()
                 .body(TravelportHotelSearchResponse.class);
+
+        log.info("[Travelport] hotel search response for {}: {}", criteria.cityCode(), response);
 
         var body = response == null ? null : response.PropertiesResponse();
         if (body == null || body.Properties() == null || body.Properties().PropertyInfo() == null) {
@@ -798,15 +855,22 @@ public class TravelportClient implements TravelProviderClient {
                                                 "PropertyRequest",
                                                 new TravelportHotelAvailabilityRequest.PropertyKey(chainCode, propertyCode))))))));
 
-        TravelportHotelAvailabilityResponse response = restClient.post()
-                .uri("/hotel/availability/catalogofferingshospitality")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
-                .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
-                .header(PCC_HEADER, config.getPseudoCityCode())
-                .accept(MediaType.APPLICATION_JSON)
-                .body(request)
-                .retrieve()
-                .body(TravelportHotelAvailabilityResponse.class);
+        TravelportHotelAvailabilityResponse response;
+        try {
+            response = restClient.post()
+                    .uri("/hotel/availability/catalogofferingshospitality")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                    .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
+                    .header(PCC_HEADER, config.getPseudoCityCode())
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(TravelportHotelAvailabilityResponse.class);
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelport hotel availability check failed for "
+                    + offer.providerOfferId() + ": " + e.getMessage());
+        }
+        log.info("[Travelport] hotel availability response for {}: {}", offer.providerOfferId(), response);
 
         var offerings = response == null || response.CatalogOfferingsHospitalityResponse() == null
                 ? null : response.CatalogOfferingsHospitalityResponse().CatalogOfferings();
@@ -847,15 +911,21 @@ public class TravelportClient implements TravelProviderClient {
                 null,
                 null);
 
-        TravelportReservationResponse response = restClient.post()
-                .uri("/hotel/book/reservations")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
-                .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
-                .header(PCC_HEADER, config.getPseudoCityCode())
-                .accept(MediaType.APPLICATION_JSON)
-                .body(new TravelportHotelReservationRequest(reservation))
-                .retrieve()
-                .body(TravelportReservationResponse.class);
+        TravelportReservationResponse response;
+        try {
+            response = restClient.post()
+                    .uri("/hotel/book/reservations")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                    .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
+                    .header(PCC_HEADER, config.getPseudoCityCode())
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(new TravelportHotelReservationRequest(reservation))
+                    .retrieve()
+                    .body(TravelportReservationResponse.class);
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelport hotel reservation failed: " + e.getMessage());
+        }
+        log.info("[Travelport] hotel reservation response for offer {}: {}", request.offer().providerOfferId(), response);
 
         String confirmation = confirmationFrom(response);
         if (confirmation == null) {

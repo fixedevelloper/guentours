@@ -41,7 +41,9 @@ public class Property {
     @Column(nullable = false)
     private Integer maxGuests;
 
-    @ElementCollection
+    // Eager : PropertyResponse.from() lit cette collection dans le contrôleur, après la fermeture
+    // de la session Hibernate (open-in-view=false) - un fetch lazy y lèverait LazyInitializationException.
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "property_amenities", joinColumns = @JoinColumn(name = "property_id"))
     @Column(name = "amenity")
     private List<String> amenities;

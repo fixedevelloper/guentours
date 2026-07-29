@@ -1,6 +1,5 @@
 package com.guentours.partners.carrental.web;
 
-import com.guentours.partners.carrental.domain.VehicleAvailability;
 import com.guentours.partners.carrental.service.VehicleService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
@@ -78,14 +77,14 @@ public class VehicleController {
     }
 
     @PutMapping("/{vehicleId}/availability")
-    public VehicleAvailability upsertAvailability(@PathVariable String vehicleId,
+    public VehicleAvailabilityResponse upsertAvailability(@PathVariable String vehicleId,
                                                   @Valid @RequestBody VehicleAvailabilityRequest req) {
-        return service.upsertAvailability(vehicleId, req);
+        return VehicleAvailabilityResponse.from(service.upsertAvailability(vehicleId, req));
     }
 
     @GetMapping("/{vehicleId}/availability")
-    public List<VehicleAvailability> getAvailability(@PathVariable String vehicleId,
+    public List<VehicleAvailabilityResponse> getAvailability(@PathVariable String vehicleId,
                                                      @RequestParam LocalDate from, @RequestParam LocalDate to) {
-        return service.getAvailability(vehicleId, from, to);
+        return service.getAvailability(vehicleId, from, to).stream().map(VehicleAvailabilityResponse::from).toList();
     }
 }

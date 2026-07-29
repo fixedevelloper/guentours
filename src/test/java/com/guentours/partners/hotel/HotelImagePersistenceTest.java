@@ -11,6 +11,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -81,5 +82,21 @@ class HotelImagePersistenceTest {
         RoomType reloaded = roomTypeRepository.findById(roomTypeId).orElseThrow();
         entityManager.detach(reloaded);
         assertThat(reloaded.getImages()).hasSize(1);
+    }
+
+    @Test
+    void amenitiesStayReadableOnADetachedHotel() {
+        Hotel hotel = new Hotel("partner-1", "Le Palace", "1 rue des Fleurs", "Douala", "Cameroun",
+                4, "Un bel hôtel", null, List.of("WIFI", "POOL"), null, null);
+
+        String hotelId = hotelRepository.saveAndFlush(hotel).getId();
+
+        entityManager.flush();
+        entityManager.clear();
+
+        Hotel reloaded = hotelRepository.findById(hotelId).orElseThrow();
+        entityManager.detach(reloaded);
+
+        assertThat(reloaded.getAmenities()).containsExactlyInAnyOrder("WIFI", "POOL");
     }
 }

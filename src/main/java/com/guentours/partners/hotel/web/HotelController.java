@@ -39,6 +39,11 @@ public class HotelController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable String hotelId) { service.delete(hotelId); }
 
+    @PutMapping("/{hotelId}")
+    public HotelResponse update(@PathVariable String hotelId, @Valid @RequestBody HotelRegistrationRequest req) {
+        return HotelResponse.from(service.update(hotelId, req));
+    }
+
     @PatchMapping("/{hotelId}/suspend")
     public void suspend(@PathVariable String hotelId) { service.suspend(hotelId); }
 

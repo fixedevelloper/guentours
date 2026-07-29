@@ -185,8 +185,8 @@ public class DirectClient implements TravelProviderClient {
             List<Vehicle> vehicles = vehicleRepository.findActiveByPickupCity(criteria.pickupCity());
 
             return vehicles.stream()
-                    .filter(v -> criteria.category() == null || v.getCategory().name().equalsIgnoreCase(criteria.category()))
-                    .filter(v -> isAvailableForRange(v, criteria.rentalStart(), criteria.rentalEnd()))
+                   // .filter(v -> criteria.category() == null || v.getCategory().name().equalsIgnoreCase(criteria.category()))
+                  //  .filter(v -> isAvailableForRange(v, criteria.rentalStart(), criteria.rentalEnd()))
                     .map(v -> toOffer(v, criteria))
                     .collect(Collectors.toList());
         } catch (Exception e) {
@@ -234,7 +234,7 @@ public class DirectClient implements TravelProviderClient {
             return properties.stream()
                     .filter(p -> criteria.propertyType() == null || p.getPropertyType().name().equalsIgnoreCase(criteria.propertyType()))
                     .filter(p -> criteria.bedrooms() == null || p.getBedrooms() >= criteria.bedrooms())
-                    .filter(p -> isAvailableForRange(p, criteria.checkIn(), criteria.checkOut()))
+                    //.filter(p -> isAvailableForRange(p, criteria.checkIn(), criteria.checkOut()))
                     .map(p -> toOffer(p, criteria))
                     .collect(Collectors.toList());
         } catch (Exception e) {

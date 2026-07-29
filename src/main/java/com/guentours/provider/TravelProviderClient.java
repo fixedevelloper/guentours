@@ -94,7 +94,6 @@ public interface TravelProviderClient {
      * Reserves a hotel room (either on hold or immediate booking depending on provider policy).
      */
     ProviderBookingConfirmation createHotelHold(HotelBookingRequest request);
-// Ajouts dans TravelProviderClient.java, à la suite de searchProperties
 
     /**
      * Places a hold on the vehicle for the requested rental period. Default throws
@@ -121,7 +120,6 @@ public interface TravelProviderClient {
     default void cancelPropertyBooking(String bookingRef) {
         throw new UnsupportedOperationException(getType() + " does not support property bookings");
     }
-    // Ajouts dans TravelProviderClient.java, à la suite de createPropertyHold
 
     /**
      * Re-validates vehicle price/availability before the hold. Default throws
