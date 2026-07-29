@@ -97,12 +97,12 @@ app:
       pseudo-city-code: ${SABRE_PSEUDO_CITY_CODE:}
     travelport:
       enabled: ${TRAVELPORT_ENABLED:true}
-      mock-mode: ${TRAVELPORT_MOCK_MODE:true}
+      mock-mode: ${TRAVELPORT_MOCK_MODE:false}
       base-url: ${TRAVELPORT_BASE_URL:}
       api-key: ${TRAVELPORT_API_KEY:}
       api-secret: ${TRAVELPORT_API_SECRET:}
-      username: ${TRAVELPORT_USERNAME:}
-      password: ${TRAVELPORT_PASSWORD:}
+      username: ${TRAVELPORT_USERNAME:TP38447932}
+      password: ${TRAVELPORT_PASSWORD:XT{$)p/$x3)+Rz}
       token-url: ${TRAVELPORT_TOKEN_URL:}
       access-group: ${TRAVELPORT_ACCESS_GROUP:}
       pseudo-city-code: ${TRAVELPORT_PCC:}
