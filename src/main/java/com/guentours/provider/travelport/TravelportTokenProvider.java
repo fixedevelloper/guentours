@@ -30,7 +30,7 @@ class TravelportTokenProvider {
 
     private static final Logger log = LoggerFactory.getLogger(TravelportTokenProvider.class);
     private static final long EXPIRY_SAFETY_MARGIN_SECONDS = 60;
-    private static final String DEFAULT_TOKEN_URL = "https://oauth.pp.travelport.com/oauth/oauth20/token";
+    private static final String DEFAULT_TOKEN_URL = "https://auth.pp.travelport.net/oauth/token";
 
     private final RestClient restClient;
     private final ProviderProperties.Vendor config;
