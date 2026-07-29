@@ -54,13 +54,15 @@ class TravelportTokenProvider {
         body.add("grant_type", "password");
         body.add("username", config.getUsername());
         body.add("password", config.getPassword());
-        body.add("scope", "openid");
+        body.add("client_id", config.getApiKey());
+        body.add("client_secret", config.getApiSecret());
+       // body.add("scope", "openid");
+        log.error("[Travelport] params  {}: {}", config.getApiKey(), config.getApiSecret());
 
         TravelportTokenResponse response;
         try {
             response = restClient.post()
                     .uri(tokenUrl)
-                    .headers(h -> h.setBasicAuth(config.getApiKey(), config.getApiSecret()))
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .body(body)
                     .retrieve()
