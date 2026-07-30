@@ -1,6 +1,5 @@
 package com.guentours.provider.direct;
 
-import com.guentours.partners.carrental.domain.ListingStatus;
 import com.guentours.partners.carrental.domain.Vehicle;
 import com.guentours.partners.carrental.domain.VehicleAvailability;
 import com.guentours.partners.carrental.repository.VehicleAvailabilityRepository;
@@ -13,10 +12,10 @@ import com.guentours.partners.flight.repository.AirlineFlightRepository;
 import com.guentours.partners.flight.repository.FlightAvailabilityRepository;
 import com.guentours.partners.furnishedrental.domain.Property;
 import com.guentours.partners.furnishedrental.domain.PropertyAvailability;
-import com.guentours.partners.furnishedrental.domain.PropertyType;
 import com.guentours.partners.furnishedrental.repository.PropertyAvailabilityRepository;
 import com.guentours.partners.furnishedrental.repository.PropertyRepository;
 import com.guentours.partners.hotel.domain.Hotel;
+import com.guentours.partners.hotel.domain.ListingStatus;
 import com.guentours.partners.hotel.domain.RoomAvailability;
 import com.guentours.partners.hotel.domain.RoomType;
 import com.guentours.partners.hotel.repository.HotelRepository;
@@ -28,7 +27,6 @@ import com.guentours.provider.dto.HotelPriceVerification;
 import com.guentours.provider.dto.PropertyPriceVerification;
 import com.guentours.provider.dto.VehiclePriceVerification;
 import com.guentours.shared.Money;
-import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

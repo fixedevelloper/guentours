@@ -24,7 +24,16 @@ final class TravelportWorkbenchRequests {
     private TravelportWorkbenchRequests() {
     }
 
-    /** New Workbench body ({@code @type: Reservation}) - the container committed into a PNR. */
+    /**
+     * New Workbench body ({@code @type: ReservationID}) - a verified real production reference
+     * client sends only this bare type marker to have Travelport allocate a fresh workbench and
+     * return its id; it does not carry the offer/traveler/payment payload up front.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record ReservationId(@JsonProperty("@type") String type) {
+    }
+
+    /** Full Reservation body ({@code @type: Reservation}) - the container committed into a PNR. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonPropertyOrder({"@type", "Offer", "Traveler", "FormOfPayment", "Payment"})
     record Reservation(

@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -579,9 +580,7 @@ public class TravelportClient implements TravelProviderClient {
      * and are flagged best-effort.
      */
     private ProviderBookingConfirmation callReservationApi(FlightBookingRequest request) {
-        String session = UUID.randomUUID().toString();
-
-        newWorkbench(session, new TravelportWorkbenchRequests.Reservation("Reservation", null, null, null, null));
+        String session = newWorkbench();
 
         addOffer(session, request.offer());
 
@@ -610,38 +609,77 @@ public class TravelportClient implements TravelProviderClient {
      */
     private TravelportReservationResponse commit(String session, boolean issueTicket) {
         String autoDeleteDate = LocalDate.now().plusDays(3).toString();
-        String uri = issueTicket
-                ? RESERVATIONS_BASE + "/{session}?autoDeleteDate={autoDeleteDate}&Issuance=Ticket&DocumentValue=Retain&payLaterInd=false"
-                : RESERVATIONS_BASE + "/{session}?autoDeleteDate={autoDeleteDate}&DocumentValue=Retain&payLaterInd=true";
-        var body = new TravelportCommitRequest(true, true, true, false, true, true,
-                "AcceptOfferPriceDifference", "GUENS TRAVEL", true);
-        TravelportReservationResponse response;
+        String commitUrl = resolvedBaseUrl + RESERVATIONS_BASE + "/" + session
+                + "?autoDeleteDate=" + autoDeleteDate
+                + (issueTicket
+                        ? "&Issuance=Ticket&DocumentValue=Retain&payLaterInd=false"
+                        : "&DocumentValue=Retain&payLaterInd=true");
+        var body = new TravelportCommitRequest(
+                new TravelportCommitRequest.ReservationQueryCommitReservation(
+                        "ReservationQueryCommitReservation", true, true, true, false, true, true,
+                        "AcceptOfferPriceDifference", "GUENS TRAVEL", true));
+        log.info("[Travelport] commit URL (issueTicket={}) for session {}: {}", issueTicket, session, commitUrl);
+        log.info("[Travelport] commit request for session {}: {}", session, writeAsJson(body));
+
+        String raw;
         try {
-            response = restClient.post()
-                    .uri(uri, session, autoDeleteDate)
+            raw = restClient.post()
+                    .uri(commitUrl)
                     .headers(h -> workbenchHeaders(h, session))
-                    .accept(MediaType.APPLICATION_JSON)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header(HttpHeaders.ACCEPT, "application/json;version=11.33")
+                    .header("TraceId", "Commit_Req_" + session + "_" + Instant.now().getEpochSecond())
                     .body(body)
                     .retrieve()
-                    .body(TravelportReservationResponse.class);
+                    .body(String.class);
         } catch (RestClientException e) {
             throw new ProviderException("Travelport commit failed: " + e.getMessage());
+        }
+        log.info("[Travelport] commit raw response (issueTicket={}) for session {}: {}", issueTicket, session, raw);
+
+        TravelportReservationResponse response;
+        try {
+            response = raw == null || raw.isBlank() ? null : objectMapper.readValue(raw, TravelportReservationResponse.class);
+        } catch (IOException e) {
+            throw new ProviderException("Travelport commit response parsing failed: " + e.getMessage());
         }
         log.info("[Travelport] commit response (issueTicket={}) for session {}: {}", issueTicket, session, response);
         return response;
     }
 
+    /**
+     * Extracts the record locator/reservation reference from a Commit response, trying every shape
+     * real production testing has actually observed (see {@link TravelportReservationResponse}'s
+     * Javadoc), in the same fallback order a verified reference client uses.
+     */
     private String confirmationFrom(TravelportReservationResponse response) {
-        var body = response == null ? null : response.ReservationResponse();
-        if (body == null) {
+        if (response == null) {
             return null;
         }
-        boolean ok = "Success".equalsIgnoreCase(body.reservationStatus())
-                || (body.Result() != null && "Complete".equalsIgnoreCase(body.Result().status()));
-        if (!ok || body.Identifier() == null) {
-            return null;
+        if (response.Reservation() != null && response.Reservation().locatorCode() != null) {
+            return response.Reservation().locatorCode();
         }
-        return body.Identifier().value();
+        var body = response.ReservationResponse();
+        if (body != null) {
+            if (body.Reservation() != null) {
+                if (body.Reservation().locatorCode() != null) {
+                    return body.Reservation().locatorCode();
+                }
+                if (body.Reservation().Identifier() != null) {
+                    return body.Reservation().Identifier().value();
+                }
+            }
+            boolean ok = "Success".equalsIgnoreCase(body.reservationStatus())
+                    || (body.Result() != null && "Complete".equalsIgnoreCase(body.Result().status()));
+            if (ok && body.Identifier() != null) {
+                return body.Identifier().value();
+            }
+        }
+        var display = response.ReservationDisplayResponse();
+        if (display != null && display.ReservationShort() != null && display.ReservationShort().Identifier() != null) {
+            return display.ReservationShort().Identifier().value();
+        }
+        return null;
     }
 
     private String commitFailureReason(TravelportReservationResponse response) {
@@ -653,19 +691,41 @@ public class TravelportClient implements TravelProviderClient {
         return "commit did not return a successful reservation";
     }
 
-    /** New Workbench: {@code POST /air/book/session/reservationworkbench} with a Reservation body. */
-    private void newWorkbench(String session, TravelportWorkbenchRequests.Reservation reservation) {
+    /**
+     * New Workbench ({@code POST /air/book/session/reservationworkbench} with a
+     * {@code @type: ReservationID} body), matching a verified real production reference client.
+     * Unlike every later workbench-scoped call, the workbench id is <b>not</b> client-assigned here:
+     * Travelport creates it server-side and returns it as
+     * {@code ReservationResponse.Reservation.Identifier.value}. That returned id - not a
+     * locally-generated UUID - is what every subsequent call (Add Offer, Add Traveler, Commit, ...)
+     * must address at {@code .../reservationworkbench/{id}/...}; using anything else fails with
+     * "WORKBENCH ID IS NOT VALID".
+     */
+    private String newWorkbench() {
+        TravelportNewWorkbenchResponse response;
         try {
-            restClient.post()
+            response = restClient.post()
                     .uri(WORKBENCH_BASE)
-                    .headers(h -> workbenchHeaders(h, session))
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                    .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
+                    .header(PCC_HEADER, config.getPseudoCityCode())
+                    .header("TraceId", "TraceID_INIT_" + UUID.randomUUID())
                     .accept(MediaType.APPLICATION_JSON)
-                    .body(reservation)
+                    .body(new TravelportWorkbenchRequests.ReservationId("ReservationID"))
                     .retrieve()
-                    .toBodilessEntity();
+                    .body(TravelportNewWorkbenchResponse.class);
         } catch (RestClientException e) {
             throw new ProviderException("Travelport new workbench failed: " + e.getMessage());
         }
+
+        String session = response == null || response.ReservationResponse() == null
+                || response.ReservationResponse().Reservation() == null
+                || response.ReservationResponse().Reservation().Identifier() == null
+                ? null : response.ReservationResponse().Reservation().Identifier().value();
+        if (session == null || session.isBlank()) {
+            throw new ProviderException("Travelport new workbench returned no session identifier");
+        }
+        return session;
     }
 
     /**
@@ -731,9 +791,9 @@ public class TravelportClient implements TravelProviderClient {
         log.info("[Travelport] add offer URL for {}: {}", offeringId, addOfferUrl);
         log.info("[Travelport] add offer request for {}: {}", offeringId, writeAsJson(request));
 
-        TravelportOfferListResponse response;
+        String raw;
         try {
-            response = restClient.post()
+            raw = restClient.post()
                     .uri(addOfferUrl)
                     .headers(h -> {
                         workbenchHeaders(h, session);
@@ -745,15 +805,24 @@ public class TravelportClient implements TravelProviderClient {
                     .accept(MediaType.APPLICATION_JSON)
                     .body(request)
                     .retrieve()
-                    .body(TravelportOfferListResponse.class);
+                    .body(String.class);
         } catch (RestClientException e) {
             throw new ProviderException("Travelport add offer failed for " + offeringId + ": " + e.getMessage());
         }
+        log.info("[Travelport] add offer raw response for {}: {}", offeringId, raw);
+
+        TravelportOfferListResponse response;
+        try {
+            response = raw == null || raw.isBlank() ? null : objectMapper.readValue(raw, TravelportOfferListResponse.class);
+        } catch (IOException e) {
+            throw new ProviderException("Travelport add offer response parsing failed for " + offeringId + ": " + e.getMessage());
+        }
         log.info("[Travelport] add offer response for {}: {}", offeringId, response);
 
-        boolean added = response != null && response.OfferListResponse() != null
-                && response.OfferListResponse().OfferID() != null
-                && !response.OfferListResponse().OfferID().isEmpty();
+        var addedOffer = response == null || response.OfferListResponse() == null
+                || response.OfferListResponse().OfferID() == null || response.OfferListResponse().OfferID().isEmpty()
+                ? null : response.OfferListResponse().OfferID().get(0);
+        boolean added = addedOffer != null && addedOffer.Identifier() != null && addedOffer.Identifier().value() != null;
         if (!added) {
             throw new ProviderException("Travelport Add Offer returned no offer for " + offeringId);
         }
@@ -765,9 +834,10 @@ public class TravelportClient implements TravelProviderClient {
      * {@code .../travelers/list} endpoint is the alternative for many travelers at once.
      */
     private void addTraveler(String session, TravelportWorkbenchRequests.Traveler traveler) {
+        String addTravelerUrl = resolvedBaseUrl + WORKBENCH_TRAVELER_BASE + "/" + session + "/travelers";
         try {
             restClient.post()
-                    .uri("{base}/{session}/travelers", WORKBENCH_TRAVELER_BASE, session)
+                    .uri(addTravelerUrl)
                     .headers(h -> workbenchHeaders(h, session))
                     .accept(MediaType.APPLICATION_JSON)
                     .body(traveler)
@@ -810,9 +880,10 @@ public class TravelportClient implements TravelProviderClient {
      * {@code POST /air/book/session/reservationworkbench/buildfromlocator?Locator={pnr}} (no body).
      */
     private void postCommitWorkbench(String session, String locator) {
+        String postCommitUrl = resolvedBaseUrl + WORKBENCH_BASE + "/buildfromlocator?Locator=" + locator;
         try {
             restClient.post()
-                    .uri(WORKBENCH_BASE + "/buildfromlocator?Locator={locator}", locator)
+                    .uri(postCommitUrl)
                     .headers(h -> workbenchHeaders(h, session))
                     .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
@@ -835,10 +906,12 @@ public class TravelportClient implements TravelProviderClient {
         var fop = new TravelportFormOfPaymentRequest(
                 "FormOfPaymentCash", FORM_OF_PAYMENT_ID, FORM_OF_PAYMENT_ID, true, true, null,
                 "GuenTours txn " + payment.transactionReference());
+        String addFormOfPaymentUrl = resolvedBaseUrl + PAYMENT_BASE + "/" + session
+                + "/formofpayment?authorizePaymentInd=true";
         TravelportFormOfPaymentResponse response;
         try {
             response = restClient.post()
-                    .uri("{base}/{session}/formofpayment?authorizePaymentInd=true", PAYMENT_BASE, session)
+                    .uri(addFormOfPaymentUrl)
                     .headers(h -> workbenchHeaders(h, session))
                     .accept(MediaType.APPLICATION_JSON)
                     .body(fop)
@@ -869,9 +942,10 @@ public class TravelportClient implements TravelProviderClient {
                 new TravelportPaymentRequest.Amount(
                         payment.amount().currency(), 2, "Charged", payment.amount().amount().doubleValue()),
                 new TravelportPaymentRequest.FormOfPaymentIdentifier(fopRef, fopRef));
+        String addPaymentUrl = resolvedBaseUrl + PAYMENT_OFFER_BASE + "/" + session + "/payments";
         try {
             restClient.post()
-                    .uri("{base}/{session}/payments", PAYMENT_OFFER_BASE, session)
+                    .uri(addPaymentUrl)
                     .headers(h -> workbenchHeaders(h, session))
                     .accept(MediaType.APPLICATION_JSON)
                     .body(request)

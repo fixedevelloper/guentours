@@ -1,7 +1,7 @@
 package com.guentours.partners.hotel.repository;
 
-import com.guentours.partners.carrental.domain.ListingStatus;
 import com.guentours.partners.hotel.domain.Hotel;
+import com.guentours.partners.hotel.domain.ListingStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;

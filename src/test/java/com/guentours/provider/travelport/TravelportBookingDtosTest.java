@@ -163,12 +163,10 @@ class TravelportBookingDtosTest {
         String sample = """
                 {
                     "OfferListResponse": {
-                        "@type": "response",
-                        "transactionId": "49f58f5f-c443-43b4-9f5d-be405fd00a01",
+                        "@type": "OfferListResponse",
                         "OfferID": [
-                            { "@type": "Offer", "id": "offer_1", "offerRef": "offer_1", "ContentSource": "GDS" }
-                        ],
-                        "Result": { "@type": "Result", "status": "Complete" }
+                            { "@type": "OfferID", "Identifier": { "authority": "Travelport", "value": "cc2eb6bf-2691-4ac7-bfa4-ca1bea81051f" } }
+                        ]
                     }
                 }
                 """;
@@ -176,8 +174,8 @@ class TravelportBookingDtosTest {
         TravelportOfferListResponse response = mapper.readValue(sample, TravelportOfferListResponse.class);
 
         var offer = response.OfferListResponse().OfferID().get(0);
-        assertThat(offer.id()).isEqualTo("offer_1");
-        assertThat(offer.ContentSource()).isEqualTo("GDS");
+        assertThat(offer.Identifier().value()).isEqualTo("cc2eb6bf-2691-4ac7-bfa4-ca1bea81051f");
+        assertThat(offer.Identifier().authority()).isEqualTo("Travelport");
     }
 
     @Test
@@ -283,11 +281,15 @@ class TravelportBookingDtosTest {
     @Test
     void serializesACommitRequestMatchingTheProductionReferenceShape() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        var request = new TravelportCommitRequest(true, true, true, false, true, true,
-                "AcceptOfferPriceDifference", "GUENS TRAVEL", true);
+        var request = new TravelportCommitRequest(
+                new TravelportCommitRequest.ReservationQueryCommitReservation(
+                        "ReservationQueryCommitReservation", true, true, true, false, true, true,
+                        "AcceptOfferPriceDifference", "GUENS TRAVEL", true));
 
         String json = mapper.writeValueAsString(request);
 
+        assertThat(json).contains("\"ReservationQueryCommitReservation\":{");
+        assertThat(json).contains("\"@type\":\"ReservationQueryCommitReservation\"");
         assertThat(json).contains("\"scheduleChangeAcceptedInd\":true");
         assertThat(json).contains("\"errorWhenOfferPriceCancelledInd\":true");
         assertThat(json).contains("\"inhibitResidualDocumentIssuanceInd\":true");
