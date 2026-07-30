@@ -110,7 +110,7 @@ final class TravelportWorkbenchRequests {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    @JsonPropertyOrder({"@type", "docNumber", "docType", "expireDate", "issueCountry", "birthDate", "Gender"})
+    @JsonPropertyOrder({"@type", "docNumber", "docType", "expireDate", "issueCountry", "birthDate", "Gender", "PersonName"})
     record TravelDocument(
             @JsonProperty("@type") String type,
             String docNumber,
@@ -118,7 +118,8 @@ final class TravelportWorkbenchRequests {
             String expireDate,
             String issueCountry,
             String birthDate,
-            String Gender
+            String Gender,
+            PersonName PersonName
     ) {
     }
 

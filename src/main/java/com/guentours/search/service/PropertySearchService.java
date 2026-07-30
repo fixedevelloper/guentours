@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit;
 public class PropertySearchService {
 
     private static final Logger log = LoggerFactory.getLogger(PropertySearchService.class);
+    private static final int PROVIDER_SEARCH_TIMEOUT_SECONDS = 30;
 
     private final Map<ProviderType, TravelProviderClient> providerClientsMap;
     private final List<TravelProviderClient> providerClients;
@@ -60,7 +61,9 @@ public class PropertySearchService {
                                 return List.<PropertyOffer>of();
                             }
                         }, providerSearchExecutor)
-                        .orTimeout(5, TimeUnit.SECONDS)
+                        // Aligné sur le timeout HTTP par défaut d'un provider (30s, cf.
+                        // ProviderProperties.Vendor) - 5s coupait des réponses encore légitimes.
+                        .orTimeout(PROVIDER_SEARCH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                         .exceptionally(ex -> {
                             log.error("Provider timed out or failed unexpectedly: {}", ex.getMessage());
                             return List.of();

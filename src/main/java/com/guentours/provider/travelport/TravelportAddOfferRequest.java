@@ -9,38 +9,23 @@ import java.util.List;
 /**
  * Add Offer <b>reference payload</b> request
  * ({@code POST /air/book/airoffer/reservationworkbench/{sessionId}/offers/buildfromcatalogproductofferings}),
- * matching a real production reference client for this exact endpoint. Unlike the pricing step
- * ({@link TravelportPriceRequest}), the whole request body is wrapped under a top-level field named
- * after the {@code @type} itself ({@code OfferQueryBuildFromCatalogProductOfferings}), and carries
- * its own simpler {@code PaymentCriteria} (just the four commercial-model booleans, no card/issuer
- * fields) plus a {@code ProductBrandOfferingIdentifier} and {@code ProductIdentifier} per selection.
- *
- * <p>The reference threads the offering id and the CatalogProductOfferings container's own
- * Identifier value through every reference field (offering id, brand identifier, product
- * identifier) when it doesn't have finer-grained ids for this step - we do the same here, reusing
- * whatever richer identifiers we captured at search time ({@code productRef}) when available.
+ * matching a real captured Travelport DevKit Postman trace for this exact endpoint (request and its
+ * successful response verified together). This is deliberately minimal - an earlier, unverified
+ * attempt at this shape added a {@code PaymentCriteria}, a {@code MaxNumberOfUpsellsToReturn}, a
+ * {@code ProductBrandOfferingIdentifier}, a per-selection {@code @type}, a {@code SegmentSequence},
+ * and an {@code authority} on every identifier - none of those appear in the verified trace, and
+ * every one of the ids the earlier shape carried on {@code OfferingsRef}/{@code OfferingRef}/
+ * {@code ProductIdentifier} turned out to not exist either: those three are each just a bare
+ * {@code Identifier} wrapper carrying a single {@code value}.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 record TravelportAddOfferRequest(OfferQueryBuildFromCatalogProductOfferings OfferQueryBuildFromCatalogProductOfferings) {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    @JsonPropertyOrder({"@type", "PaymentCriteria", "BuildFromCatalogProductOfferingsRequest", "MaxNumberOfUpsellsToReturn"})
+    @JsonPropertyOrder({"@type", "BuildFromCatalogProductOfferingsRequest"})
     record OfferQueryBuildFromCatalogProductOfferings(
             @JsonProperty("@type") String type,
-            PaymentCriteria PaymentCriteria,
-            BuildFromCatalogProductOfferingsRequest BuildFromCatalogProductOfferingsRequest,
-            Integer MaxNumberOfUpsellsToReturn
-    ) {
-    }
-
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    @JsonPropertyOrder({"@type", "agencyAccountInd", "bspInd", "cashInd", "invoiceInd"})
-    record PaymentCriteria(
-            @JsonProperty("@type") String type,
-            boolean agencyAccountInd,
-            boolean bspInd,
-            boolean cashInd,
-            boolean invoiceInd
+            BuildFromCatalogProductOfferingsRequest BuildFromCatalogProductOfferingsRequest
     ) {
     }
 
@@ -48,39 +33,24 @@ record TravelportAddOfferRequest(OfferQueryBuildFromCatalogProductOfferings Offe
     @JsonPropertyOrder({"@type", "CatalogProductOfferingsIdentifier", "CatalogProductOfferingSelection"})
     record BuildFromCatalogProductOfferingsRequest(
             @JsonProperty("@type") String type,
-            OfferingsRef CatalogProductOfferingsIdentifier,
+            IdentifierRef CatalogProductOfferingsIdentifier,
             List<CatalogProductOfferingSelection> CatalogProductOfferingSelection
     ) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    @JsonPropertyOrder({"@type", "CatalogProductOfferingIdentifier", "ProductBrandOfferingIdentifier",
-            "ProductIdentifier", "SegmentSequence"})
+    @JsonPropertyOrder({"CatalogProductOfferingIdentifier", "ProductIdentifier"})
     record CatalogProductOfferingSelection(
-            @JsonProperty("@type") String type,
-            OfferingRef CatalogProductOfferingIdentifier,
-            Identifier ProductBrandOfferingIdentifier,
-            List<ProductIdentifier> ProductIdentifier,
-            List<Integer> SegmentSequence
+            IdentifierRef CatalogProductOfferingIdentifier,
+            List<IdentifierRef> ProductIdentifier
     ) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    @JsonPropertyOrder({"id", "Identifier"})
-    record OfferingsRef(String id, Identifier Identifier) {
+    record IdentifierRef(Identifier Identifier) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    @JsonPropertyOrder({"id", "Identifier", "CatalogProductOfferingRef"})
-    record OfferingRef(String id, Identifier Identifier, String CatalogProductOfferingRef) {
-    }
-
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    @JsonPropertyOrder({"id", "productRef", "Identifier"})
-    record ProductIdentifier(String id, String productRef, Identifier Identifier) {
-    }
-
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    record Identifier(String value, String authority) {
+    record Identifier(String value) {
     }
 }

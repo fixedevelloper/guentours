@@ -55,6 +55,27 @@ public class ProviderProperties {
         private String accessGroup = "";
         private long timeoutMillis = 30000;
 
+        /**
+         * Travelport's Stays Create Reservation call requires a FormOfPayment on every hotel booking
+         * even though the actual customer payment is collected separately through our own
+         * PaymentGateway; these fields describe the company's own guarantee/virtual card sent to
+         * satisfy that requirement, never a customer's card, so they live in config/.env rather than
+         * being collected per booking.
+         */
+        private String guaranteeCardHolderName = "";
+        private String guaranteeCardNumber = "";
+        private String guaranteeCardType = "Credit";
+        private String guaranteeCardCode = "";
+        private String guaranteeCardExpireDate = "";
+        private String guaranteeCardSeriesCode = "";
+        private String guaranteeCardBillingStreet = "";
+        private String guaranteeCardBillingCity = "";
+        private String guaranteeCardBillingStateProv = "";
+        private String guaranteeCardBillingCountry = "";
+        private String guaranteeCardBillingPostalCode = "";
+        private String guaranteeCardBillingPhone = "";
+        private String guaranteeCardBillingEmail = "";
+
         public boolean isEnabled() {
             return enabled;
         }
@@ -157,6 +178,110 @@ public class ProviderProperties {
 
         public void setAccessGroup(String accessGroup) {
             this.accessGroup = accessGroup;
+        }
+
+        public String getGuaranteeCardHolderName() {
+            return guaranteeCardHolderName;
+        }
+
+        public void setGuaranteeCardHolderName(String guaranteeCardHolderName) {
+            this.guaranteeCardHolderName = guaranteeCardHolderName;
+        }
+
+        public String getGuaranteeCardNumber() {
+            return guaranteeCardNumber;
+        }
+
+        public void setGuaranteeCardNumber(String guaranteeCardNumber) {
+            this.guaranteeCardNumber = guaranteeCardNumber;
+        }
+
+        public String getGuaranteeCardType() {
+            return guaranteeCardType;
+        }
+
+        public void setGuaranteeCardType(String guaranteeCardType) {
+            this.guaranteeCardType = guaranteeCardType;
+        }
+
+        public String getGuaranteeCardCode() {
+            return guaranteeCardCode;
+        }
+
+        public void setGuaranteeCardCode(String guaranteeCardCode) {
+            this.guaranteeCardCode = guaranteeCardCode;
+        }
+
+        public String getGuaranteeCardExpireDate() {
+            return guaranteeCardExpireDate;
+        }
+
+        public void setGuaranteeCardExpireDate(String guaranteeCardExpireDate) {
+            this.guaranteeCardExpireDate = guaranteeCardExpireDate;
+        }
+
+        public String getGuaranteeCardSeriesCode() {
+            return guaranteeCardSeriesCode;
+        }
+
+        public void setGuaranteeCardSeriesCode(String guaranteeCardSeriesCode) {
+            this.guaranteeCardSeriesCode = guaranteeCardSeriesCode;
+        }
+
+        public String getGuaranteeCardBillingStreet() {
+            return guaranteeCardBillingStreet;
+        }
+
+        public void setGuaranteeCardBillingStreet(String guaranteeCardBillingStreet) {
+            this.guaranteeCardBillingStreet = guaranteeCardBillingStreet;
+        }
+
+        public String getGuaranteeCardBillingCity() {
+            return guaranteeCardBillingCity;
+        }
+
+        public void setGuaranteeCardBillingCity(String guaranteeCardBillingCity) {
+            this.guaranteeCardBillingCity = guaranteeCardBillingCity;
+        }
+
+        public String getGuaranteeCardBillingStateProv() {
+            return guaranteeCardBillingStateProv;
+        }
+
+        public void setGuaranteeCardBillingStateProv(String guaranteeCardBillingStateProv) {
+            this.guaranteeCardBillingStateProv = guaranteeCardBillingStateProv;
+        }
+
+        public String getGuaranteeCardBillingCountry() {
+            return guaranteeCardBillingCountry;
+        }
+
+        public void setGuaranteeCardBillingCountry(String guaranteeCardBillingCountry) {
+            this.guaranteeCardBillingCountry = guaranteeCardBillingCountry;
+        }
+
+        public String getGuaranteeCardBillingPostalCode() {
+            return guaranteeCardBillingPostalCode;
+        }
+
+        public void setGuaranteeCardBillingPostalCode(String guaranteeCardBillingPostalCode) {
+            this.guaranteeCardBillingPostalCode = guaranteeCardBillingPostalCode;
+        }
+
+        public String getGuaranteeCardBillingPhone() {
+            return guaranteeCardBillingPhone;
+        }
+
+        public void setGuaranteeCardBillingPhone(String guaranteeCardBillingPhone) {
+            this.guaranteeCardBillingPhone = guaranteeCardBillingPhone;
+        }
+
+        public String getGuaranteeCardBillingEmail() {
+            return guaranteeCardBillingEmail;
+        }
+
+        public void setGuaranteeCardBillingEmail(String guaranteeCardBillingEmail) {
+            this.guaranteeCardBillingEmail = guaranteeCardBillingEmail;
         }
     }
 }

@@ -6,19 +6,20 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * Request body for Travelport's Stays "Search Properties by Location" endpoint
- * ({@code POST /hotel/search/properties/search}), matching a verified real captured trace. Searches
- * for properties by geo-coordinates, address, IATA airport code or IATA city code; the
- * {@code SearchBy} discriminator selects which. GuenTours searches by IATA city code, so
- * {@code @type} is {@code SearchByCity} and the city code goes in {@code SearchCity} - an earlier,
- * unverified version of this DTO guessed {@code SearchByCityCode}/{@code cityCode}, which the real
- * trace shows is wrong.
+ * Geo-coordinate variant of Travelport's Stays "Search Properties by Location" request
+ * ({@code POST /hotel/search/properties/search}), matching a verified real captured trace whose
+ * {@code SearchBy} discriminator is {@code SearchByGeoLocation} (carrying {@code Latitude}/
+ * {@code Longitude}) rather than {@link TravelportHotelSearchRequest}'s {@code SearchByCity}.
  *
- * <p>Rooms/rates detail is not returned by this search - it comes from a follow-up availability
- * step.
+ * <p>The city autocomplete a traveler picks from carries no IATA-style code, only a name, so
+ * {@code TravelportClient} resolves the searched city's coordinates from our own hotel-city
+ * reference data (see {@code HotelSearchCriteria#latitude()}/{@code longitude()}) and sends this
+ * request instead; {@link TravelportHotelSearchRequest} is kept for a city with no matching
+ * reference row to fall back on. The response shape is identical either way and is modelled once
+ * in {@link TravelportHotelSearchResponse}.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-record TravelportHotelSearchRequest(PropertiesQuerySearch PropertiesQuerySearch) {
+record TravelportHotelGeoSearchRequest(PropertiesQuerySearch PropertiesQuerySearch) {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     record PropertiesQuerySearch(
@@ -46,6 +47,7 @@ record TravelportHotelSearchRequest(PropertiesQuerySearch PropertiesQuerySearch)
     @JsonInclude(JsonInclude.Include.NON_NULL)
     record GuestCount(
             @JsonProperty("@type") String type,
+            Integer age,
             int count,
             String ageQualifyingCode
     ) {
@@ -55,11 +57,12 @@ record TravelportHotelSearchRequest(PropertiesQuerySearch PropertiesQuerySearch)
     record SearchBy(
             @JsonProperty("@type") String type,
             SearchRadius SearchRadius,
-            String SearchCity
+            Double Latitude,
+            Double Longitude
     ) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    record SearchRadius(int value, String unitOfDistance) {
+    record SearchRadius(double value, String unitOfDistance) {
     }
 }

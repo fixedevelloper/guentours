@@ -163,12 +163,18 @@ public class TravelportClient implements TravelProviderClient {
 
     @Override
     public HotelDetail getDetailHotel(HotelOffer offer) {
-        return null;
+        if (config.isMockMode()) {
+            return null;
+        }
+        return callHotelDetailApi(offer);
     }
 
     @Override
     public List<RoomOffer> getRoomOffers(HotelOffer offer) {
-        return List.of();
+        if (config.isMockMode()) {
+            return List.of();
+        }
+        return callRoomOffersApi(offer);
     }
 
 
@@ -615,9 +621,7 @@ public class TravelportClient implements TravelProviderClient {
                         ? "&Issuance=Ticket&DocumentValue=Retain&payLaterInd=false"
                         : "&DocumentValue=Retain&payLaterInd=true");
         var body = new TravelportCommitRequest(
-                new TravelportCommitRequest.ReservationQueryCommitReservation(
-                        "ReservationQueryCommitReservation", true, true, true, false, true, true,
-                        "AcceptOfferPriceDifference", "GUENS TRAVEL", true));
+                new TravelportCommitRequest.ReservationQueryCommitReservation("ReservationQueryCommitReservation"));
         log.info("[Travelport] commit URL (issueTicket={}) for session {}: {}", issueTicket, session, commitUrl);
         log.info("[Travelport] commit request for session {}: {}", session, writeAsJson(body));
 
@@ -650,11 +654,26 @@ public class TravelportClient implements TravelProviderClient {
     /**
      * Extracts the record locator/reservation reference from a Commit response, trying every shape
      * real production testing has actually observed (see {@link TravelportReservationResponse}'s
-     * Javadoc), in the same fallback order a verified reference client uses.
+     * Javadoc), in the same fallback order a verified reference client uses. Prefers the GDS-level
+     * Receipt (the one with no {@code OfferRef}, i.e. reservation-wide rather than tied to one
+     * offer) since that carries the actual PNR usable both as the customer confirmation and for a
+     * later Post-Commit Workbench lookup on this same reservation.
      */
     private String confirmationFrom(TravelportReservationResponse response) {
         if (response == null) {
             return null;
+        }
+        var reservation = response.Reservation() != null
+                ? response.Reservation()
+                : (response.ReservationResponse() != null ? response.ReservationResponse().Reservation() : null);
+        if (reservation != null && reservation.Receipt() != null) {
+            for (var receipt : reservation.Receipt()) {
+                boolean reservationLevel = receipt.OfferRef() == null || receipt.OfferRef().isEmpty();
+                if (reservationLevel && receipt.Confirmation() != null && receipt.Confirmation().Locator() != null
+                        && receipt.Confirmation().Locator().value() != null) {
+                    return receipt.Confirmation().Locator().value();
+                }
+            }
         }
         if (response.Reservation() != null && response.Reservation().locatorCode() != null) {
             return response.Reservation().locatorCode();
@@ -746,46 +765,31 @@ public class TravelportClient implements TravelProviderClient {
         String offeringId = offer.providerOfferId();
         String containerId = offer.context("catalogOfferingsId") != null
                 ? offer.context("catalogOfferingsId") : offeringId;
-        String authority = offer.context("identifierAuthority") != null
-                ? offer.context("identifierAuthority") : TVPT_AUTHORITY;
-        String catalogOfferingsIdentifierValue = offer.context("catalogOfferingsIdentifier");
-        var containerIdentifier = catalogOfferingsIdentifierValue != null
-                ? new TravelportAddOfferRequest.Identifier(catalogOfferingsIdentifierValue, authority) : null;
-        var offeringIdentifier = offer.context("offeringIdentifier") != null
-                ? new TravelportAddOfferRequest.Identifier(offer.context("offeringIdentifier"), authority)
-                : containerIdentifier;
-        var productBrandOfferingIdentifier = containerIdentifier;
+
+        String catalogOfferingsIdentifierValue = offer.context("catalogOfferingsIdentifier") != null
+                ? offer.context("catalogOfferingsIdentifier") : containerId;
+        var containerIdentifier = new TravelportAddOfferRequest.IdentifierRef(
+                new TravelportAddOfferRequest.Identifier(catalogOfferingsIdentifierValue));
+
+        String offeringIdentifierValue = offer.context("offeringIdentifier") != null
+                ? offer.context("offeringIdentifier") : offeringId;
+        var offeringIdentifier = new TravelportAddOfferRequest.IdentifierRef(
+                new TravelportAddOfferRequest.Identifier(offeringIdentifierValue));
 
         String productRef = offer.context("productRef");
-        List<TravelportAddOfferRequest.ProductIdentifier> productIdentifiers = productRef != null
-                ? List.of(new TravelportAddOfferRequest.ProductIdentifier("product_" + productRef, "product_" + productRef,
-                        new TravelportAddOfferRequest.Identifier(productRef, authority)))
+        List<TravelportAddOfferRequest.IdentifierRef> productIdentifiers = productRef != null
+                ? List.of(new TravelportAddOfferRequest.IdentifierRef(new TravelportAddOfferRequest.Identifier(productRef)))
                 : null;
-
-        int segmentCount = 1;
-        try {
-            if (offer.context("segmentCount") != null) {
-                segmentCount = Integer.parseInt(offer.context("segmentCount"));
-            }
-        } catch (NumberFormatException ignored) {
-            // keep the 1-segment default
-        }
-        List<Integer> segmentSequence = java.util.stream.IntStream.rangeClosed(1, segmentCount).boxed().toList();
 
         var request = new TravelportAddOfferRequest(
                 new TravelportAddOfferRequest.OfferQueryBuildFromCatalogProductOfferings(
                         "OfferQueryBuildFromCatalogProductOfferings",
-                        new TravelportAddOfferRequest.PaymentCriteria("PaymentCriteria", true, true, true, true),
                         new TravelportAddOfferRequest.BuildFromCatalogProductOfferingsRequest(
                                 "BuildFromCatalogProductOfferingsRequestAir",
-                                new TravelportAddOfferRequest.OfferingsRef(containerId, containerIdentifier),
+                                containerIdentifier,
                                 List.of(new TravelportAddOfferRequest.CatalogProductOfferingSelection(
-                                        "CatalogProductOfferingSelection",
-                                        new TravelportAddOfferRequest.OfferingRef(offeringId, offeringIdentifier, offeringId),
-                                        productBrandOfferingIdentifier,
-                                        productIdentifiers,
-                                        segmentSequence))),
-                        4));
+                                        offeringIdentifier,
+                                        productIdentifiers)))));
         String addOfferUrl = resolvedBaseUrl + WORKBENCH_AIROFFER_BASE + "/" + session
                 + "/offers/buildfromcatalogproductofferings";
         log.info("[Travelport] add offer URL for {}: {}", offeringId, addOfferUrl);
@@ -986,6 +990,8 @@ public class TravelportClient implements TravelProviderClient {
         var telephone = new TravelportWorkbenchRequests.Telephone(
                 "Telephone", "237", cleanPhone, "tel_" + travelerNumber, "DLA", "Mobile");
 
+        var travelDocumentPersonName = new TravelportWorkbenchRequests.PersonName(
+                "PersonName", null, nameParts[0], null, nameParts[1]);
         var travelDocument = new TravelportWorkbenchRequests.TravelDocument(
                 "TravelDocumentDetail",
                 passenger.passportNumber() != null ? passenger.passportNumber().toUpperCase() : "N0000000",
@@ -994,7 +1000,8 @@ public class TravelportClient implements TravelProviderClient {
                         : LocalDate.now().plusYears(3).toString(),
                 passenger.passportIssueCountry() != null ? passenger.passportIssueCountry().toUpperCase() : "CM",
                 birthDate,
-                "Male");
+                "Male",
+                travelDocumentPersonName);
 
         return new TravelportWorkbenchRequests.Traveler(
                 "Traveler",
@@ -1021,23 +1028,19 @@ public class TravelportClient implements TravelProviderClient {
     }
 
     /**
-     * Searches Travelport Stays properties by IATA city code and maps each property's lowest
-     * available rate onto our canonical {@link HotelOffer}. Room type is not returned by the
-     * property search (it comes from a follow-up availability step), so it is left blank here.
+     * Searches Travelport Stays properties and maps each property's lowest available rate onto our
+     * canonical {@link HotelOffer}. The city autocomplete a traveler picks from carries no
+     * IATA-style code, only a name, so whenever {@link HotelSearchCriteria} carries resolved
+     * coordinates (see {@code HotelSearchService}) the geo-location variant of the request
+     * ({@link TravelportHotelGeoSearchRequest}, {@code SearchByGeoLocation}) is used instead of the
+     * city-name-based {@link TravelportHotelSearchRequest} - falling back to the latter only when no
+     * coordinates were resolved. Room type is not returned by the property search (it comes from a
+     * follow-up availability step), so it is left blank here.
      */
     private List<HotelOffer> callHotelApi(HotelSearchCriteria criteria) {
-        var guests = new TravelportHotelSearchRequest.RoomStayCandidate(
-                new TravelportHotelSearchRequest.GuestCounts("GuestCounts", List.of(
-                        new TravelportHotelSearchRequest.GuestCount("GuestCount", Math.max(criteria.adults(), 1), "10"))));
-        var query = new TravelportHotelSearchRequest.PropertiesQuerySearch(
-                "PropertiesQuerySearch",
-                criteria.checkIn().toString(),
-                criteria.checkOut().toString(),
-                criteria.currency() != null ? criteria.currency() : "EUR",
-                List.of(guests),
-                new TravelportHotelSearchRequest.SearchBy("SearchByCityCode", criteria.cityCode(),
-                        new TravelportHotelSearchRequest.SearchRadius(25, "Kilometers")),
-                true);
+        Object requestBody = criteria.latitude() != null && criteria.longitude() != null
+                ? buildGeoSearchRequest(criteria)
+                : buildCitySearchRequest(criteria);
 
         TravelportHotelSearchResponse response = restClient.post()
                 .uri("/hotel/search/properties/search")
@@ -1045,7 +1048,7 @@ public class TravelportClient implements TravelProviderClient {
                 .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
                 .header(PCC_HEADER, config.getPseudoCityCode())
                 .accept(MediaType.APPLICATION_JSON)
-                .body(new TravelportHotelSearchRequest(query))
+                .body(requestBody)
                 .retrieve()
                 .body(TravelportHotelSearchResponse.class);
 
@@ -1060,6 +1063,42 @@ public class TravelportClient implements TravelProviderClient {
                 .map(info -> toHotelOffer(info, criteria))
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    private TravelportHotelGeoSearchRequest buildGeoSearchRequest(HotelSearchCriteria criteria) {
+        var guests = new TravelportHotelGeoSearchRequest.RoomStayCandidate(
+                "RoomStayCandidate",
+                new TravelportHotelGeoSearchRequest.GuestCounts("GuestCounts", List.of(
+                        new TravelportHotelGeoSearchRequest.GuestCount(
+                                "GuestCount", null, Math.max(criteria.adults(), 1), "10"))));
+        var query = new TravelportHotelGeoSearchRequest.PropertiesQuerySearch(
+                "PropertiesQuerySearch",
+                criteria.checkIn().toString(),
+                criteria.checkOut().toString(),
+                criteria.currency() != null ? criteria.currency() : "EUR",
+                List.of(guests),
+                new TravelportHotelGeoSearchRequest.SearchBy("SearchByGeoLocation",
+                        new TravelportHotelGeoSearchRequest.SearchRadius(25, "Kilometers"),
+                        criteria.latitude(), criteria.longitude()),
+                true);
+        return new TravelportHotelGeoSearchRequest(query);
+    }
+
+    private TravelportHotelSearchRequest buildCitySearchRequest(HotelSearchCriteria criteria) {
+        var guests = new TravelportHotelSearchRequest.RoomStayCandidate(
+                "RoomStayCandidate",
+                new TravelportHotelSearchRequest.GuestCounts("GuestCounts", List.of(
+                        new TravelportHotelSearchRequest.GuestCount("GuestCount", Math.max(criteria.adults(), 1), "10"))));
+        var query = new TravelportHotelSearchRequest.PropertiesQuerySearch(
+                "PropertiesQuerySearch",
+                criteria.checkIn().toString(),
+                criteria.checkOut().toString(),
+                criteria.currency() != null ? criteria.currency() : "EUR",
+                List.of(guests),
+                new TravelportHotelSearchRequest.SearchBy("SearchByCity",
+                        new TravelportHotelSearchRequest.SearchRadius(25, "Kilometers"), criteria.cityCode()),
+                true);
+        return new TravelportHotelSearchRequest(query);
     }
 
     private HotelOffer toHotelOffer(TravelportHotelSearchResponse.PropertyInfo info, HotelSearchCriteria criteria) {
@@ -1083,6 +1122,10 @@ public class TravelportClient implements TravelProviderClient {
                 context.put("propertyCode", property.PropertyKey().propertyCode());
             }
         }
+        context.put("adults", String.valueOf(Math.max(criteria.adults(), 1)));
+
+        String coverImageUrl = property.Image() != null && !property.Image().isEmpty()
+                ? property.Image().get(0).value() : null;
 
         return new HotelOffer(
                 getType(),
@@ -1094,6 +1137,7 @@ public class TravelportClient implements TravelProviderClient {
                 criteria.checkOut(),
                 new Money(BigDecimal.valueOf(info.LowestAvailableRate().value()), info.LowestAvailableRate().code()),
                 rating,
+                coverImageUrl,
                 context);
     }
 
@@ -1105,44 +1149,11 @@ public class TravelportClient implements TravelProviderClient {
      * availability call is skipped and the originally quoted price is trusted.
      */
     private HotelPriceVerification callHotelAvailabilityApi(HotelOffer offer) {
-        String chainCode = offer.context("chainCode");
-        String propertyCode = offer.context("propertyCode");
-        if (chainCode == null || propertyCode == null) {
+        if (offer.context("chainCode") == null || offer.context("propertyCode") == null) {
             return new HotelPriceVerification(offer.providerOfferId(), null, true, null);
         }
 
-        var request = new TravelportHotelAvailabilityRequest(
-                new TravelportHotelAvailabilityRequest.CatalogOfferingsQueryRequest(
-                        "CatalogOfferingsRequestHospitality",
-                        List.of(new TravelportHotelAvailabilityRequest.CatalogOfferingsRequest(
-                                "CatalogOfferingsRequestHospitality",
-                                offer.price().currency(),
-                                new TravelportHotelAvailabilityRequest.StayDates(
-                                        offer.checkIn().toString(), offer.checkOut().toString()),
-                                new TravelportHotelAvailabilityRequest.HotelSearchCriterion(
-                                        "HotelSearchCriterion",
-                                        1,
-                                        List.of(new TravelportHotelAvailabilityRequest.PropertyRequest(
-                                                "PropertyRequest",
-                                                new TravelportHotelAvailabilityRequest.PropertyKey(chainCode, propertyCode))))))));
-
-        TravelportHotelAvailabilityResponse response;
-        try {
-            response = restClient.post()
-                    .uri("/hotel/availability/catalogofferingshospitality")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
-                    .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
-                    .header(PCC_HEADER, config.getPseudoCityCode())
-                    .accept(MediaType.APPLICATION_JSON)
-                    .body(request)
-                    .retrieve()
-                    .body(TravelportHotelAvailabilityResponse.class);
-        } catch (RestClientException e) {
-            throw new ProviderException("Travelport hotel availability check failed for "
-                    + offer.providerOfferId() + ": " + e.getMessage());
-        }
-        log.info("[Travelport] hotel availability response for {}: {}", offer.providerOfferId(), response);
-
+        TravelportHotelAvailabilityResponse response = fetchHotelAvailability(offer);
         var offerings = response == null || response.CatalogOfferingsHospitalityResponse() == null
                 ? null : response.CatalogOfferingsHospitalityResponse().CatalogOfferings();
         if (offerings == null || offerings.CatalogOffering() == null || offerings.CatalogOffering().isEmpty()) {
@@ -1164,24 +1175,309 @@ public class TravelportClient implements TravelProviderClient {
     }
 
     /**
+     * Fetches every bookable room/rate for the property via the same Stays Hotel Availability call
+     * ({@code POST /hotel/availability/catalogofferingshospitality}) used for the price re-check,
+     * this time keeping every {@code CatalogOffering} instead of just the cheapest one. Returns an
+     * empty list when the offer carries no chain/property context or the property has no
+     * availability, rather than calling with incomplete parameters.
+     */
+    private List<RoomOffer> callRoomOffersApi(HotelOffer offer) {
+        if (offer.context("chainCode") == null || offer.context("propertyCode") == null) {
+            return List.of();
+        }
+
+        TravelportHotelAvailabilityResponse response = fetchHotelAvailability(offer);
+        var offerings = response == null || response.CatalogOfferingsHospitalityResponse() == null
+                ? null : response.CatalogOfferingsHospitalityResponse().CatalogOfferings();
+        if (offerings == null || offerings.CatalogOffering() == null || offerings.CatalogOffering().isEmpty()) {
+            return List.of();
+        }
+
+        return offerings.CatalogOffering().stream()
+                .map(this::toRoomOffer)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
+
+    private TravelportHotelAvailabilityResponse fetchHotelAvailability(HotelOffer offer) {
+        String chainCode = offer.context("chainCode");
+        String propertyCode = offer.context("propertyCode");
+
+        int adults = 1;
+        try {
+            adults = Math.max(Integer.parseInt(offer.context("adults") != null ? offer.context("adults") : "1"), 1);
+        } catch (NumberFormatException ignored) {
+            // fall back to a single guest
+        }
+        var guests = new TravelportHotelAvailabilityRequest.RoomStayCandidates(
+                "RoomStayCandidates",
+                List.of(new TravelportHotelAvailabilityRequest.RoomStayCandidate(
+                        "RoomStayCandidate",
+                        new TravelportHotelAvailabilityRequest.GuestCounts("GuestCounts", List.of(
+                                new TravelportHotelAvailabilityRequest.GuestCount("GuestCount", adults))))));
+        var request = new TravelportHotelAvailabilityRequest(
+                new TravelportHotelAvailabilityRequest.CatalogOfferingsQueryRequest(
+                        List.of(new TravelportHotelAvailabilityRequest.CatalogOfferingsRequest(
+                                "CatalogOfferingsRequestHospitality",
+                                true,
+                                offer.price().currency(),
+                                new TravelportHotelAvailabilityRequest.StayDates(
+                                        offer.checkIn().toString(), offer.checkOut().toString()),
+                                new TravelportHotelAvailabilityRequest.HotelSearchCriterion(
+                                        "HotelSearchCriterion",
+                                        1,
+                                        List.of(new TravelportHotelAvailabilityRequest.PropertyRequest(
+                                                "PropertyRequest",
+                                                new TravelportHotelAvailabilityRequest.PropertyKey(
+                                                        "PropertyKey", chainCode, propertyCode))),
+                                        guests)))));
+
+        TravelportHotelAvailabilityResponse response;
+        try {
+            response = restClient.post()
+                    .uri("/hotel/availability/catalogofferingshospitality")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                    .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
+                    .header(PCC_HEADER, config.getPseudoCityCode())
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(TravelportHotelAvailabilityResponse.class);
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelport hotel availability check failed for "
+                    + offer.providerOfferId() + ": " + e.getMessage());
+        }
+        log.info("[Travelport] hotel availability response for {}: {}", offer.providerOfferId(), response);
+        return response;
+    }
+
+    private RoomOffer toRoomOffer(TravelportHotelAvailabilityResponse.CatalogOffering catalogOffering) {
+        var productOptions = catalogOffering.ProductOptions();
+        var product = productOptions == null || productOptions.isEmpty() || productOptions.get(0).Product() == null
+                || productOptions.get(0).Product().isEmpty() ? null : productOptions.get(0).Product().get(0);
+        var roomType = product == null ? null : product.RoomType();
+        var characteristics = roomType == null ? null : roomType.RoomCharacteristics();
+        var terms = catalogOffering.TermsAndConditions();
+        var price = catalogOffering.Price();
+
+        String roomTypeName = roomType != null && roomType.Description() != null
+                ? roomType.Description().value() : null;
+        String currency = price != null && price.CurrencyCode() != null ? price.CurrencyCode().value() : null;
+        BigDecimal netPrice = price != null && price.TotalPrice() != null
+                ? BigDecimal.valueOf(price.TotalPrice()) : null;
+
+        List<String> facilities = characteristics == null || characteristics.RoomAmenity() == null ? List.of()
+                : characteristics.RoomAmenity().stream()
+                        .map(TravelportHotelAvailabilityResponse.RoomAmenity::description)
+                        .filter(Objects::nonNull)
+                        .toList();
+
+        String boardType = terms != null && terms.MealsIncluded() != null
+                && Boolean.TRUE.equals(terms.MealsIncluded().breakfastInd()) ? "Breakfast Included" : null;
+
+        String cancellationPolicy = terms == null || terms.CancelPenalty() == null || terms.CancelPenalty().isEmpty()
+                ? null
+                : terms.CancelPenalty().stream()
+                        .map(TravelportHotelAvailabilityResponse.CancelPenalty::Description)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.joining(" "));
+
+        String rateBasisId = terms == null || terms.ProductRateCodeInfo() == null || terms.ProductRateCodeInfo().isEmpty()
+                ? null
+                : terms.ProductRateCodeInfo().stream()
+                        .map(TravelportHotelAvailabilityResponse.ProductRateCodeInfo::RateCodeInfo)
+                        .filter(Objects::nonNull)
+                        .map(TravelportHotelAvailabilityResponse.RateCodeInfo::rateCategory)
+                        .filter(Objects::nonNull)
+                        .findFirst().orElse(null);
+
+        String description = terms != null && terms.Description() != null && !terms.Description().isEmpty()
+                ? String.join(" ", terms.Description()) : roomTypeName;
+
+        return new RoomOffer(
+                catalogOffering.id(),
+                roomTypeName,
+                description,
+                product == null ? null : product.bookingCode(),
+                terms == null ? null : terms.RatePaymentInfo(),
+                rateBasisId,
+                currency,
+                netPrice,
+                boardType,
+                null,
+                null,
+                cancellationPolicy,
+                List.of(),
+                facilities
+        );
+    }
+
+    /**
+     * Fetches full property content (photos, amenities, geo-coordinates, room-count breakdown) via
+     * the Stays "Get Property Details" call ({@code GET /hotel/search/propertiesdetail}), keyed by
+     * the chain/property codes captured from the search ({@link HotelOffer#context}). Returns
+     * {@code null} when that context is missing (e.g. an offer harmonized without it) rather than
+     * calling with incomplete parameters.
+     */
+    private HotelDetail callHotelDetailApi(HotelOffer offer) {
+        String chainCode = offer.context("chainCode");
+        String propertyCode = offer.context("propertyCode");
+        if (chainCode == null || propertyCode == null) {
+            return null;
+        }
+
+        TravelportHotelDetailResponse response;
+        try {
+            response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/hotel/search/propertiesdetail")
+                            .queryParam("chainCode", chainCode)
+                            .queryParam("propertyCode", propertyCode)
+                            .queryParam("ImageSize", "Large")
+                            .build())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                    .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
+                    .header(PCC_HEADER, config.getPseudoCityCode())
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .body(TravelportHotelDetailResponse.class);
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelport hotel detail lookup failed for " + chainCode + propertyCode
+                    + ": " + e.getMessage());
+        }
+        log.info("[Travelport] hotel detail response for {}{}: {}", chainCode, propertyCode, response);
+
+        var propertiesResponse = response == null ? null : response.PropertiesResponse();
+        var properties = propertiesResponse == null ? null : propertiesResponse.Properties();
+        var propertyInfo = properties == null || properties.PropertyInfo() == null || properties.PropertyInfo().isEmpty()
+                ? null : properties.PropertyInfo().get(0);
+        var property = propertyInfo == null ? null : propertyInfo.Property();
+
+        return property == null ? null : toHotelDetail(property);
+    }
+
+    private HotelDetail toHotelDetail(TravelportHotelDetailResponse.Property property) {
+        var address = property.Address();
+        String addressText = address != null && address.AddressLine() != null
+                ? String.join(", ", address.AddressLine()) : null;
+        String city = address != null ? address.City() : null;
+        String country = address == null || address.Country() == null ? null
+                : address.Country().name() != null ? address.Country().name() : address.Country().value();
+        String postalCode = address != null && address.PostalCode() != null ? address.PostalCode().trim() : null;
+        String email = property.Email() != null ? property.Email().value() : null;
+        String phone = property.Telephone() != null && !property.Telephone().isEmpty()
+                ? property.Telephone().get(0) : null;
+        Double latitude = property.GeoLocation() != null ? property.GeoLocation().latitude() : null;
+        Double longitude = property.GeoLocation() != null ? property.GeoLocation().longitude() : null;
+        Double rating = property.Rating() != null && !property.Rating().isEmpty()
+                ? property.Rating().get(0).value() : null;
+
+        List<String> facilities = new java.util.ArrayList<>();
+        if (property.PropertyAmenity() != null) {
+            property.PropertyAmenity().forEach(a -> {
+                if (a.description() != null) {
+                    facilities.add(a.description());
+                }
+            });
+        }
+        if (property.BusinessService() != null) {
+            property.BusinessService().forEach(s -> {
+                if (s.description() != null) {
+                    facilities.add(s.description());
+                }
+            });
+        }
+        if (property.AccessibilityFeature() != null) {
+            property.AccessibilityFeature().forEach(f -> {
+                if (f.description() != null) {
+                    facilities.add(f.description());
+                }
+            });
+        }
+
+        List<HotelDetail.HotelImage> images = property.Image() == null ? List.of()
+                : property.Image().stream()
+                        .map(img -> new HotelDetail.HotelImage(img.caption(), img.value()))
+                        .toList();
+
+        String hotelId = property.PropertyKey() != null
+                ? property.PropertyKey().chainCode() + property.PropertyKey().propertyCode() : property.id();
+
+        return new HotelDetail(
+                hotelId,
+                property.name(),
+                addressText,
+                city,
+                country,
+                email,
+                phone,
+                postalCode,
+                latitude,
+                longitude,
+                rating,
+                null,
+                facilities,
+                images,
+                null);
+    }
+
+    /**
      * Books a room via the Stays Create Reservation full-payload call
-     * ({@code POST /hotel/book/reservations}), sending the cached offer plus the guest(s). No
-     * form of payment is sent here (our own PaymentGateway collects the funds); the response's
+     * ({@code POST /hotel/book/reservations}), sending the cached offer, guest(s), and the
+     * guarantee {@code FormOfPayment} Travelport requires on every hotel reservation (the actual
+     * customer payment is still collected separately through our own PaymentGateway - this is
+     * only what Travelport itself demands to hold the room). The response's
      * {@code Identifier.value} is used as the reservation reference. Travelport returns no explicit
      * hold deadline for hotels here, so a conservative 24h policy default is applied.
      */
     private ProviderBookingConfirmation callHotelReservationApi(HotelBookingRequest request) {
+        HotelOffer offer = request.offer();
         List<PassengerInfo> guests = request.guests();
-        List<TravelportWorkbenchRequests.Traveler> travelers = java.util.stream.IntStream.range(0, guests.size())
-                .mapToObj(i -> toWorkbenchTraveler(guests.get(i), request.contactEmail(), null, i + 1))
+        List<TravelportHotelReservationRequest.Traveler> travelers = java.util.stream.IntStream.range(0, guests.size())
+                .mapToObj(i -> toHotelTraveler(guests.get(i), request.contactEmail()))
                 .toList();
-        var reservation = new TravelportWorkbenchRequests.Reservation(
-                "Reservation",
-                List.of(new TravelportWorkbenchRequests.Offer(
-                        "Offer", request.offer().providerOfferId(), request.offer().providerOfferId(), null, "GDS")),
-                travelers,
-                null,
-                null);
+
+        String bookingCode = offer.context("bookingCode") != null ? offer.context("bookingCode")
+                : offer.providerOfferId();
+        var product = new TravelportHotelReservationRequest.Product(
+                "ProductHospitality",
+                bookingCode,
+                "1",
+                Math.max(guests.size(), 1),
+                new TravelportHotelReservationRequest.PropertyKey(
+                        "PropertyKey", offer.context("propertyCode"), offer.context("chainCode")),
+                new TravelportHotelReservationRequest.DateRange(
+                        offer.checkIn().toString(), offer.checkOut().toString()));
+
+        var price = new TravelportHotelReservationRequest.PriceDetail(
+                "PriceDetail",
+                new TravelportHotelReservationRequest.CurrencyCode(offer.price().currency()),
+                null, null, offer.price().amount().doubleValue());
+
+        // La grille tarifaire (rateID) n'est capturée qu'à l'étape disponibilité (getRoomOffers) et
+        // n'est pas encore propagée jusqu'à l'offre mise en cache ; on l'omet donc tant qu'elle
+        // n'est pas disponible plutôt que d'envoyer une valeur inventée.
+        String rateId = offer.context("rateID");
+        List<TravelportHotelReservationRequest.TermsAndConditionsFull> termsAndConditions = rateId == null ? null
+                : List.of(new TravelportHotelReservationRequest.TermsAndConditionsFull(
+                        List.of(new TravelportHotelReservationRequest.ProductRateCodeInfo(
+                                "ProductRateCodeInfo",
+                                new TravelportHotelReservationRequest.RateCodeInfo(rateId, null)))));
+
+        var reservationDetail = new TravelportHotelReservationRequest.ReservationDetail(
+                List.of(new TravelportHotelReservationRequest.Offer(
+                        "Offer",
+                        new TravelportHotelReservationRequest.Identifier("TVPT"),
+                        List.of(product),
+                        price,
+                        termsAndConditions)),
+                List.of(new TravelportHotelReservationRequest.Payment(
+                        "Payment",
+                        new TravelportHotelReservationRequest.Amount(offer.price().currency(), offer.price().amount().doubleValue()),
+                        false,
+                        true)),
+                List.of(buildGuaranteeFormOfPayment()),
+                travelers);
 
         TravelportReservationResponse response;
         try {
@@ -1191,18 +1487,68 @@ public class TravelportClient implements TravelProviderClient {
                     .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
                     .header(PCC_HEADER, config.getPseudoCityCode())
                     .accept(MediaType.APPLICATION_JSON)
-                    .body(new TravelportHotelReservationRequest(reservation))
+                    .body(new TravelportHotelReservationRequest(reservationDetail))
                     .retrieve()
                     .body(TravelportReservationResponse.class);
         } catch (RestClientException e) {
             throw new ProviderException("Travelport hotel reservation failed: " + e.getMessage());
         }
-        log.info("[Travelport] hotel reservation response for offer {}: {}", request.offer().providerOfferId(), response);
+        log.info("[Travelport] hotel reservation response for offer {}: {}", offer.providerOfferId(), response);
 
         String confirmation = confirmationFrom(response);
         if (confirmation == null) {
             throw new ProviderException("Travelport hotel reservation failed: " + commitFailureReason(response));
         }
         return new ProviderBookingConfirmation(getType(), confirmation, LocalDateTime.now().plusHours(24), true);
+    }
+
+    /**
+     * Builds the company's own guarantee/virtual card FormOfPayment Travelport requires on every
+     * hotel reservation, sourced entirely from config/.env (see
+     * {@link ProviderProperties.Vendor#getGuaranteeCardNumber()} and siblings) - never a customer's
+     * card, which our own PaymentGateway collects separately.
+     */
+    private TravelportHotelReservationRequest.FormOfPayment buildGuaranteeFormOfPayment() {
+        var address = new TravelportHotelReservationRequest.Address(
+                "AddressDetail",
+                null,
+                config.getGuaranteeCardBillingStreet(),
+                null,
+                config.getGuaranteeCardBillingCity(),
+                null,
+                new TravelportHotelReservationRequest.StateProv(config.getGuaranteeCardBillingStateProv(), null),
+                new TravelportHotelReservationRequest.Country(config.getGuaranteeCardBillingCountry(), null),
+                config.getGuaranteeCardBillingPostalCode());
+
+        var telephone = new TravelportHotelReservationRequest.Telephone(
+                "TelephoneDetail", null, null, config.getGuaranteeCardBillingPhone(), null);
+
+        var paymentCard = new TravelportHotelReservationRequest.PaymentCard(
+                "PaymentCardDetail",
+                config.getGuaranteeCardExpireDate(),
+                config.getGuaranteeCardType(),
+                config.getGuaranteeCardCode(),
+                config.getGuaranteeCardHolderName(),
+                new TravelportHotelReservationRequest.CardNumber("CardNumber", config.getGuaranteeCardNumber()),
+                new TravelportHotelReservationRequest.SeriesCode("SeriesCode", config.getGuaranteeCardSeriesCode()),
+                null,
+                address,
+                List.of(telephone),
+                List.of(new TravelportHotelReservationRequest.Email(config.getGuaranteeCardBillingEmail())));
+
+        return new TravelportHotelReservationRequest.FormOfPayment("FormOfPaymentPaymentCard", paymentCard);
+    }
+
+    private TravelportHotelReservationRequest.Traveler toHotelTraveler(PassengerInfo passenger, String contactEmail) {
+        String[] nameParts = splitName(passenger.fullName());
+        var personName = new TravelportHotelReservationRequest.TravelerPersonName(
+                "PersonName", nameParts[0], nameParts[1], null);
+        var telephone = new TravelportHotelReservationRequest.Telephone(
+                "TelephoneDetail", "237", null, "670000000", "DLA");
+        return new TravelportHotelReservationRequest.Traveler(
+                "Traveler",
+                personName,
+                List.of(telephone),
+                contactEmail != null ? List.of(new TravelportHotelReservationRequest.Email(contactEmail)) : null);
     }
 }

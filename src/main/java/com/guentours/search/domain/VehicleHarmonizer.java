@@ -41,7 +41,7 @@ public class VehicleHarmonizer {
 
         return grouped.values().stream()
                 .map(this::toHarmonizedOffer)
-                .sorted(Comparator.comparing(h -> h.quotes().get(0).price()))
+                .sorted(Comparator.comparing(h -> h.quotes().get(0).price(), PriceOrdering.CHEAPEST_FIRST))
                 .toList();
     }
 
@@ -52,7 +52,7 @@ public class VehicleHarmonizer {
                     var priceWithFee = commissionPolicy.addVehicleFee(offer.totalPrice());
                     return new ProviderQuote(offerId, offer.providerType(), priceWithFee);
                 })
-                .sorted(Comparator.comparing(ProviderQuote::price))
+                .sorted(Comparator.comparing(ProviderQuote::price, PriceOrdering.CHEAPEST_FIRST))
                 .toList();
 
         VehicleOffer reference = group.get(0);

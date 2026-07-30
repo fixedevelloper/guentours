@@ -112,7 +112,8 @@ class TravelportBookingDtosTest {
                         List.of(new TravelportWorkbenchRequests.Email("jane.doe@example.com")),
                         List.of(new TravelportWorkbenchRequests.TravelDocument(
                                 "TravelDocumentDetail", "X1234567", "Passport", "2030-01-01", "FR",
-                                "1990-05-01", "Female")))),
+                                "1990-05-01", "Female",
+                                new TravelportWorkbenchRequests.PersonName("PersonName", null, "Jane", null, "Doe"))))),
                 null,
                 null);
 
@@ -136,26 +137,24 @@ class TravelportBookingDtosTest {
         var request = new TravelportAddOfferRequest(
                 new TravelportAddOfferRequest.OfferQueryBuildFromCatalogProductOfferings(
                         "OfferQueryBuildFromCatalogProductOfferings",
-                        new TravelportAddOfferRequest.PaymentCriteria("PaymentCriteria", true, true, true, true),
                         new TravelportAddOfferRequest.BuildFromCatalogProductOfferingsRequest(
                                 "BuildFromCatalogProductOfferingsRequestAir",
-                                new TravelportAddOfferRequest.OfferingsRef("cpo_1", null),
+                                new TravelportAddOfferRequest.IdentifierRef(
+                                        new TravelportAddOfferRequest.Identifier("6ac60f3e-9506-4055-8f0f-ac0fac2f7273")),
                                 List.of(new TravelportAddOfferRequest.CatalogProductOfferingSelection(
-                                        "CatalogProductOfferingSelection",
-                                        new TravelportAddOfferRequest.OfferingRef("cpo_1", null, "cpo_1"),
-                                        null,
-                                        null,
-                                        List.of(1, 2)))),
-                        4));
+                                        new TravelportAddOfferRequest.IdentifierRef(
+                                                new TravelportAddOfferRequest.Identifier("AA_CPO0")),
+                                        List.of(new TravelportAddOfferRequest.IdentifierRef(
+                                                new TravelportAddOfferRequest.Identifier("AAp0"))))))));
 
         String json = mapper.writeValueAsString(request);
 
-        assertThat(json).contains("\"@type\":\"OfferQueryBuildFromCatalogProductOfferings\"");
-        assertThat(json).contains("\"@type\":\"BuildFromCatalogProductOfferingsRequestAir\"");
-        assertThat(json).contains("\"@type\":\"PaymentCriteria\",\"agencyAccountInd\":true");
-        assertThat(json).contains("\"CatalogProductOfferingRef\":\"cpo_1\"");
-        assertThat(json).contains("\"SegmentSequence\":[1,2]");
-        assertThat(json).contains("\"MaxNumberOfUpsellsToReturn\":4");
+        assertThat(json).isEqualTo("{\"OfferQueryBuildFromCatalogProductOfferings\":{\"@type\":"
+                + "\"OfferQueryBuildFromCatalogProductOfferings\",\"BuildFromCatalogProductOfferingsRequest\":{\"@type\":"
+                + "\"BuildFromCatalogProductOfferingsRequestAir\",\"CatalogProductOfferingsIdentifier\":{\"Identifier\":"
+                + "{\"value\":\"6ac60f3e-9506-4055-8f0f-ac0fac2f7273\"}},\"CatalogProductOfferingSelection\":[{"
+                + "\"CatalogProductOfferingIdentifier\":{\"Identifier\":{\"value\":\"AA_CPO0\"}},\"ProductIdentifier\":"
+                + "[{\"Identifier\":{\"value\":\"AAp0\"}}]}]}}}");
     }
 
     @Test
@@ -282,22 +281,10 @@ class TravelportBookingDtosTest {
     void serializesACommitRequestMatchingTheProductionReferenceShape() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         var request = new TravelportCommitRequest(
-                new TravelportCommitRequest.ReservationQueryCommitReservation(
-                        "ReservationQueryCommitReservation", true, true, true, false, true, true,
-                        "AcceptOfferPriceDifference", "GUENS TRAVEL", true));
+                new TravelportCommitRequest.ReservationQueryCommitReservation("ReservationQueryCommitReservation"));
 
         String json = mapper.writeValueAsString(request);
 
-        assertThat(json).contains("\"ReservationQueryCommitReservation\":{");
-        assertThat(json).contains("\"@type\":\"ReservationQueryCommitReservation\"");
-        assertThat(json).contains("\"scheduleChangeAcceptedInd\":true");
-        assertThat(json).contains("\"errorWhenOfferPriceCancelledInd\":true");
-        assertThat(json).contains("\"inhibitResidualDocumentIssuanceInd\":true");
-        assertThat(json).contains("\"enableTwoStepCommitInd\":false");
-        assertThat(json).contains("\"overrideMCTInd\":true");
-        assertThat(json).contains("\"errorWhenScheduleChangesInd\":true");
-        assertThat(json).contains("\"scheduleChangeReprice\":\"AcceptOfferPriceDifference\"");
-        assertThat(json).contains("\"ReceivedFrom\":\"GUENS TRAVEL\"");
-        assertThat(json).contains("\"errorWhenOfferPriceChangesInd\":true");
+        assertThat(json).isEqualTo("{\"ReservationQueryCommitReservation\":{\"@type\":\"ReservationQueryCommitReservation\"}}");
     }
 }

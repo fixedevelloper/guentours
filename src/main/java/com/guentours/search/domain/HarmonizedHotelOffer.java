@@ -14,6 +14,7 @@ public record HarmonizedHotelOffer(
         LocalDate checkIn,
         LocalDate checkOut,
         double rating,
+        String coverImageUrl,
         String bestOfferId,
         List<ProviderQuote> quotes
 ) {

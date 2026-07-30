@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -90,7 +91,7 @@ public class FlightSearchService {
             Map<ProviderType, FlightOffer> cheapestByProvider = new LinkedHashMap<>();
             for (FlightOffer offer : fetchRawOffers(criteria)) {
                 cheapestByProvider.merge(offer.providerType(), offer,
-                        (a, b) -> a.price().isLessThan(b.price()) ? a : b);
+                        (a, b) -> PriceOrdering.isCheaper(a.price(), b.price()) ? a : b);
             }
             cheapestPerProviderByLeg.add(cheapestByProvider);
         }
@@ -114,7 +115,7 @@ public class FlightSearchService {
             }
             itineraries.add(new MultiCityItinerary(provider, total, itineraryLegs));
         }
-        itineraries.sort((a, b) -> a.totalPrice().compareTo(b.totalPrice()));
+        itineraries.sort(Comparator.comparing(MultiCityItinerary::totalPrice, PriceOrdering.CHEAPEST_FIRST));
         return itineraries;
     }
 

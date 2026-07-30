@@ -37,7 +37,7 @@ public class PropertyHarmonizer {
 
         return grouped.values().stream()
                 .map(this::toHarmonizedOffer)
-                .sorted(Comparator.comparing(h -> h.quotes().get(0).price()))
+                .sorted(Comparator.comparing(h -> h.quotes().get(0).price(), PriceOrdering.CHEAPEST_FIRST))
                 .toList();
     }
 
@@ -48,7 +48,7 @@ public class PropertyHarmonizer {
                     var priceWithFee = commissionPolicy.addPropertyFee(offer.totalPrice());
                     return new ProviderQuote(offerId, offer.providerType(), priceWithFee);
                 })
-                .sorted(Comparator.comparing(ProviderQuote::price))
+                .sorted(Comparator.comparing(ProviderQuote::price, PriceOrdering.CHEAPEST_FIRST))
                 .toList();
 
         PropertyOffer reference = group.get(0);

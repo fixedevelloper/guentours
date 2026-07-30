@@ -41,7 +41,7 @@ public class HotelHarmonizer {
 
         return grouped.values().stream()
                 .map(this::toHarmonizedOffer)
-                .sorted(Comparator.comparing(h -> h.quotes().get(0).price()))
+                .sorted(Comparator.comparing(h -> h.quotes().get(0).price(), PriceOrdering.CHEAPEST_FIRST))
                 .toList();
     }
 
@@ -52,10 +52,15 @@ public class HotelHarmonizer {
                     var priceWithFee = commissionPolicy.addHotelFee(offer.price());
                     return new ProviderQuote(offerId, offer.providerType(), priceWithFee);
                 })
-                .sorted(Comparator.comparing(ProviderQuote::price))
+                .sorted(Comparator.comparing(ProviderQuote::price, PriceOrdering.CHEAPEST_FIRST))
                 .toList();
 
         HotelOffer reference = group.get(0);
+        String coverImageUrl = group.stream()
+                .map(HotelOffer::coverImageUrl)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
 
         return new HarmonizedHotelOffer(
                 reference.hotelName(),
@@ -64,6 +69,7 @@ public class HotelHarmonizer {
                 reference.checkIn(),
                 reference.checkOut(),
                 reference.rating(),
+                coverImageUrl,
                 quotes.get(0).offerId(),
                 quotes
         );

@@ -48,4 +48,23 @@ class FlightHarmonizerTest {
                 .filter(o -> o.flightNumber().equals("DL999")).findFirst().orElseThrow();
         assertThat(dl999.quotes()).hasSize(1);
     }
+
+    @Test
+    void doesNotThrowWhenProvidersQuoteDifferentCurrencies() {
+        // A real Travelport response has come back priced in CNY for a search that requested USD;
+        // harmonizing/sorting must not crash with Money's "Cannot compare amounts in different
+        // currencies" just because providers disagree on currency.
+        LocalDateTime departure = LocalDateTime.of(2026, 8, 1, 10, 0);
+        LocalDateTime arrival = departure.plusHours(2);
+
+        FlightOffer travelport = new FlightOffer(ProviderType.TRAVELPORT, "TP-1", "CA", "CA123", "PEK", "SHA",
+                departure, arrival, "ECONOMY", new Money(BigDecimal.valueOf(2800), "CNY"), 5);
+        FlightOffer sabre = new FlightOffer(ProviderType.SABRE, "SB-1", "CA", "CA123", "PEK", "SHA",
+                departure, arrival, "ECONOMY", new Money(BigDecimal.valueOf(400), "USD"), 3);
+
+        List<HarmonizedFlightOffer> result = harmonizer.harmonize(List.of(travelport, sabre));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).quotes()).hasSize(2);
+    }
 }

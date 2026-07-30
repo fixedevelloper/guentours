@@ -6,6 +6,7 @@ import com.guentours.shared.CommissionPolicy;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,11 +40,11 @@ public class FlightHarmonizer {
             for (FlightOffer offer : group) {
                 String offerId = offerCache.cacheFlightOffer(offer);
                 quotes.add(new ProviderQuote(offerId, offer.providerType(), commissionPolicy.addFlightFee(offer.price())));
-                if (offer.price().isLessThan(cheapest.price())) {
+                if (PriceOrdering.isCheaper(offer.price(), cheapest.price())) {
                     cheapest = offer;
                 }
             }
-            quotes.sort((a, b) -> a.price().compareTo(b.price()));
+            quotes.sort(Comparator.comparing(ProviderQuote::price, PriceOrdering.CHEAPEST_FIRST));
             String cheapestOfferId = quotes.get(0).offerId();
 
             result.add(new HarmonizedFlightOffer(
@@ -52,7 +53,7 @@ public class FlightHarmonizer {
                     group.stream().mapToInt(FlightOffer::seatsAvailable).max().orElse(0),
                     cheapestOfferId, quotes));
         }
-        result.sort((a, b) -> a.quotes().get(0).price().compareTo(b.quotes().get(0).price()));
+        result.sort(Comparator.comparing(h -> h.quotes().get(0).price(), PriceOrdering.CHEAPEST_FIRST));
         return result;
     }
 }

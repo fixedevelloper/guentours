@@ -106,6 +106,21 @@ app:
       token-url: ${TRAVELPORT_TOKEN_URL:}
       access-group: ${TRAVELPORT_ACCESS_GROUP:}
       pseudo-city-code: ${TRAVELPORT_PCC:}
+      # Company-owned guarantee/virtual card sent as the mandatory FormOfPayment on hotel
+      # reservations; the real customer payment is collected separately via our PaymentGateway.
+      guarantee-card-holder-name: ${TRAVELPORT_GUARANTEE_CARD_HOLDER_NAME:}
+      guarantee-card-number: ${TRAVELPORT_GUARANTEE_CARD_NUMBER:}
+      guarantee-card-type: ${TRAVELPORT_GUARANTEE_CARD_TYPE:Credit}
+      guarantee-card-code: ${TRAVELPORT_GUARANTEE_CARD_CODE:}
+      guarantee-card-expire-date: ${TRAVELPORT_GUARANTEE_CARD_EXPIRE_DATE:}
+      guarantee-card-series-code: ${TRAVELPORT_GUARANTEE_CARD_SERIES_CODE:}
+      guarantee-card-billing-street: ${TRAVELPORT_GUARANTEE_CARD_BILLING_STREET:}
+      guarantee-card-billing-city: ${TRAVELPORT_GUARANTEE_CARD_BILLING_CITY:}
+      guarantee-card-billing-state-prov: ${TRAVELPORT_GUARANTEE_CARD_BILLING_STATE_PROV:}
+      guarantee-card-billing-country: ${TRAVELPORT_GUARANTEE_CARD_BILLING_COUNTRY:}
+      guarantee-card-billing-postal-code: ${TRAVELPORT_GUARANTEE_CARD_BILLING_POSTAL_CODE:}
+      guarantee-card-billing-phone: ${TRAVELPORT_GUARANTEE_CARD_BILLING_PHONE:}
+      guarantee-card-billing-email: ${TRAVELPORT_GUARANTEE_CARD_BILLING_EMAIL:}
 
   reference-data:
     # 30 days in milliseconds; initial delay of 0 populates airports/hotel_cities on first boot.

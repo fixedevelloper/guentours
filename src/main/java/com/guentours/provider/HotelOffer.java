@@ -23,13 +23,21 @@ public record HotelOffer(
         LocalDate checkOut,
         Money price,
         double rating,
+        String coverImageUrl,
         Map<String, String> providerContext
 ) {
 
-    /** Convenience constructor for offers without any provider-specific context. */
+    /** Convenience constructor for offers without any provider-specific context or cover image. */
     public HotelOffer(ProviderType providerType, String providerOfferId, String hotelName, String cityCode,
                       String roomType, LocalDate checkIn, LocalDate checkOut, Money price, double rating) {
-        this(providerType, providerOfferId, hotelName, cityCode, roomType, checkIn, checkOut, price, rating, Map.of());
+        this(providerType, providerOfferId, hotelName, cityCode, roomType, checkIn, checkOut, price, rating, null, Map.of());
+    }
+
+    /** Convenience constructor for offers with provider-specific context but no cover image. */
+    public HotelOffer(ProviderType providerType, String providerOfferId, String hotelName, String cityCode,
+                      String roomType, LocalDate checkIn, LocalDate checkOut, Money price, double rating,
+                      Map<String, String> providerContext) {
+        this(providerType, providerOfferId, hotelName, cityCode, roomType, checkIn, checkOut, price, rating, null, providerContext);
     }
 
     public HotelOffer {

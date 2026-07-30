@@ -7,16 +7,19 @@ import java.util.List;
 
 /**
  * Request body for Travelport's Stays Hotel Availability endpoint
- * ({@code POST /hotel/availability/catalogofferingshospitality}), matching a verified real sample.
- * Returns room types and rates for one or more specified properties on the stay dates. The property
- * is identified by its {@code PropertyKey} (chain code + property code) captured from the search.
+ * ({@code POST /hotel/availability/catalogofferingshospitality}), matching a verified real captured
+ * trace. Returns room types and rates for one or more specified properties on the stay dates. The
+ * property is identified by its {@code PropertyKey} (chain code + property code) captured from the
+ * search. The real trace's outer {@code CatalogOfferingsQueryRequest} wrapper carries no
+ * {@code @type} of its own (only the inner {@code CatalogOfferingsRequest} does), and
+ * {@code HotelSearchCriterion} also needs a {@code RoomStayCandidates} block (guest counts) alongside
+ * {@code numberOfRooms} - both absent from an earlier, unverified version of this DTO.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 record TravelportHotelAvailabilityRequest(CatalogOfferingsQueryRequest CatalogOfferingsQueryRequest) {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     record CatalogOfferingsQueryRequest(
-            @JsonProperty("@type") String type,
             List<CatalogOfferingsRequest> CatalogOfferingsRequest
     ) {
     }
@@ -24,6 +27,7 @@ record TravelportHotelAvailabilityRequest(CatalogOfferingsQueryRequest CatalogOf
     @JsonInclude(JsonInclude.Include.NON_NULL)
     record CatalogOfferingsRequest(
             @JsonProperty("@type") String type,
+            Boolean verboseResponseInd,
             String requestedCurrency,
             StayDates StayDates,
             HotelSearchCriterion HotelSearchCriterion
@@ -38,7 +42,8 @@ record TravelportHotelAvailabilityRequest(CatalogOfferingsQueryRequest CatalogOf
     record HotelSearchCriterion(
             @JsonProperty("@type") String type,
             int numberOfRooms,
-            List<PropertyRequest> PropertyRequest
+            List<PropertyRequest> PropertyRequest,
+            RoomStayCandidates RoomStayCandidates
     ) {
     }
 
@@ -50,6 +55,25 @@ record TravelportHotelAvailabilityRequest(CatalogOfferingsQueryRequest CatalogOf
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    record PropertyKey(String chainCode, String propertyCode) {
+    record PropertyKey(@JsonProperty("@type") String type, String chainCode, String propertyCode) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record RoomStayCandidates(
+            @JsonProperty("@type") String type,
+            List<RoomStayCandidate> RoomStayCandidate
+    ) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record RoomStayCandidate(@JsonProperty("@type") String type, GuestCounts GuestCounts) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record GuestCounts(@JsonProperty("@type") String type, List<GuestCount> GuestCount) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record GuestCount(@JsonProperty("@type") String type, int count) {
     }
 }
