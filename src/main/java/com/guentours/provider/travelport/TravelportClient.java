@@ -89,16 +89,18 @@ public class TravelportClient implements TravelProviderClient {
     private final RestClient restClient;
     private final TravelportTokenProvider tokenProvider;
     private final ObjectMapper objectMapper;
+    private final String resolvedBaseUrl;
 
     public TravelportClient(RestClient.Builder restClientBuilder, ProviderProperties properties,
                              ObjectMapper objectMapper) {
         this.config = properties.getTravelport();
         this.objectMapper = objectMapper;
+        this.resolvedBaseUrl = config.getBaseUrl().isBlank() ? "https://api.pp.travelport.net/11" : config.getBaseUrl();
         ClientHttpRequestFactorySettings timeoutSettings = ClientHttpRequestFactorySettings.DEFAULTS
                 .withConnectTimeout(Duration.ofMillis(config.getTimeoutMillis()))
                 .withReadTimeout(Duration.ofMillis(config.getTimeoutMillis()));
         this.restClient = restClientBuilder
-                .baseUrl(config.getBaseUrl().isBlank() ? "https://api.pp.travelport.net/11" : config.getBaseUrl())
+                .baseUrl(resolvedBaseUrl)
                 .requestFactory(ClientHttpRequestFactories.get(timeoutSettings))
                 .build();
         this.tokenProvider = new TravelportTokenProvider(RestClient.builder(), config);
@@ -674,6 +676,11 @@ public class TravelportClient implements TravelProviderClient {
      * ({@link FlightOffer#context}) when available, falling back to the offering id / container
      * identifier in every position the reference itself falls back on when it lacks finer-grained
      * ids for this step.
+     *
+     * <p>Per Travelport's Add Offer Reference Payload documentation, resolving a reference payload
+     * (as opposed to a full itinerary payload) requires the {@code TransactionId} from the Search
+     * response to be carried into this call, so it is sent as a header here when captured in
+     * {@link FlightOffer#context}.
      */
     private void addOffer(String session, FlightOffer offer) {
         String offeringId = offer.providerOfferId();
@@ -719,18 +726,26 @@ public class TravelportClient implements TravelProviderClient {
                                         productIdentifiers,
                                         segmentSequence))),
                         4));
+        String addOfferUrl = resolvedBaseUrl + WORKBENCH_AIROFFER_BASE + "/" + session
+                + "/offers/buildfromcatalogproductofferings";
+        log.info("[Travelport] add offer URL for {}: {}", offeringId, addOfferUrl);
         log.info("[Travelport] add offer request for {}: {}", offeringId, writeAsJson(request));
 
         TravelportOfferListResponse response;
         try {
             response = restClient.post()
-                    .uri("{base}/{session}/offers/buildfromcatalogproductofferings", WORKBENCH_AIROFFER_BASE, session)
-                    .headers(h -> workbenchHeaders(h, session))
+                    .uri(addOfferUrl)
+                    .headers(h -> {
+                        workbenchHeaders(h, session);
+                        String transactionId = offer.context("transactionId");
+                        if (transactionId != null) {
+                            h.set("TransactionId", transactionId);
+                        }
+                    })
                     .accept(MediaType.APPLICATION_JSON)
                     .body(request)
                     .retrieve()
                     .body(TravelportOfferListResponse.class);
-
         } catch (RestClientException e) {
             throw new ProviderException("Travelport add offer failed for " + offeringId + ": " + e.getMessage());
         }

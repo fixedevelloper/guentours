@@ -112,8 +112,7 @@ public class BookingService {
                 FlightOffer offer = offers.get(i);
                 FlightPriceVerification verification = client.verifyFlightPrice(offer);
                 if (verification.priceChanged(offer.price()) || !verification.seatsAvailable()) {
-                    throw new OfferExpiredException(
-                            "This flight offer is no longer available at the quoted price, please search again");
+                    throw new OfferExpiredException("This flight offer is no longer available at the quoted price, please search again");
                 }
                 ProviderBookingConfirmation hold = client.createFlightHold(
                         new FlightBookingRequest(offer, passengers, request.contactEmail(), request.contactPhone()));

@@ -14,7 +14,6 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
@@ -22,15 +21,15 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 /**
  * Pins Travelport's OAuth exchange to its contract: {@code POST} to the (separate-host) token URL
- * with client id/secret as an HTTP Basic Authorization header ({@code client_secret_basic}) and a
- * {@code password} grant (username/password/scope=openid) in the form body - real sandbox testing
- * confirmed sending client id/secret in the body instead ({@code client_secret_post}) gets rejected
- * with {@code invalid_client}/"Client authentication failed" every time. Also checks that a
- * rejected exchange surfaces that body so the cause is visible.
+ * with a {@code password} grant (username/password/client_id/client_secret) all in the form body
+ * ({@code client_secret_post}) - real sandbox testing confirmed sending client id/secret as an HTTP
+ * Basic Authorization header instead ({@code client_secret_basic}) gets rejected with
+ * {@code invalid_client}/"Client authentication failed" every time. Also checks that a rejected
+ * exchange surfaces that body so the cause is visible.
  */
 class TravelportTokenProviderTest {
 
-    private static final String TOKEN_URL = "https://oauth.pp.travelport.com/oauth/oauth20/token";
+    private static final String TOKEN_URL = "https://auth.pp.travelport.net/oauth/token";
 
     private ProviderProperties.Vendor vendor() {
         ProviderProperties.Vendor v = new ProviderProperties.Vendor();
@@ -43,22 +42,18 @@ class TravelportTokenProviderTest {
     }
 
     @Test
-    void sendsClientCredentialsAsBasicAuthAndThePasswordGrantInTheBodyThenReturnsTheToken() {
+    void sendsClientCredentialsAndThePasswordGrantInTheBodyThenReturnsTheToken() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
 
-        String expectedBasicAuth = "Basic " + java.util.Base64.getEncoder()
-                .encodeToString("tp-key:tp-secret".getBytes(java.nio.charset.StandardCharsets.UTF_8));
-
         server.expect(once(), requestTo(TOKEN_URL))
                 .andExpect(method(HttpMethod.POST))
-                .andExpect(header(org.springframework.http.HttpHeaders.AUTHORIZATION, expectedBasicAuth))
                 .andExpect(content().string(containsString("grant_type=password")))
                 .andExpect(content().string(containsString("username=tp-user")))
                 .andExpect(content().string(containsString("password=tp-pass")))
-                .andExpect(content().string(containsString("scope=openid")))
-                .andExpect(content().string(not(containsString("client_id"))))
-                .andExpect(content().string(not(containsString("client_secret"))))
+                .andExpect(content().string(containsString("client_id=tp-key")))
+                .andExpect(content().string(containsString("client_secret=tp-secret")))
+                .andExpect(content().string(not(containsString("scope"))))
                 .andRespond(withSuccess(
                         "{\"access_token\":\"tp-token\",\"token_type\":\"Bearer\",\"expires_in\":3600}",
                         MediaType.APPLICATION_JSON));

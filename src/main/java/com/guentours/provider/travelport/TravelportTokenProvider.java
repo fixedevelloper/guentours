@@ -4,7 +4,6 @@ import com.guentours.provider.ProviderProperties;
 import com.guentours.shared.exception.ProviderException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -14,17 +13,16 @@ import org.springframework.web.client.RestClientException;
 import java.time.Instant;
 
 /**
- * OAuth2 token exchange for Travelport's JSON APIs ({@code POST /oauth/oauth20/token}), shared
- * across every Travelport endpoint (search, price, reservation). The token is cached in memory
- * and refreshed a little ahead of its real expiry rather than fetched on every call.
+ * OAuth2 token exchange for Travelport's JSON APIs ({@code POST /oauth/token}), shared across
+ * every Travelport endpoint (search, price, reservation). The token is cached in memory and
+ * refreshed a little ahead of its real expiry rather than fetched on every call.
  *
- * <p>Travelport serves OAuth on a different host than its APIs (e.g. {@code oauth.pp.travelport.com}
+ * <p>Travelport serves OAuth on a different host than its APIs (e.g. {@code auth.pp.travelport.net}
  * vs {@code api.pp.travelport.net}), so this uses its own {@link RestClient} pointed at the token
- * host. Client authentication is {@code client_secret_basic} (client id/secret as an HTTP Basic
- * Authorization header, standard Travelport JSON API convention) - real sandbox testing confirmed
- * this: sending client id/secret in the form body instead (the {@code client_secret_post} method
- * this previously used) got "invalid_client: Client authentication failed" from Travelport's
- * authorization server every time.
+ * host. Client authentication is {@code client_secret_post} (client id/secret in the form body) -
+ * real sandbox testing confirmed this against {@code client_secret_basic} (client id/secret as an
+ * HTTP Basic Authorization header), which got "invalid_client: Client authentication failed" from
+ * Travelport's authorization server every time.
  */
 class TravelportTokenProvider {
 
@@ -56,8 +54,6 @@ class TravelportTokenProvider {
         body.add("password", config.getPassword());
         body.add("client_id", config.getApiKey());
         body.add("client_secret", config.getApiSecret());
-       // body.add("scope", "openid");
-        log.error("[Travelport] params  {}: {}", config.getUsername(), config.getPassword());
 
         TravelportTokenResponse response;
         try {
@@ -75,7 +71,6 @@ class TravelportTokenProvider {
         if (response == null || response.accessToken() == null) {
             throw new ProviderException("Travelport token exchange returned no access_token");
         }
-        log.error(response.toString());
 
         cachedAccessToken = response.accessToken();
         cachedTokenExpiresAt = Instant.now().plusSeconds(
