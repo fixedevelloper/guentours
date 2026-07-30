@@ -57,7 +57,7 @@ class TravelportTokenProvider {
         body.add("client_id", config.getApiKey());
         body.add("client_secret", config.getApiSecret());
        // body.add("scope", "openid");
-        log.error("[Travelport] params  {}: {}", config.getApiKey(), config.getApiSecret());
+        log.error("[Travelport] params  {}: {}", config.getUsername(), config.getPassword());
 
         TravelportTokenResponse response;
         try {
@@ -75,6 +75,7 @@ class TravelportTokenProvider {
         if (response == null || response.accessToken() == null) {
             throw new ProviderException("Travelport token exchange returned no access_token");
         }
+        log.error(response.toString());
 
         cachedAccessToken = response.accessToken();
         cachedTokenExpiresAt = Instant.now().plusSeconds(
