@@ -15,6 +15,8 @@ import type {
   ResellerResponse,
   ResellerStatus,
   ResellerWithdrawal,
+  ShareholderRequest,
+  ShareholderResponse,
 } from "./types";
 
 export async function getAdminBookings() {
@@ -29,6 +31,21 @@ export async function getAdminUsers() {
 
 export async function getCommissionWallet() {
   const { data } = await apiClient.get<CommissionWalletBalanceResponse>("/api/admin/commission/wallet");
+  return data;
+}
+
+export async function getShareholders() {
+  const { data } = await apiClient.get<ShareholderResponse[]>("/api/admin/commission/shareholders");
+  return data;
+}
+
+export async function createShareholder(payload: ShareholderRequest) {
+  const { data } = await apiClient.post<ShareholderResponse>("/api/admin/commission/shareholders", payload);
+  return data;
+}
+
+export async function updateShareholder(id: string, payload: ShareholderRequest) {
+  const { data } = await apiClient.put<ShareholderResponse>(`/api/admin/commission/shareholders/${id}`, payload);
   return data;
 }
 

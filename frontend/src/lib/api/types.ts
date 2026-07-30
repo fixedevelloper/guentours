@@ -376,6 +376,23 @@ export interface CommissionWalletBalanceResponse {
   balances: Money[];
   entryCount: number;
 }
+
+// Actionnaire : part fixe (en %) de chaque commission gagnée, indépendante de tout compte
+// utilisateur/revendeur/partenaire.
+export interface ShareholderResponse {
+  id: string;
+  name: string;
+  percentage: string | number;
+  active: boolean;
+  balance: Money[];
+}
+
+// Champs omis (undefined) lors d'une mise à jour partielle - seuls les champs fournis changent.
+export interface ShareholderRequest {
+  name?: string;
+  percentage?: number;
+  active?: boolean;
+}
 // ---------- Pagination ----------
 
 export interface PageResponse<T> {

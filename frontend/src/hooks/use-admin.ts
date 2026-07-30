@@ -6,6 +6,7 @@ import type {
   PartnerStatus,
   ResellerApprovalRequest,
   ResellerStatus,
+  ShareholderRequest,
   UpdateCommissionPayload,
 } from "@/lib/api/types";
 
@@ -20,6 +21,34 @@ export function useAdminUsersQuery() {
   return useQuery({
     queryKey: ["admin-users"],
     queryFn: () => adminApi.getAdminUsers(),
+  });
+}
+
+export function useShareholdersQuery() {
+  return useQuery({
+    queryKey: ["shareholders"],
+    queryFn: () => adminApi.getShareholders(),
+  });
+}
+
+export function useCreateShareholderMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ShareholderRequest) => adminApi.createShareholder(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shareholders"] });
+    },
+  });
+}
+
+export function useUpdateShareholderMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: ShareholderRequest }) =>
+      adminApi.updateShareholder(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shareholders"] });
+    },
   });
 }
 

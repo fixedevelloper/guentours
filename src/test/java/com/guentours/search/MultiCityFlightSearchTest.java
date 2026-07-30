@@ -94,7 +94,7 @@ class MultiCityFlightSearchTest {
                   "contactEmail": "traveler+%d@example.com",
                   "contactFullName": "Jane Traveler",
                   "contactPhone": "+33600000000",
-                  "travelers": [{"fullName": "Jane Traveler", "dateOfBirth": "1990-01-01", "passportNumber": "X1234567", "type": "ADULT"}]
+                  "travelers": [{"fullName": "Jane Traveler", "dateOfBirth": "1990-01-01", "nationality": "US", "passportNumber": "X1234567", "type": "ADULT"}]
                 }
                 """.formatted(legOfferIds, System.nanoTime());
 
