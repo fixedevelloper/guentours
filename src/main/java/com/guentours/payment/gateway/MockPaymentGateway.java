@@ -11,8 +11,12 @@ import org.springframework.stereotype.Component;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Stands in for the real Flutterwave gateway in the test profile, so integration tests never hit a live provider. */
-@Component
+/**
+ * Stands in for the real Flutterwave gateway in the test profile, so integration tests never hit a
+ * live provider. Named "FLUTTERWAVE" (matching the real gateway's bean name) so
+ * PaymentProviderRoutingService's default provider resolution works the same way in every profile.
+ */
+@Component("FLUTTERWAVE")
 @Profile("test")
 @Primary
 public class MockPaymentGateway implements PaymentGateway {
@@ -33,6 +37,10 @@ public class MockPaymentGateway implements PaymentGateway {
             if (cardNumber.endsWith("0000") || "000".equals(cvv)) {
                 return ChargeResult.declined("Card declined by issuer");
             }
+            if (cardNumber.endsWith("1111")) {
+                return ChargeResult.pendingAuthorization("MOCK-CARD-" + generateRef(),
+                        new AuthorizationChallenge(AuthorizationChallenge.AuthorizationType.PIN, null));
+            }
             return ChargeResult.success("MOCK-CARD-" + generateRef());
         }
 
@@ -45,6 +53,15 @@ public class MockPaymentGateway implements PaymentGateway {
 
         String prefix = request.paymentMethod() == PaymentMethod.MOBILE_MONEY ? "MTN" : "ORANGE";
         return ChargeResult.success(prefix + "-" + generateRef());
+    }
+
+    /** Test convention mirroring the real PIN dance: "1234" succeeds, anything else is declined. */
+    @Override
+    public ChargeResult completeCardPinAuthorization(String paymentId, ChargeRequest originalRequest, String pin) {
+        if ("1234".equals(pin)) {
+            return ChargeResult.success("MOCK-CARD-" + generateRef());
+        }
+        return ChargeResult.declined("Incorrect PIN");
     }
 
     private String generateRef() {

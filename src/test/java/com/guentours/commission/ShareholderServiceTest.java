@@ -1,10 +1,12 @@
 package com.guentours.commission;
 
+import com.guentours.shared.Money;
 import com.guentours.shared.exception.BusinessException;
 import com.guentours.shared.exception.NotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -79,6 +81,37 @@ class ShareholderServiceTest {
 
         assertThatThrownBy(() -> service.update("missing", "New name", null, null))
                 .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void recordPaymentSplitSplitsTheSuccessfulPaymentAcrossActiveShareholdersOnlyAndSkipsInactiveOnes() {
+        Shareholder active1 = new Shareholder("Alice", BigDecimal.valueOf(60));
+        Shareholder active2 = new Shareholder("Bob", BigDecimal.valueOf(25));
+        when(shareholderRepository.findByActiveTrue()).thenReturn(List.of(active1, active2));
+        when(entryRepository.save(any(ShareholderCommissionEntry.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.recordPaymentSplit("payment-1", new Money(BigDecimal.valueOf(15), "EUR"));
+
+        ArgumentCaptor<ShareholderCommissionEntry> captor = ArgumentCaptor.forClass(ShareholderCommissionEntry.class);
+        verify(entryRepository, times(2)).save(captor.capture());
+
+        List<ShareholderCommissionEntry> entries = captor.getAllValues();
+        assertThat(entries).hasSize(2);
+        assertThat(entries.get(0).getPaymentId()).isEqualTo("payment-1");
+        assertThat(entries.get(0).getShareholderName()).isEqualTo("Alice");
+        assertThat(entries.get(0).getAmount().amount()).isEqualByComparingTo("9.00");
+        assertThat(entries.get(1).getShareholderName()).isEqualTo("Bob");
+        assertThat(entries.get(1).getAmount().amount()).isEqualByComparingTo("3.75");
+    }
+
+    @Test
+    void recordPaymentSplitRecordsNothingWhenNoShareholderIsActive() {
+        when(shareholderRepository.findByActiveTrue()).thenReturn(List.of());
+
+        service.recordPaymentSplit("payment-2", new Money(BigDecimal.valueOf(15), "EUR"));
+
+        verifyNoInteractions(entryRepository);
     }
 
     private void setId(Shareholder shareholder, String id) {

@@ -5,15 +5,19 @@ import com.guentours.booking.domain.BookingStatus;
 import com.guentours.booking.domain.BookingSummary;
 import com.guentours.booking.domain.PaymentPlan;
 import com.guentours.payment.domain.Payment;
+import com.guentours.payment.domain.PaymentAuthorizationType;
 import com.guentours.payment.domain.PaymentMethod;
 import com.guentours.payment.domain.PaymentRepository;
 import com.guentours.payment.domain.PaymentStatus;
 import com.guentours.payment.events.BookingDepositPaidEvent;
 import com.guentours.payment.events.BookingFullyPaidEvent;
+import com.guentours.payment.gateway.AuthorizationChallenge;
 import com.guentours.payment.gateway.ChargeRequest;
 import com.guentours.payment.gateway.ChargeResult;
 import com.guentours.payment.gateway.ChargeStatus;
 import com.guentours.payment.gateway.PaymentGateway;
+import com.guentours.payment.gateway.PendingCardAuthorizationCache;
+import com.guentours.payment.service.PaymentProviderRoutingService;
 import com.guentours.payment.service.PaymentService;
 import com.guentours.payment.web.PaymentRequest;
 import com.guentours.shared.Money;
@@ -37,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -52,16 +57,45 @@ class PaymentServiceTest {
     @Mock
     private PaymentGateway paymentGateway;
     @Mock
+    private PaymentProviderRoutingService routingService;
+    @Mock
     private BookingService bookingService;
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
     private PaymentService paymentService;
+    private PendingCardAuthorizationCache pendingCardAuthorizationCache;
 
     @BeforeEach
     void setUp() {
-        paymentService = new PaymentService(paymentRepository, paymentGateway, bookingService, eventPublisher);
+        pendingCardAuthorizationCache = new PendingCardAuthorizationCache();
+        paymentService = new PaymentService(paymentRepository, routingService, bookingService, eventPublisher,
+                pendingCardAuthorizationCache);
         lenient().when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        // Ces tests portent sur le comportement de PaymentService une fois le gateway obtenu, pas
+        // sur le routage lui-même (voir PaymentProviderRoutingServiceTest) : par défaut on résout
+        // toujours vers le même gateway mocké, quel que soit le pays/mode demandé.
+        lenient().when(routingService.resolveGateway(any(), any())).thenReturn(paymentGateway);
+    }
+
+    /**
+     * The mocked repository never runs real JPA, so {@code Payment.id} (a {@code @GeneratedValue})
+     * stays null across saves by default - fine for tests that never key anything off it, but the
+     * card-authorization cache is keyed by payment id, so these tests need one assigned like a real
+     * persist would.
+     */
+    private void assignGeneratedIdOnSave(String id) {
+        lenient().when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> {
+            Payment payment = invocation.getArgument(0);
+            try {
+                var idField = Payment.class.getDeclaredField("id");
+                idField.setAccessible(true);
+                idField.set(payment, id);
+            } catch (ReflectiveOperationException e) {
+                throw new RuntimeException(e);
+            }
+            return payment;
+        });
     }
 
     private BookingSummary fullPaymentBooking() {
@@ -282,6 +316,187 @@ class PaymentServiceTest {
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
             assertThat(result.getFailureReason()).contains("Timeout gateway");
             verifyNoInteractions(eventPublisher);
+        }
+    }
+
+    @Nested
+    @DisplayName("pay() - carte exigeant une autorisation (PIN/AVS/REDIRECT)")
+    class CardAuthorizationChallenge {
+
+        @Test
+        @DisplayName("PIN demandé : Payment en PENDING_AUTHORIZATION, détails carte mis en cache")
+        void shouldMarkPendingAuthorizationAndCacheCardDetailsForPin() {
+            assignGeneratedIdOnSave("payment-pin-challenge");
+            when(bookingService.getSummary(BOOKING_ID)).thenReturn(fullPaymentBooking());
+            when(paymentGateway.charge(any(ChargeRequest.class))).thenReturn(ChargeResult.pendingAuthorization(
+                    "flw-ref-pin", new AuthorizationChallenge(AuthorizationChallenge.AuthorizationType.PIN, null)));
+
+            Payment result = paymentService.pay(cardRequest());
+
+            assertThat(result.getStatus()).isEqualTo(PaymentStatus.PENDING_AUTHORIZATION);
+            assertThat(result.getAuthorizationType()).isEqualTo(PaymentAuthorizationType.PIN);
+            assertThat(pendingCardAuthorizationCache.take("payment-pin-challenge")).isPresent();
+            verifyNoInteractions(eventPublisher);
+        }
+
+        @Test
+        @DisplayName("REDIRECT demandé : Payment en PENDING_AUTHORIZATION avec l'URL de redirection, rien en cache")
+        void shouldMarkPendingAuthorizationWithRedirectUrl() {
+            assignGeneratedIdOnSave("payment-redirect-challenge");
+            when(bookingService.getSummary(BOOKING_ID)).thenReturn(fullPaymentBooking());
+            when(paymentGateway.charge(any(ChargeRequest.class))).thenReturn(ChargeResult.pendingAuthorization(
+                    "flw-ref-3ds", new AuthorizationChallenge(
+                            AuthorizationChallenge.AuthorizationType.REDIRECT, "https://bank.example/3ds")));
+
+            Payment result = paymentService.pay(cardRequest());
+
+            assertThat(result.getStatus()).isEqualTo(PaymentStatus.PENDING_AUTHORIZATION);
+            assertThat(result.getAuthorizationType()).isEqualTo(PaymentAuthorizationType.REDIRECT);
+            assertThat(result.getAuthorizationRedirectUrl()).isEqualTo("https://bank.example/3ds");
+            assertThat(pendingCardAuthorizationCache.take("payment-redirect-challenge")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("AVS demandé : marqué FAILED immédiatement (pas d'adresse de facturation collectée pour CARD)")
+        void shouldFailImmediatelyOnAvsChallenge() {
+            when(bookingService.getSummary(BOOKING_ID)).thenReturn(fullPaymentBooking());
+            when(paymentGateway.charge(any(ChargeRequest.class))).thenReturn(ChargeResult.pendingAuthorization(
+                    "flw-ref-avs", new AuthorizationChallenge(AuthorizationChallenge.AuthorizationType.AVS, null)));
+
+            Payment result = paymentService.pay(cardRequest());
+
+            assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
+            verifyNoInteractions(eventPublisher);
+        }
+
+        @Test
+        @DisplayName("OTP demandé (ex: chaîné après un PIN accepté) : marqué FAILED immédiatement, non supporté")
+        void shouldFailImmediatelyOnOtpChallenge() {
+            when(bookingService.getSummary(BOOKING_ID)).thenReturn(fullPaymentBooking());
+            when(paymentGateway.charge(any(ChargeRequest.class))).thenReturn(ChargeResult.pendingAuthorization(
+                    "flw-ref-otp", new AuthorizationChallenge(AuthorizationChallenge.AuthorizationType.OTP, null)));
+
+            Payment result = paymentService.pay(cardRequest());
+
+            assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
+            verifyNoInteractions(eventPublisher);
+        }
+    }
+
+    @Nested
+    @DisplayName("completeCardPinAuthorization()")
+    class CompleteCardPinAuthorization {
+
+        private Payment pendingAuthorizationPayment() {
+            Payment payment = new Payment(BOOKING_ID, PRICE, PaymentMethod.CARD, "4242", false, "CM", "XAF");
+            payment.markPendingAuthorization("flw-ref-pin", PaymentAuthorizationType.PIN, null);
+            return payment;
+        }
+
+        @Test
+        @DisplayName("PIN correct : Payment SUCCEEDED et booking confirmé")
+        void shouldSucceedAndConfirmBooking() {
+            Payment payment = pendingAuthorizationPayment();
+            pendingCardAuthorizationCache.put("payment-pin",
+                    new ChargeRequest(PRICE.amount(), "XAF", "CM", "XAF", PaymentMethod.CARD,
+                            "4242424242424242", "Jean Dupont", "12/28", "123", null, CONTACT_EMAIL,
+                            "payment-pin", null, null));
+            when(paymentRepository.findById("payment-pin")).thenReturn(Optional.of(payment));
+            when(bookingService.getSummary(BOOKING_ID)).thenReturn(fullPaymentBooking());
+            when(paymentGateway.completeCardPinAuthorization(eq("payment-pin"), any(ChargeRequest.class), eq("1234")))
+                    .thenReturn(ChargeResult.success("flw-ref-pin-confirmed", "4242"));
+
+            Payment result = paymentService.completeCardPinAuthorization("payment-pin", "1234");
+
+            assertThat(result.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+            verify(bookingService).markPaidAndConfirm(BOOKING_ID, "flw-ref-pin-confirmed", "4242");
+        }
+
+        @Test
+        @DisplayName("PIN incorrect : Payment FAILED")
+        void shouldFailOnWrongPin() {
+            Payment payment = pendingAuthorizationPayment();
+            pendingCardAuthorizationCache.put("payment-pin",
+                    new ChargeRequest(PRICE.amount(), "XAF", "CM", "XAF", PaymentMethod.CARD,
+                            "4242424242424242", "Jean Dupont", "12/28", "123", null, CONTACT_EMAIL,
+                            "payment-pin", null, null));
+            when(paymentRepository.findById("payment-pin")).thenReturn(Optional.of(payment));
+            when(bookingService.getSummary(BOOKING_ID)).thenReturn(fullPaymentBooking());
+            when(paymentGateway.completeCardPinAuthorization(eq("payment-pin"), any(ChargeRequest.class), eq("0000")))
+                    .thenReturn(ChargeResult.declined("Incorrect PIN"));
+
+            Payment result = paymentService.completeCardPinAuthorization("payment-pin", "0000");
+
+            assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
+            verifyNoInteractions(eventPublisher);
+        }
+
+        @Test
+        @DisplayName("cache expiré/absent : Payment FAILED avec message explicite, gateway jamais rappelé")
+        void shouldFailWhenCacheMissing() {
+            Payment payment = pendingAuthorizationPayment();
+            when(paymentRepository.findById("payment-pin")).thenReturn(Optional.of(payment));
+
+            Payment result = paymentService.completeCardPinAuthorization("payment-pin", "1234");
+
+            assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
+            assertThat(result.getFailureReason()).contains("expirée");
+            verifyNoInteractions(paymentGateway, eventPublisher);
+        }
+
+        @Test
+        @DisplayName("rejette un paiement qui n'attend pas de PIN")
+        void shouldRejectWhenNotAwaitingPin() {
+            Payment succeeded = new Payment(BOOKING_ID, PRICE, PaymentMethod.CARD, "4242", false, "CM", "XAF");
+            succeeded.markSucceeded("flw-ref");
+            when(paymentRepository.findById("payment-done")).thenReturn(Optional.of(succeeded));
+
+            assertThatThrownBy(() -> paymentService.completeCardPinAuthorization("payment-done", "1234"))
+                    .isInstanceOf(BusinessException.class);
+
+            verifyNoInteractions(paymentGateway);
+        }
+
+        @Test
+        @DisplayName("PIN accepté mais Flutterwave enchaîne un OTP : pas d'exception, Payment FAILED proprement")
+        void shouldNotThrowWhenGatewayChainsAnotherChallenge() {
+            Payment payment = pendingAuthorizationPayment();
+            pendingCardAuthorizationCache.put("payment-pin",
+                    new ChargeRequest(PRICE.amount(), "XAF", "CM", "XAF", PaymentMethod.CARD,
+                            "4242424242424242", "Jean Dupont", "12/28", "123", null, CONTACT_EMAIL,
+                            "payment-pin", null, null));
+            when(paymentRepository.findById("payment-pin")).thenReturn(Optional.of(payment));
+            when(bookingService.getSummary(BOOKING_ID)).thenReturn(fullPaymentBooking());
+            when(paymentGateway.completeCardPinAuthorization(eq("payment-pin"), any(ChargeRequest.class), eq("1234")))
+                    .thenReturn(ChargeResult.pendingAuthorization("flw-ref-otp",
+                            new AuthorizationChallenge(AuthorizationChallenge.AuthorizationType.OTP, null)));
+
+            Payment result = paymentService.completeCardPinAuthorization("payment-pin", "1234");
+
+            assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
+            verifyNoInteractions(eventPublisher);
+        }
+
+        @Test
+        @DisplayName("PIN accepté mais Flutterwave redemande un PIN : Payment reste PENDING_AUTHORIZATION, cache repeuplé")
+        void shouldStayPendingAuthorizationAndRecacheWhenGatewayAsksForAnotherPin() {
+            assignGeneratedIdOnSave("payment-pin");
+            Payment payment = pendingAuthorizationPayment();
+            var cachedRequest = new ChargeRequest(PRICE.amount(), "XAF", "CM", "XAF", PaymentMethod.CARD,
+                    "4242424242424242", "Jean Dupont", "12/28", "123", null, CONTACT_EMAIL,
+                    "payment-pin", null, null);
+            pendingCardAuthorizationCache.put("payment-pin", cachedRequest);
+            when(paymentRepository.findById("payment-pin")).thenReturn(Optional.of(payment));
+            when(bookingService.getSummary(BOOKING_ID)).thenReturn(fullPaymentBooking());
+            when(paymentGateway.completeCardPinAuthorization(eq("payment-pin"), any(ChargeRequest.class), eq("0000")))
+                    .thenReturn(ChargeResult.pendingAuthorization("flw-ref-pin-2",
+                            new AuthorizationChallenge(AuthorizationChallenge.AuthorizationType.PIN, null)));
+
+            Payment result = paymentService.completeCardPinAuthorization("payment-pin", "0000");
+
+            assertThat(result.getStatus()).isEqualTo(PaymentStatus.PENDING_AUTHORIZATION);
+            assertThat(result.getAuthorizationType()).isEqualTo(PaymentAuthorizationType.PIN);
+            assertThat(pendingCardAuthorizationCache.take("payment-pin")).isPresent();
         }
     }
 

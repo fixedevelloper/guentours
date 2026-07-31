@@ -5,6 +5,6 @@
  * only tracks GuenTours' own revenue - it never touches what a provider is paid.
  */
 @org.springframework.modulith.ApplicationModule(
-        allowedDependencies = {"booking", "provider", "shared"}
+        allowedDependencies = {"booking", "payment", "provider", "shared"}
 )
 package com.guentours.commission;

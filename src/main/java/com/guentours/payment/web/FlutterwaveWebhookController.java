@@ -34,8 +34,18 @@ public class FlutterwaveWebhookController {
             @RequestHeader(value = SIGNATURE_HEADER, required = false) String signature,
             @RequestBody FlutterwaveWebhookPayload payload) {
 
+        log.info("Webhook Flutterwave reçu : event={}, tx_ref={}, flw_ref={}, status={}, amount={} {}, signature présente={}",
+                payload != null ? payload.event() : null,
+                payload != null && payload.data() != null ? payload.data().tx_ref() : null,
+                payload != null && payload.data() != null ? payload.data().flw_ref() : null,
+                payload != null && payload.data() != null ? payload.data().status() : null,
+                payload != null && payload.data() != null ? payload.data().amount() : null,
+                payload != null && payload.data() != null ? payload.data().currency() : null,
+                signature != null);
+
         if (signature == null || !constantTimeEquals(signature, properties.webhookSecretHash())) {
-            log.warn("Webhook Flutterwave refusé : signature invalide ou absente.");
+            log.warn("Webhook Flutterwave refusé : signature invalide ou absente (tx_ref={}).",
+                    payload != null && payload.data() != null ? payload.data().tx_ref() : null);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -96,6 +106,7 @@ public class FlutterwaveWebhookController {
                         + flwTransactionStatus + ")" : null, null);
 
         paymentService.confirmFromGatewayCallback(txRef, result);
+        log.info("Webhook Flutterwave traité pour tx_ref {} : décision finale={}", txRef, status);
 
         return ResponseEntity.ok().build();
     }

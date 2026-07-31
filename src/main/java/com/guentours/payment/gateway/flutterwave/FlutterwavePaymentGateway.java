@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
-@Component
+@Component("FLUTTERWAVE")
 @Profile("!test")
 @Primary
 public class FlutterwavePaymentGateway implements com.guentours.payment.gateway.PaymentGateway {
@@ -37,5 +37,12 @@ public class FlutterwavePaymentGateway implements com.guentours.payment.gateway.
             case APPLE_PAY -> applePayGateway.charge(request, request.paymentReference());
             case PAYPAL -> paypalGateway.charge(request, request.paymentReference());
         };
+    }
+
+    @Override
+    public ChargeResult completeCardPinAuthorization(String paymentId, ChargeRequest originalRequest, String pin) {
+        return cardGateway.completeWithPin(paymentId, originalRequest.cardNumber(), originalRequest.cvv(),
+                originalRequest.expiry(), originalRequest.currency(), originalRequest.amount(),
+                originalRequest.cardHolderName(), originalRequest.customerEmail(), pin);
     }
 }

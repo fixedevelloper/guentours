@@ -13,11 +13,11 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
- * One shareholder's cut of a single {@link CommissionWalletEntry}, created automatically the moment
- * that entry is recorded (i.e. when a booking's commission is actually earned, never at search
- * time). Snapshots the shareholder's name and percentage as they were at that moment, so a later
- * change to {@link Shareholder#getPercentage()} - or the shareholder being deactivated altogether -
- * never rewrites the historical record.
+ * One shareholder's cut of a single successful {@code Payment}, created automatically the moment
+ * that payment is confirmed (deposit or full payment alike, never at search time). Snapshots the
+ * shareholder's name and percentage as they were at that moment, so a later change to
+ * {@link Shareholder#getPercentage()} - or the shareholder being deactivated altogether - never
+ * rewrites the historical record.
  */
 @Entity
 @Table(name = "shareholder_commission_entries")
@@ -27,8 +27,8 @@ public class ShareholderCommissionEntry {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
-    @Column(name = "commission_wallet_entry_id", nullable = false)
-    private String commissionWalletEntryId;
+    @Column(name = "payment_id", nullable = false)
+    private String paymentId;
 
     @Column(name = "shareholder_id", nullable = false)
     private String shareholderId;
@@ -49,9 +49,9 @@ public class ShareholderCommissionEntry {
         // JPA
     }
 
-    public ShareholderCommissionEntry(String commissionWalletEntryId, String shareholderId, String shareholderName,
+    public ShareholderCommissionEntry(String paymentId, String shareholderId, String shareholderName,
                                       BigDecimal percentageApplied, Money amount) {
-        this.commissionWalletEntryId = commissionWalletEntryId;
+        this.paymentId = paymentId;
         this.shareholderId = shareholderId;
         this.shareholderName = shareholderName;
         this.percentageApplied = percentageApplied;
@@ -62,8 +62,8 @@ public class ShareholderCommissionEntry {
         return id;
     }
 
-    public String getCommissionWalletEntryId() {
-        return commissionWalletEntryId;
+    public String getPaymentId() {
+        return paymentId;
     }
 
     public String getShareholderId() {

@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 
 @Service
@@ -32,6 +33,25 @@ public class ShareholderService {
         return entryRepository.totalsByShareholder(shareholderId).stream()
                 .map(t -> new Money(t.getTotal(), t.getCurrency()))
                 .toList();
+    }
+
+    /**
+     * Splits a successful payment (deposit or full payment alike) across every active
+     * {@link Shareholder} per their percentage - never at search time, only once the payment is
+     * actually confirmed. Each shareholder's cut is rounded independently (HALF_UP, scale 2), so
+     * the sum of the splits can differ from the payment amount by a cent or two when percentages
+     * don't divide evenly; that rounding remainder simply stays unassigned.
+     */
+    @Transactional
+    public void recordPaymentSplit(String paymentId, Money amount) {
+        for (Shareholder shareholder : shareholderRepository.findByActiveTrue()) {
+            BigDecimal share = amount.amount()
+                    .multiply(shareholder.getPercentage())
+                    .divide(HUNDRED, 2, RoundingMode.HALF_UP);
+            entryRepository.save(new ShareholderCommissionEntry(
+                    paymentId, shareholder.getId(), shareholder.getName(),
+                    shareholder.getPercentage(), new Money(share, amount.currency())));
+        }
     }
 
     @Transactional

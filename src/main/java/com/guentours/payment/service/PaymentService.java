@@ -5,14 +5,17 @@ import com.guentours.booking.domain.BookingStatus;
 import com.guentours.booking.domain.BookingSummary;
 import com.guentours.booking.domain.PaymentPlan;
 import com.guentours.payment.domain.Payment;
+import com.guentours.payment.domain.PaymentAuthorizationType;
 import com.guentours.payment.domain.PaymentMethod;
 import com.guentours.payment.domain.PaymentRepository;
 import com.guentours.payment.domain.PaymentStatus;
 import com.guentours.payment.events.BookingDepositPaidEvent;
 import com.guentours.payment.events.BookingFullyPaidEvent;
+import com.guentours.payment.gateway.AuthorizationChallenge;
 import com.guentours.payment.gateway.ChargeRequest;
 import com.guentours.payment.gateway.ChargeResult;
 import com.guentours.payment.gateway.PaymentGateway;
+import com.guentours.payment.gateway.PendingCardAuthorizationCache;
 import com.guentours.payment.web.PaymentRequest;
 import com.guentours.shared.Money;
 import com.guentours.shared.exception.BusinessException;
@@ -27,16 +30,19 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaymentService {
 
     private final PaymentRepository paymentRepository;
-    private final PaymentGateway paymentGateway;
+    private final PaymentProviderRoutingService routingService;
     private final BookingService bookingService;
     private final ApplicationEventPublisher eventPublisher;
+    private final PendingCardAuthorizationCache pendingCardAuthorizationCache;
 
-    public PaymentService(PaymentRepository paymentRepository, PaymentGateway paymentGateway,
-                          BookingService bookingService, ApplicationEventPublisher eventPublisher) {
+    public PaymentService(PaymentRepository paymentRepository, PaymentProviderRoutingService routingService,
+                          BookingService bookingService, ApplicationEventPublisher eventPublisher,
+                          PendingCardAuthorizationCache pendingCardAuthorizationCache) {
         this.paymentRepository = paymentRepository;
-        this.paymentGateway = paymentGateway;
+        this.routingService = routingService;
         this.bookingService = bookingService;
         this.eventPublisher = eventPublisher;
+        this.pendingCardAuthorizationCache = pendingCardAuthorizationCache;
     }
 
     /**
@@ -57,6 +63,11 @@ public class PaymentService {
 
         validatePaymentMethodFields(request);
 
+        // Résolu avant de créer le Payment : une route désactivée par l'admin (ou un fournisseur
+        // configuré mais jamais déployé) doit rejeter la tentative immédiatement plutôt que de
+        // créer un Payment PENDING qui basculerait FAILED juste après.
+        PaymentGateway gateway = routingService.resolveGateway(request.countryCode(), request.paymentMethod());
+
         Money amountDue = booking.amountDue();
 
         Payment payment = new Payment(booking.id(), amountDue, request.paymentMethod(),
@@ -71,7 +82,7 @@ public class PaymentService {
 
         ChargeResult result;
         try {
-            result = paymentGateway.charge(chargeRequest);
+            result = gateway.charge(chargeRequest);
         } catch (Exception ex) {
             log.error("Erreur lors de l'appel au gateway pour le payment {} (booking {})",
                     payment.getId(), booking.id(), ex);
@@ -80,7 +91,50 @@ public class PaymentService {
             return payment;
         }
 
-        applyChargeResult(payment, booking, result);
+        applyChargeResult(payment, booking, result, chargeRequest);
+        return payment;
+    }
+
+    /**
+     * Soumet le PIN carte demandé par le gateway pour un paiement en {@code PENDING_AUTHORIZATION},
+     * en réutilisant les détails de carte mis en cache par {@link #pay} - jamais persistés en base.
+     * Si le cache a expiré (le payeur a mis trop de temps), le paiement est marqué en échec avec un
+     * message explicite plutôt que de rester bloqué indéfiniment.
+     */
+    @Transactional
+    public Payment completeCardPinAuthorization(String paymentId, String pin) {
+        Payment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new NotFoundException("Payment introuvable : " + paymentId));
+
+        if (payment.getStatus() != PaymentStatus.PENDING_AUTHORIZATION
+                || payment.getAuthorizationType() != PaymentAuthorizationType.PIN) {
+            throw new BusinessException("Ce paiement n'est pas en attente d'un code PIN.");
+        }
+
+        ChargeRequest originalRequest = pendingCardAuthorizationCache.take(paymentId).orElse(null);
+        if (originalRequest == null) {
+            payment.markFailed("Session d'autorisation expirée, veuillez recommencer le paiement.");
+            paymentRepository.save(payment);
+            return payment;
+        }
+
+        ChargeResult result;
+        try {
+            PaymentGateway gateway = routingService.resolveGateway(payment.getCountryCode(), payment.getPaymentMethod());
+            result = gateway.completeCardPinAuthorization(paymentId, originalRequest, pin);
+        } catch (Exception ex) {
+            log.error("Erreur lors de la validation du PIN pour le payment {}", paymentId, ex);
+            payment.markFailed("Erreur technique gateway : " + ex.getMessage());
+            paymentRepository.save(payment);
+            return payment;
+        }
+
+        BookingSummary booking = bookingService.getSummary(payment.getBookingId());
+        // originalRequest est repassé ici (pas le surcharge à 3 arguments) car Flutterwave peut
+        // chaîner un nouveau défi PIN (mauvais code, re-tentative) après celui-ci : sans le
+        // recacher, la tentative suivante trouverait le cache déjà vidé et échouerait à tort avec
+        // "session expirée" alors que la carte est toujours en cours d'authentification.
+        applyChargeResult(payment, booking, result, originalRequest);
         return payment;
     }
 
@@ -95,7 +149,7 @@ public class PaymentService {
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new NotFoundException("Payment introuvable : " + paymentId));
 
-        if (payment.getStatus() != PaymentStatus.PENDING) {
+        if (payment.getStatus() == PaymentStatus.SUCCEEDED || payment.getStatus() == PaymentStatus.FAILED) {
             log.warn("Callback gateway reçu pour le payment {} déjà dans l'état {}, ignoré (idempotence).",
                     payment.getId(), payment.getStatus());
             return;
@@ -105,11 +159,19 @@ public class PaymentService {
         applyChargeResult(payment, booking, result);
     }
 
-    /**
-     * Applique le résultat d'une charge (qu'il vienne du flux synchrone ou d'un callback) :
-     * transition du Payment, puis du Booking et publication d'event si le paiement est confirmé.
-     */
+    /** Overload used by the webhook path, which never has the original card details to cache. */
     private void applyChargeResult(Payment payment, BookingSummary booking, ChargeResult result) {
+        applyChargeResult(payment, booking, result, null);
+    }
+
+    /**
+     * Applique le résultat d'une charge (qu'elle vienne du flux synchrone initial, d'une validation
+     * de PIN, ou d'un callback webhook) : transition du Payment, puis du Booking et publication
+     * d'event si le paiement est confirmé. {@code originalRequest} n'est fourni (non-null) que par
+     * {@link #pay}, pour mettre en cache les détails carte le temps d'une éventuelle autorisation PIN.
+     */
+    private void applyChargeResult(Payment payment, BookingSummary booking, ChargeResult result,
+                                   ChargeRequest originalRequest) {
         if (result.isSucceeded()) {
             payment.markSucceeded(result.gatewayReference());
             paymentRepository.save(payment);
@@ -119,9 +181,46 @@ public class PaymentService {
             payment.markFailed(result.failureReason());
             paymentRepository.save(payment);
 
+        } else if (result.requiresAuthorization()) {
+            AuthorizationChallenge challenge = result.authorizationChallenge();
+            PaymentAuthorizationType authorizationType = switch (challenge.type()) {
+                case PIN -> PaymentAuthorizationType.PIN;
+                case AVS -> PaymentAuthorizationType.AVS;
+                case REDIRECT -> PaymentAuthorizationType.REDIRECT;
+                case OTP -> PaymentAuthorizationType.OTP;
+            };
+
+            if (authorizationType == PaymentAuthorizationType.AVS) {
+                // L'AVS a besoin de l'adresse de facturation, que le formulaire carte ne collecte pas
+                // aujourd'hui (elle n'est demandée que pour Google/Apple Pay et PayPal) : on échoue
+                // proprement plutôt que de rester bloqué sans jamais pouvoir compléter le défi.
+                payment.markFailed("Ce mode de vérification carte (AVS) n'est pas encore supporté - "
+                        + "veuillez réessayer avec un autre moyen de paiement.");
+                paymentRepository.save(payment);
+                return;
+            }
+
+            if (authorizationType == PaymentAuthorizationType.OTP) {
+                // La validation OTP passe par un appel gateway distinct (ValidateCharge, corrélé par
+                // le flw_ref de Flutterwave) que ce paiement ne sait pas encore soumettre : on échoue
+                // proprement plutôt que de laisser le paiement PENDING_AUTHORIZATION sans jamais
+                // pouvoir en sortir.
+                payment.markFailed("Ce mode de vérification carte (OTP) n'est pas encore supporté - "
+                        + "veuillez réessayer avec un autre moyen de paiement.");
+                paymentRepository.save(payment);
+                return;
+            }
+
+            payment.markPendingAuthorization(result.gatewayReference(), authorizationType, challenge.redirectUrl());
+            paymentRepository.save(payment);
+            if (authorizationType == PaymentAuthorizationType.PIN && originalRequest != null) {
+                pendingCardAuthorizationCache.put(payment.getId(), originalRequest);
+            }
+            log.info("Payment {} en attente d'autorisation ({}), ref gateway = {}",
+                    payment.getId(), authorizationType, result.gatewayReference());
+
         } else {
-            // PENDING (attente webhook : mobile money, Google/Apple Pay, PayPal) ou
-            // PENDING_AUTHORIZATION (attente PIN/OTP/redirection carte)
+            // PENDING : attente d'un webhook asynchrone (mobile money, Google/Apple Pay, PayPal).
             payment.markPending(result.gatewayReference());
             paymentRepository.save(payment);
             log.info("Payment {} en attente ({}), ref gateway = {}",

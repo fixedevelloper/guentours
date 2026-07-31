@@ -29,6 +29,17 @@ public class PaymentController {
     }
 
     /**
+     * Submits the card PIN Flutterwave asked for (payment status {@code PENDING_AUTHORIZATION},
+     * {@code authorizationType == PIN}) to complete a card charge that would otherwise stay stuck
+     * forever - no webhook ever resolves this step, it requires this explicit round-trip.
+     */
+    @PostMapping("/{paymentId}/card-authorization")
+    public ResponseEntity<Payment> completeCardAuthorization(@PathVariable String paymentId,
+                                                             @Valid @RequestBody CardAuthorizationRequest request) {
+        return ResponseEntity.ok(paymentService.completeCardPinAuthorization(paymentId, request.pin()));
+    }
+
+    /**
      * Extrait l'IP réelle du client. Si l'app est derrière un reverse proxy/load balancer
      * (Nginx, ALB, Cloudflare...), X-Forwarded-For contient la vraie IP du client en première
      * position ; sinon on retombe sur l'IP de connexion directe.

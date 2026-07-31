@@ -50,6 +50,15 @@ public class Payment {
     @Column(name = "gateway_reference", unique = true)
     private String gatewayReference;
 
+    /** Set only while {@link #status} is {@code PENDING_AUTHORIZATION} - which challenge is outstanding. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "authorization_type")
+    private PaymentAuthorizationType authorizationType;
+
+    /** Set only when {@link #authorizationType} is {@code REDIRECT} - where the client must send the payer. */
+    @Column(name = "authorization_redirect_url")
+    private String authorizationRedirectUrl;
+
     @Column(name = "failure_reason")
     private String failureReason;
 
@@ -97,11 +106,33 @@ public class Payment {
      * connue pour permettre la corrélation lors du webhook, même si le statut final n'est pas encore acquis.
      */
     public void markPending(String gatewayReference) {
-        if (this.status != PaymentStatus.PENDING) {
+        if (this.status != PaymentStatus.PENDING && this.status != PaymentStatus.PENDING_AUTHORIZATION) {
             throw new IllegalStateException(
                     "Impossible de repasser en PENDING un paiement déjà dans l'état " + this.status);
         }
+        this.status = PaymentStatus.PENDING;
         this.gatewayReference = gatewayReference;
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * Passe le paiement en attente d'une étape d'autorisation synchrone (PIN carte, AVS, ou
+     * redirection 3DS) avant de pouvoir être finalisé - contrairement à {@link #markPending}, qui
+     * couvre l'attente d'une confirmation asynchrone (webhook mobile money/PayPal). Autorisé aussi
+     * depuis PENDING_AUTHORIZATION lui-même : Flutterwave peut chaîner un second défi après le
+     * premier (ex: PIN accepté puis OTP exigé), ce qui remplace simplement le défi en cours par le
+     * suivant plutôt que de représenter un changement d'état invalide.
+     */
+    public void markPendingAuthorization(String gatewayReference, PaymentAuthorizationType authorizationType,
+                                         String redirectUrl) {
+        if (this.status != PaymentStatus.PENDING && this.status != PaymentStatus.PENDING_AUTHORIZATION) {
+            throw new IllegalStateException(
+                    "Impossible de passer en PENDING_AUTHORIZATION un paiement déjà dans l'état " + this.status);
+        }
+        this.status = PaymentStatus.PENDING_AUTHORIZATION;
+        this.gatewayReference = gatewayReference;
+        this.authorizationType = authorizationType;
+        this.authorizationRedirectUrl = redirectUrl;
         this.updatedAt = Instant.now();
     }
 
@@ -156,6 +187,14 @@ public class Payment {
 
     public String getGatewayReference() {
         return gatewayReference;
+    }
+
+    public PaymentAuthorizationType getAuthorizationType() {
+        return authorizationType;
+    }
+
+    public String getAuthorizationRedirectUrl() {
+        return authorizationRedirectUrl;
     }
 
     public String getFailureReason() {

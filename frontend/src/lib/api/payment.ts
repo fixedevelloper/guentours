@@ -10,3 +10,11 @@ export async function getPayment(paymentId: string) {
   const { data } = await apiClient.get<PaymentResponse>(`/api/payments/${paymentId}`);
   return data;
 }
+
+export async function completeCardAuthorization(paymentId: string, pin: string) {
+  const { data } = await apiClient.post<PaymentResponse>(
+      `/api/payments/${paymentId}/card-authorization`,
+      { pin }
+  );
+  return data;
+}

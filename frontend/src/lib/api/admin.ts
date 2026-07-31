@@ -8,6 +8,8 @@ import type {
   PageResponse,
   PartnerResponse,
   PartnerStatus,
+  PaymentProviderRouteRequest,
+  PaymentProviderRouteResponse,
   Reseller,
   ResellerApprovalRequest,
   ResellerBooking,
@@ -46,6 +48,26 @@ export async function createShareholder(payload: ShareholderRequest) {
 
 export async function updateShareholder(id: string, payload: ShareholderRequest) {
   const { data } = await apiClient.put<ShareholderResponse>(`/api/admin/commission/shareholders/${id}`, payload);
+  return data;
+}
+
+export async function getPaymentProviderRoutes() {
+  const { data } = await apiClient.get<PaymentProviderRouteResponse[]>("/api/admin/payment-provider-routes");
+  return data;
+}
+
+export async function getAvailablePaymentProviders() {
+  const { data } = await apiClient.get<string[]>("/api/admin/payment-provider-routes/available-providers");
+  return data;
+}
+
+export async function createPaymentProviderRoute(payload: PaymentProviderRouteRequest) {
+  const { data } = await apiClient.post<PaymentProviderRouteResponse>("/api/admin/payment-provider-routes", payload);
+  return data;
+}
+
+export async function updatePaymentProviderRoute(id: string, payload: PaymentProviderRouteRequest) {
+  const { data } = await apiClient.put<PaymentProviderRouteResponse>(`/api/admin/payment-provider-routes/${id}`, payload);
   return data;
 }
 
