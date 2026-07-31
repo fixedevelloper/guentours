@@ -71,6 +71,17 @@ public class BookingController {
         return ResponseEntity.ok(BookingResponse.from(booking));
     }
 
+    /**
+     * Resubmits the provider hold for a booking that failed before ever getting a PNR/confirmation
+     * number (see {@link Booking#canRetryHold}) - lets the guest retry without redoing checkout.
+     */
+    @PostMapping("/{id}/retry")
+    public ResponseEntity<BookingResponse> retry(@PathVariable String id,
+                                                 @RequestParam(required = false) String email) {
+        bookingService.verifyGuestAccess(bookingService.getById(id), email);
+        return ResponseEntity.accepted().body(BookingResponse.from(bookingService.retryHold(id)));
+    }
+
     /** Voids the provider's PNR/reservation and marks the booking cancelled. */
     @PostMapping("/{id}/cancel")
     public ResponseEntity<BookingResponse> cancel(@PathVariable String id,

@@ -50,8 +50,11 @@ class PaymentPlanAndExpiryTest {
         CheckedOutBooking booking = checkoutFlight("PAY_LATER");
         String bookingId = booking.id();
 
+        // The provider hold now completes off-thread after checkout returns.
+        await().atMost(Duration.ofSeconds(10))
+                .untilAsserted(() -> assertThat(getBooking(booking).get("status").asText()).isEqualTo("PENDING_PAYMENT"));
+
         JsonNode afterCheckout = getBooking(booking);
-        assertThat(afterCheckout.get("status").asText()).isEqualTo("PENDING_PAYMENT");
         assertThat(afterCheckout.get("paymentPlan").asText()).isEqualTo("PAY_LATER");
         double price = afterCheckout.get("price").get("amount").asDouble();
         // A fixed reservation fee is due up front, and it is the amount to pay now.
@@ -82,8 +85,11 @@ class PaymentPlanAndExpiryTest {
         CheckedOutBooking booking = checkoutHotel("PAY_LATER");
         String bookingId = booking.id();
 
+        // The provider hold now completes off-thread after checkout returns.
+        await().atMost(Duration.ofSeconds(10))
+                .untilAsserted(() -> assertThat(getBooking(booking).get("status").asText()).isEqualTo("PENDING_PAYMENT"));
+
         JsonNode afterCheckout = getBooking(booking);
-        assertThat(afterCheckout.get("status").asText()).isEqualTo("PENDING_PAYMENT");
         assertThat(afterCheckout.get("offerType").asText()).isEqualTo("HOTEL");
 
         JsonNode depositPayment = pay(bookingId);
@@ -99,27 +105,33 @@ class PaymentPlanAndExpiryTest {
 
     @Test
     void paysWithMtnMobileMoneyAndOrangeMoney() throws Exception {
-        String mtnBookingId = checkoutFlight("PAY_NOW").id();
-        JsonNode mtnPayment = payWithMobileMoney(mtnBookingId, "+237670000001");
+        CheckedOutBooking mtnBooking = checkoutFlight("PAY_NOW");
+        awaitPendingPayment(mtnBooking);
+        JsonNode mtnPayment = payWithMobileMoney(mtnBooking.id(), "+237670000001");
         assertThat(mtnPayment.get("status").asText()).isEqualTo("SUCCEEDED");
         assertThat(mtnPayment.get("paymentMethod").asText()).isEqualTo("MOBILE_MONEY");
 
-        String orangeBookingId = checkoutFlight("PAY_NOW").id();
-        JsonNode orangePayment = payWithMobileMoney(orangeBookingId, "+237690000002");
+        CheckedOutBooking orangeBooking = checkoutFlight("PAY_NOW");
+        awaitPendingPayment(orangeBooking);
+        JsonNode orangePayment = payWithMobileMoney(orangeBooking.id(), "+237690000002");
         assertThat(orangePayment.get("status").asText()).isEqualTo("SUCCEEDED");
         assertThat(orangePayment.get("paymentMethod").asText()).isEqualTo("MOBILE_MONEY");
     }
 
     @Test
     void mobileMoneyNumberEndingInZerosIsDeclined() throws Exception {
-        String bookingId = checkoutFlight("PAY_NOW").id();
-        JsonNode payment = payWithMobileMoney(bookingId, "+237670000000");
+        CheckedOutBooking booking = checkoutFlight("PAY_NOW");
+        awaitPendingPayment(booking);
+        JsonNode payment = payWithMobileMoney(booking.id(), "+237670000000");
         assertThat(payment.get("status").asText()).isEqualTo("FAILED");
     }
 
     @Test
     void autoCancelsHoldsPastTheirTicketingDeadline() throws Exception {
         CheckedOutBooking checkedOut = checkoutFlight("PAY_NOW");
+        // Wait for the async provider hold to finish (and stop touching the row) before this test
+        // reaches in and rewrites the deadline directly, to avoid racing the background job.
+        awaitPendingPayment(checkedOut);
 
         Booking booking = bookingRepository.findById(checkedOut.id()).orElseThrow();
         booking.markOnHold(booking.getProviderConfirmationNumber(), LocalDateTime.now().minusMinutes(1));
@@ -128,6 +140,11 @@ class PaymentPlanAndExpiryTest {
         bookingService.cancelExpiredHolds();
 
         assertThat(getBooking(checkedOut).get("status").asText()).isEqualTo("CANCELLED");
+    }
+
+    private void awaitPendingPayment(CheckedOutBooking booking) {
+        await().atMost(Duration.ofSeconds(10))
+                .untilAsserted(() -> assertThat(getBooking(booking).get("status").asText()).isEqualTo("PENDING_PAYMENT"));
     }
 
     /** Pairs a checked-out booking with the contact email it was made under - guest access to

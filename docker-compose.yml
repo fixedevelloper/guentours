@@ -4,17 +4,57 @@ services:
     build:
       context: ./spring
     container_name: spring
-
     restart: unless-stopped
-
     ports:
       - "8080:8080"
-
     volumes:
       - ./spring/logs:/logs
-
     networks:
       - backend
+    # Recommandé : Healthcheck pour s'assurer que Spring répond avant d'activer Prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus_admin.txt:/etc/prometheus/prometheus_admin.txt:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - backend
+    depends_on:
+      spring:
+        condition: service_healthy # Attend que Spring soit réellement opérationnel
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    networks:
+      - backend
+    depends_on:
+      - prometheus
 
 networks:
   backend:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:

@@ -28,6 +28,18 @@ public class Booking {
     @Column(name = "contact_email", nullable = false)
     private String contactEmail;
 
+    @Column(name = "contact_phone")
+    private String contactPhone;
+
+    /**
+     * The search/offer-cache id(s) used to create this booking - pipe-joined for a multi-city
+     * itinerary, one per leg in order. Kept around solely so a failed provider hold can be
+     * retried without asking the guest to fill in their details again; {@code null} for
+     * bookings created before this field existed.
+     */
+    @Column(name = "search_offer_id")
+    private String searchOfferId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "offer_type", nullable = false, length = 30)
     private OfferType offerType;
@@ -163,7 +175,7 @@ public class Booking {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
-    private BookingStatus status = BookingStatus.PENDING_PAYMENT;
+    private BookingStatus status = BookingStatus.PENDING_HOLD;
 
     @Column(name = "provider_confirmation_number")
     private String providerConfirmationNumber;
@@ -337,17 +349,27 @@ public class Booking {
         this.reservationFee = reservationFee;
     }
 
+    /** Records what's needed to retry the provider hold later without re-asking the guest. */
+    public void assignRetryContext(String searchOfferId, String contactPhone) {
+        this.searchOfferId = searchOfferId;
+        this.contactPhone = contactPhone;
+    }
+
+    /** The provider hold succeeded: moves out of {@code PENDING_HOLD} into the ordinary payment flow. */
     public void markOnHold(String pnrCode, LocalDateTime ticketingDeadline) {
         this.providerConfirmationNumber = pnrCode;
         this.ticketingDeadline = ticketingDeadline;
+        this.status = BookingStatus.PENDING_PAYMENT;
     }
 
+    /** The provider hold succeeded: moves out of {@code PENDING_HOLD} into the ordinary payment flow. */
     public void markOnHoldMultiLeg(List<String> pnrCodes, LocalDateTime earliestTicketingDeadline) {
         this.legPnrCodes = pnrCodes;
         if (!pnrCodes.isEmpty()) {
             this.providerConfirmationNumber = pnrCodes.get(0);
         }
         this.ticketingDeadline = earliestTicketingDeadline;
+        this.status = BookingStatus.PENDING_PAYMENT;
     }
 
     public List<String> pnrCodes() {
@@ -386,5 +408,15 @@ public class Booking {
 
     public void markCancelled() {
         this.status = BookingStatus.CANCELLED;
+    }
+
+    /** A failed hold, never confirmed with the provider, can be resubmitted from scratch. */
+    public boolean canRetryHold() {
+        return status == BookingStatus.FAILED && providerConfirmationNumber == null;
+    }
+
+    public void markRetrying() {
+        this.status = BookingStatus.PENDING_HOLD;
+        this.failureReason = null;
     }
 }

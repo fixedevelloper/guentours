@@ -4,6 +4,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -22,6 +23,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
+import static org.springframework.security.config.Customizer.withDefaults;
+
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -37,8 +40,7 @@ public class SecurityConfig {
             "/oauth2/**",
             "/login/oauth2/**",
             "/v3/api-docs/**",
-            "/swagger-ui/**",
-            "/actuator/health"
+            "/swagger-ui/**"
     };
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -65,7 +67,33 @@ public class SecurityConfig {
         this.clientRegistrationRepository = clientRegistrationRepository;
     }
 
+    /**
+     * A separate, higher-priority chain scoped to {@code /actuator/**} so it can enable HTTP Basic
+     * without changing how the rest of the app reports unauthenticated access (the main chain
+     * below has no {@code httpBasic()}/{@code formLogin()}, so it keeps responding 403 rather than
+     * challenging with a {@code WWW-Authenticate: Basic} header - enabling Basic auth on a single
+     * shared chain would have switched that to 401 app-wide). Basic auth here lets a scraper
+     * (Prometheus, curl, ...) authenticate with an existing admin account's email/password,
+     * checked through the same {@link #authenticationProvider()} as the JWT login flow - no
+     * separate service-account store. health/info stay public for uptime checks and load
+     * balancers; everything else under /actuator/** (metrics, prometheus, ...) is admin-only.
+     */
     @Bean
+    @Order(1)
+    public SecurityFilterChain actuatorFilterChain(HttpSecurity http) throws Exception {
+        http
+                .securityMatcher("/actuator/**")
+                .csrf(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        .anyRequest().hasRole("ADMIN"))
+                .authenticationProvider(authenticationProvider())
+                .httpBasic(withDefaults());
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)

@@ -54,6 +54,13 @@ public class ProviderProperties {
         /** Travelport access group (branch scope), sent as the XAUTH_TRAVELPORT_ACCESSGROUP header on every call. */
         private String accessGroup = "";
         private long timeoutMillis = 30000;
+        /**
+         * Separate, longer timeout for booking-flow calls (add offer, add traveler, commit,
+         * payment, ticketing...), which real-world testing has shown can take noticeably longer
+         * than a search call on the vendor side - using the same short timeout as search made
+         * genuinely slow-but-successful booking calls fail as timeouts.
+         */
+        private long bookingTimeoutMillis = 60000;
 
         /**
          * Travelport's Stays Create Reservation call requires a FormOfPayment on every hotel booking
@@ -122,6 +129,14 @@ public class ProviderProperties {
 
         public void setTimeoutMillis(long timeoutMillis) {
             this.timeoutMillis = timeoutMillis;
+        }
+
+        public long getBookingTimeoutMillis() {
+            return bookingTimeoutMillis;
+        }
+
+        public void setBookingTimeoutMillis(long bookingTimeoutMillis) {
+            this.bookingTimeoutMillis = bookingTimeoutMillis;
         }
 
         public String getUsername() {

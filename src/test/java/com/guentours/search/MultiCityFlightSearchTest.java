@@ -109,6 +109,16 @@ class MultiCityFlightSearchTest {
         JsonNode booking = objectMapper.readTree(checkoutResponse.getBody());
         String bookingId = booking.get("id").asText();
         assertThat(booking.get("itineraryLegs").size()).isEqualTo(3);
+        assertThat(booking.get("status").asText()).isEqualTo("PENDING_HOLD");
+
+        URI bookingUri = withEmail("http://localhost:" + port + "/api/bookings/" + bookingId, contactEmail);
+
+        // Each leg's hold now happens off-thread after checkout returns - wait for all of them to
+        // complete before attempting payment, since PaymentService rejects a PENDING_HOLD booking.
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            ResponseEntity<String> bookingResponse = restTemplate.getForEntity(bookingUri, String.class);
+            assertThat(objectMapper.readTree(bookingResponse.getBody()).get("status").asText()).isEqualTo("PENDING_PAYMENT");
+        });
 
         String paymentBody = """
                 {
@@ -127,7 +137,6 @@ class MultiCityFlightSearchTest {
                 "http://localhost:" + port + "/api/payments", jsonEntity(paymentBody), String.class);
         assertThat(paymentResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
-        URI bookingUri = withEmail("http://localhost:" + port + "/api/bookings/" + bookingId, contactEmail);
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
             ResponseEntity<String> bookingResponse = restTemplate.getForEntity(bookingUri, String.class);
             JsonNode confirmed = objectMapper.readTree(bookingResponse.getBody());

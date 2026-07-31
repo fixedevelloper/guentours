@@ -86,8 +86,18 @@ public class TravelportClient implements TravelProviderClient {
     private static final int INFANT_REPRESENTATIVE_AGE = 1;
     private static final String TVPT_AUTHORITY = "TVPT";
 
+    /** Booking-flow calls get up to this many attempts total (1 initial + retries) before giving
+     *  up on a transient I/O error/timeout - never on a business-rule failure (those don't throw
+     *  {@link RestClientException} in the first place). */
+    private static final int MAX_BOOKING_ATTEMPTS = 3;
+    private static final Duration BOOKING_RETRY_BACKOFF = Duration.ofMillis(1000);
+
     private final ProviderProperties.Vendor config;
     private final RestClient restClient;
+    /** Same base URL/auth as {@link #restClient}, but with a longer timeout for the booking flow
+     *  (new workbench, add offer/traveler, commit, payment, ticketing, hotel reservation) - real
+     *  testing showed these can legitimately take longer than a search call on Travelport's side. */
+    private final RestClient bookingRestClient;
     private final TravelportTokenProvider tokenProvider;
     private final ObjectMapper objectMapper;
     private final String resolvedBaseUrl;
@@ -104,7 +114,47 @@ public class TravelportClient implements TravelProviderClient {
                 .baseUrl(resolvedBaseUrl)
                 .requestFactory(ClientHttpRequestFactories.get(timeoutSettings))
                 .build();
+        ClientHttpRequestFactorySettings bookingTimeoutSettings = ClientHttpRequestFactorySettings.DEFAULTS
+                .withConnectTimeout(Duration.ofMillis(config.getTimeoutMillis()))
+                .withReadTimeout(Duration.ofMillis(config.getBookingTimeoutMillis()));
+        this.bookingRestClient = RestClient.builder()
+                .baseUrl(resolvedBaseUrl)
+                .requestFactory(ClientHttpRequestFactories.get(bookingTimeoutSettings))
+                .build();
         this.tokenProvider = new TravelportTokenProvider(RestClient.builder(), config);
+    }
+
+    /**
+     * Retries a booking-flow network call up to {@link #MAX_BOOKING_ATTEMPTS} times on a transient
+     * {@link RestClientException} (I/O error, timeout) with a short linear backoff between
+     * attempts - the exact failure this wraps around (add offer timing out against the real
+     * Travelport sandbox) is usually a one-off slow response, not a persistent outage. Never
+     * retries anything else: a well-formed error response (e.g. offer no longer available) is
+     * already surfaced as a normal response body, not an exception, by this point.
+     */
+    private <T> T withBookingRetry(String operation, java.util.function.Supplier<T> call) {
+        RestClientException lastError;
+        int attempt = 1;
+        while (true) {
+            try {
+                return call.get();
+            } catch (RestClientException e) {
+                lastError = e;
+                if (attempt >= MAX_BOOKING_ATTEMPTS) {
+                    break;
+                }
+                log.warn("[Travelport] {} failed on attempt {}/{}, retrying: {}",
+                        operation, attempt, MAX_BOOKING_ATTEMPTS, e.getMessage());
+                try {
+                    Thread.sleep(BOOKING_RETRY_BACKOFF.toMillis() * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw lastError;
+                }
+                attempt++;
+            }
+        }
+        throw lastError;
     }
 
     @Override
@@ -223,13 +273,13 @@ public class TravelportClient implements TravelProviderClient {
             return;
         }
         try {
-            restClient.delete()
+            withBookingRetry("cancel PNR " + pnrCode, () -> bookingRestClient.delete()
                     .uri(RESERVATIONS_BASE + "/{locator}", pnrCode)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
                     .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
                     .header(PCC_HEADER, config.getPseudoCityCode())
                     .retrieve()
-                    .toBodilessEntity();
+                    .toBodilessEntity());
         } catch (RestClientException e) {
             throw new ProviderException("Travelport cancellation failed for PNR " + pnrCode + ": " + e.getMessage());
         }
@@ -627,7 +677,7 @@ public class TravelportClient implements TravelProviderClient {
 
         String raw;
         try {
-            raw = restClient.post()
+            raw = withBookingRetry("commit for session " + session, () -> bookingRestClient.post()
                     .uri(commitUrl)
                     .headers(h -> workbenchHeaders(h, session))
                     .contentType(MediaType.APPLICATION_JSON)
@@ -635,7 +685,7 @@ public class TravelportClient implements TravelProviderClient {
                     .header("TraceId", "Commit_Req_" + session + "_" + Instant.now().getEpochSecond())
                     .body(body)
                     .retrieve()
-                    .body(String.class);
+                    .body(String.class));
         } catch (RestClientException e) {
             throw new ProviderException("Travelport commit failed: " + e.getMessage());
         }
@@ -723,7 +773,7 @@ public class TravelportClient implements TravelProviderClient {
     private String newWorkbench() {
         TravelportNewWorkbenchResponse response;
         try {
-            response = restClient.post()
+            response = withBookingRetry("new workbench", () -> bookingRestClient.post()
                     .uri(WORKBENCH_BASE)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
                     .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
@@ -732,7 +782,7 @@ public class TravelportClient implements TravelProviderClient {
                     .accept(MediaType.APPLICATION_JSON)
                     .body(new TravelportWorkbenchRequests.ReservationId("ReservationID"))
                     .retrieve()
-                    .body(TravelportNewWorkbenchResponse.class);
+                    .body(TravelportNewWorkbenchResponse.class));
         } catch (RestClientException e) {
             throw new ProviderException("Travelport new workbench failed: " + e.getMessage());
         }
@@ -797,7 +847,7 @@ public class TravelportClient implements TravelProviderClient {
 
         String raw;
         try {
-            raw = restClient.post()
+            raw = withBookingRetry("add offer for " + offeringId, () -> bookingRestClient.post()
                     .uri(addOfferUrl)
                     .headers(h -> {
                         workbenchHeaders(h, session);
@@ -809,7 +859,7 @@ public class TravelportClient implements TravelProviderClient {
                     .accept(MediaType.APPLICATION_JSON)
                     .body(request)
                     .retrieve()
-                    .body(String.class);
+                    .body(String.class));
         } catch (RestClientException e) {
             throw new ProviderException("Travelport add offer failed for " + offeringId + ": " + e.getMessage());
         }
@@ -840,13 +890,13 @@ public class TravelportClient implements TravelProviderClient {
     private void addTraveler(String session, TravelportWorkbenchRequests.Traveler traveler) {
         String addTravelerUrl = resolvedBaseUrl + WORKBENCH_TRAVELER_BASE + "/" + session + "/travelers";
         try {
-            restClient.post()
+            withBookingRetry("add traveler for session " + session, () -> bookingRestClient.post()
                     .uri(addTravelerUrl)
                     .headers(h -> workbenchHeaders(h, session))
                     .accept(MediaType.APPLICATION_JSON)
                     .body(traveler)
                     .retrieve()
-                    .toBodilessEntity();
+                    .toBodilessEntity());
         } catch (RestClientException e) {
             throw new ProviderException("Travelport add traveler failed: " + e.getMessage());
         }
@@ -886,12 +936,12 @@ public class TravelportClient implements TravelProviderClient {
     private void postCommitWorkbench(String session, String locator) {
         String postCommitUrl = resolvedBaseUrl + WORKBENCH_BASE + "/buildfromlocator?Locator=" + locator;
         try {
-            restClient.post()
+            withBookingRetry("post-commit workbench for locator " + locator, () -> bookingRestClient.post()
                     .uri(postCommitUrl)
                     .headers(h -> workbenchHeaders(h, session))
                     .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
-                    .toBodilessEntity();
+                    .toBodilessEntity());
         } catch (RestClientException e) {
             throw new ProviderException("Travelport post-commit workbench failed for locator " + locator + ": " + e.getMessage());
         }
@@ -914,13 +964,13 @@ public class TravelportClient implements TravelProviderClient {
                 + "/formofpayment?authorizePaymentInd=true";
         TravelportFormOfPaymentResponse response;
         try {
-            response = restClient.post()
+            response = withBookingRetry("add form of payment for session " + session, () -> bookingRestClient.post()
                     .uri(addFormOfPaymentUrl)
                     .headers(h -> workbenchHeaders(h, session))
                     .accept(MediaType.APPLICATION_JSON)
                     .body(fop)
                     .retrieve()
-                    .body(TravelportFormOfPaymentResponse.class);
+                    .body(TravelportFormOfPaymentResponse.class));
         } catch (RestClientException e) {
             throw new ProviderException("Travelport add form of payment failed: " + e.getMessage());
         }
@@ -948,13 +998,13 @@ public class TravelportClient implements TravelProviderClient {
                 new TravelportPaymentRequest.FormOfPaymentIdentifier(fopRef, fopRef));
         String addPaymentUrl = resolvedBaseUrl + PAYMENT_OFFER_BASE + "/" + session + "/payments";
         try {
-            restClient.post()
+            withBookingRetry("add payment for session " + session, () -> bookingRestClient.post()
                     .uri(addPaymentUrl)
                     .headers(h -> workbenchHeaders(h, session))
                     .accept(MediaType.APPLICATION_JSON)
                     .body(request)
                     .retrieve()
-                    .toBodilessEntity();
+                    .toBodilessEntity());
         } catch (RestClientException e) {
             throw new ProviderException("Travelport add payment failed: " + e.getMessage());
         }
@@ -1481,7 +1531,7 @@ public class TravelportClient implements TravelProviderClient {
 
         TravelportReservationResponse response;
         try {
-            response = restClient.post()
+            response = withBookingRetry("hotel reservation", () -> bookingRestClient.post()
                     .uri("/hotel/book/reservations")
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
                     .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
@@ -1489,7 +1539,7 @@ public class TravelportClient implements TravelProviderClient {
                     .accept(MediaType.APPLICATION_JSON)
                     .body(new TravelportHotelReservationRequest(reservationDetail))
                     .retrieve()
-                    .body(TravelportReservationResponse.class);
+                    .body(TravelportReservationResponse.class));
         } catch (RestClientException e) {
             throw new ProviderException("Travelport hotel reservation failed: " + e.getMessage());
         }

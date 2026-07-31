@@ -24,6 +24,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -50,11 +52,16 @@ public class BookingService {
     private final ApplicationEventPublisher events;
     private final CommissionPolicy commissionPolicy;
     private final BigDecimal reservationFeeAmount;
+    /** Self-reference through the Spring proxy, needed so the @Async/@Transactional hold-completion
+     *  methods below actually go through AOP when called from within this same class - a direct
+     *  `this.foo()` call would bypass both aspects entirely. */
+    private final BookingService self;
 
     public BookingService(BookingRepository bookingRepository, UserService userService, OfferCache offerCache,
                           List<TravelProviderClient> providerClients, BookingTrackingService trackingService,
                           ApplicationEventPublisher events, CommissionPolicy commissionPolicy,
-                          @Value("${app.payment.reservation-fee:5000}") BigDecimal reservationFeeAmount) {
+                          @Value("${app.payment.reservation-fee:5000}") BigDecimal reservationFeeAmount,
+                          @Lazy BookingService self) {
         this.bookingRepository = bookingRepository;
         this.userService = userService;
         this.offerCache = offerCache;
@@ -64,94 +71,261 @@ public class BookingService {
         this.events = events;
         this.commissionPolicy = commissionPolicy;
         this.reservationFeeAmount = reservationFeeAmount;
+        this.self = self;
     }
 
-    @Transactional
+    /**
+     * Returns as soon as the booking row exists (status {@code PENDING_HOLD}, everything already
+     * known from the cached offer - price, itinerary, travelers), instead of blocking the whole
+     * HTTP request on the provider's hold API (verifyPrice + createXHold can each take several
+     * seconds, and used to run inline here). The actual provider round trip happens in
+     * {@link #completeHold}, off-thread, and pushes its outcome over the existing SSE tracking
+     * channel ({@code GET /api/bookings/{id}/track}) once done.
+     */
     public Booking checkout(CheckoutRequest request) {
-        User user = userService.findOrCreateForCheckout(request.contactEmail(), request.contactFullName(),
-                request.contactPhone());
-
-        List<BookedTraveler> travelers = toBookedTravelers(request.travelers());
-        PaymentPlan plan = request.paymentPlan() == null ? PaymentPlan.PAY_NOW : request.paymentPlan();
-
-        Booking booking = switch (request.offerType()) {
-            case FLIGHT -> checkoutFlight(request, user, travelers, plan);
-            case HOTEL -> checkoutHotel(request, user, travelers, plan);
-            case CAR_RENTAL -> checkoutVehicle(request, user, travelers, plan);
-            case FURNISHED_RENTAL -> checkoutProperty(request, user, travelers, plan);
-        };
-
-        Booking saved = bookingRepository.save(booking);
-        events.publishEvent(new BookingCreatedEvent(saved.getId()));
+        Booking saved = self.createPendingBooking(request);
+        self.completeHold(saved.getId());
         return saved;
     }
 
     @Transactional
+    public Booking createPendingBooking(CheckoutRequest request) {
+        User user = userService.findOrCreateForCheckout(request.contactEmail(), request.contactFullName(),
+                request.contactPhone());
+        List<BookedTraveler> travelers = toBookedTravelers(request.travelers());
+        PaymentPlan plan = request.paymentPlan() == null ? PaymentPlan.PAY_NOW : request.paymentPlan();
+
+        Booking booking = switch (request.offerType()) {
+            case FLIGHT -> buildPendingFlightBooking(request, user, travelers, plan);
+            case HOTEL -> buildPendingHotelBooking(request, user, travelers, plan);
+            case CAR_RENTAL -> buildPendingVehicleBooking(request, user, travelers, plan);
+            case FURNISHED_RENTAL -> buildPendingPropertyBooking(request, user, travelers, plan);
+        };
+        booking.assignRetryContext(request.offerId(), request.contactPhone());
+
+        return bookingRepository.save(booking);
+    }
+
+    /**
+     * The actual provider round trip (price re-verification + hold), run off-thread after
+     * {@link #checkout} already returned. Runs in its own transaction, separate from the one that
+     * created the booking row, since @Async always executes on a different thread. Never lets an
+     * exception escape - a failure here means the booking moves to FAILED with a reason, not a
+     * silently-swallowed background error. Reads everything it needs (offer id, contact details,
+     * travelers) off the persisted {@link Booking} rather than a request DTO, so the exact same
+     * completion logic also serves {@link #retryHold}.
+     */
+    @Async
+    @Transactional
+    public void completeHold(String bookingId) {
+        Booking booking = getById(bookingId);
+        try {
+            switch (booking.getOfferType()) {
+                case FLIGHT -> completeFlightHold(booking);
+                case HOTEL -> completeHotelHold(booking);
+                case CAR_RENTAL -> completeVehicleHold(booking);
+                case FURNISHED_RENTAL -> completePropertyHold(booking);
+            }
+            bookingRepository.save(booking);
+            events.publishEvent(new BookingCreatedEvent(booking.getId()));
+        } catch (RuntimeException ex) {
+            log.warn("Provider hold failed for booking {}", bookingId, ex);
+            booking.markFailed(sanitizeFailureReason(ex));
+            bookingRepository.save(booking);
+        }
+        trackingService.publish(bookingId, booking.getStatus());
+    }
+
     public Booking checkoutMultiCity(MultiCityCheckoutRequest request) {
+        Booking saved = self.createPendingMultiCityBooking(request);
+        self.completeMultiCityHold(saved.getId());
+        return saved;
+    }
+
+    @Transactional
+    public Booking createPendingMultiCityBooking(MultiCityCheckoutRequest request) {
         User user = userService.findOrCreateForCheckout(request.contactEmail(), request.contactFullName(),
                 request.contactPhone());
         List<BookedTraveler> travelers = toBookedTravelers(request.travelers());
         validateFlightTravelers(travelers);
         PaymentPlan plan = request.paymentPlan() == null ? PaymentPlan.PAY_NOW : request.paymentPlan();
-        List<PassengerInfo> passengers = toPassengers(travelers);
 
         List<FlightOffer> offers = request.legOfferIds().stream()
                 .map(id -> offerCache.getFlightOffer(id)
                         .orElseThrow(() -> new BusinessException("This flight offer has expired, please search again")))
                 .toList();
-
         ProviderType providerType = offers.get(0).providerType();
-        TravelProviderClient client = clientFor(providerType);
 
-        List<String> pnrCodes = new ArrayList<>();
         List<BookingFlightLeg> itineraryLegs = new ArrayList<>();
         Money total = null;
-        LocalDateTime earliestDeadline = null;
-
-        try {
-            for (int i = 0; i < offers.size(); i++) {
-                FlightOffer offer = offers.get(i);
-                FlightPriceVerification verification = client.verifyFlightPrice(offer);
-                if (verification.priceChanged(offer.price()) || !verification.seatsAvailable()) {
-                    throw new OfferExpiredException("This flight offer is no longer available at the quoted price, please search again");
-                }
-                ProviderBookingConfirmation hold = client.createFlightHold(
-                        new FlightBookingRequest(offer, passengers, request.contactEmail(), request.contactPhone()));
-                if (!hold.confirmed()) {
-                    throw new ProviderException("Unable to hold this flight with " + providerType);
-                }
-                pnrCodes.add(hold.pnrCode());
-                itineraryLegs.add(new BookingFlightLeg(i, offer.airline(), offer.flightNumber(), offer.origin(),
-                        offer.destination(), offer.departureTime(), offer.arrivalTime()));
-                Money legPriceWithFee = commissionPolicy.addFlightFee(offer.price());
-                total = total == null ? legPriceWithFee : total.add(legPriceWithFee);
-                earliestDeadline = earliestDeadline == null || hold.ticketingDeadline().isBefore(earliestDeadline)
-                        ? hold.ticketingDeadline() : earliestDeadline;
-            }
-        } catch (RuntimeException ex) {
-            for (String pnr : pnrCodes) {
-                try {
-                    client.cancelFlightBooking(pnr);
-                } catch (Exception cleanupEx) {
-                    log.warn("Failed to void leg hold {} while rolling back a failed multi-city checkout", pnr, cleanupEx);
-                }
-            }
-            throw ex;
+        for (int i = 0; i < offers.size(); i++) {
+            FlightOffer offer = offers.get(i);
+            itineraryLegs.add(new BookingFlightLeg(i, offer.airline(), offer.flightNumber(), offer.origin(),
+                    offer.destination(), offer.departureTime(), offer.arrivalTime()));
+            Money legPriceWithFee = commissionPolicy.addFlightFee(offer.price());
+            total = total == null ? legPriceWithFee : total.add(legPriceWithFee);
         }
 
         String combinedOfferId = offers.stream().map(FlightOffer::providerOfferId).collect(Collectors.joining("|"));
         Booking booking = Booking.forMultiCityFlight(user.getId(), user.getEmail(), providerType, combinedOfferId,
                 total, itineraryLegs, travelers);
         booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(total.currency()) : null);
-        booking.markOnHoldMultiLeg(pnrCodes, earliestDeadline);
-        Booking saved = bookingRepository.save(booking);
-        events.publishEvent(new BookingCreatedEvent(saved.getId()));
-        return saved;
+        booking.assignRetryContext(String.join("|", request.legOfferIds()), request.contactPhone());
+        return bookingRepository.save(booking);
     }
 
-    private Booking checkoutFlight(CheckoutRequest request, User user, List<BookedTraveler> travelers, PaymentPlan plan) {
+    @Async
+    @Transactional
+    public void completeMultiCityHold(String bookingId) {
+        Booking booking = getById(bookingId);
+        try {
+            List<FlightOffer> offers = legOfferIds(booking).stream()
+                    .map(id -> offerCache.getFlightOffer(id)
+                            .orElseThrow(() -> new BusinessException("This flight offer has expired, please search again")))
+                    .toList();
+            ProviderType providerType = offers.getFirst().providerType();
+            TravelProviderClient client = clientFor(providerType);
+            List<PassengerInfo> passengers = toPassengers(booking.getTravelers());
+
+            List<String> pnrCodes = new ArrayList<>();
+            LocalDateTime earliestDeadline = null;
+            try {
+                for (FlightOffer offer : offers) {
+                    FlightPriceVerification verification = client.verifyFlightPrice(offer);
+                    if (verification.priceChanged(offer.price()) || !verification.seatsAvailable()) {
+                        throw new OfferExpiredException("This flight offer is no longer available at the quoted price, please search again");
+                    }
+                    ProviderBookingConfirmation hold = client.createFlightHold(
+                            new FlightBookingRequest(offer, passengers, booking.getContactEmail(), booking.getContactPhone()));
+                    if (!hold.confirmed()) {
+                        throw new ProviderException("Unable to hold this flight with " + providerType);
+                    }
+                    pnrCodes.add(hold.pnrCode());
+                    earliestDeadline = earliestDeadline == null || hold.ticketingDeadline().isBefore(earliestDeadline)
+                            ? hold.ticketingDeadline() : earliestDeadline;
+                }
+            } catch (RuntimeException ex) {
+                for (String pnr : pnrCodes) {
+                    try {
+                        client.cancelFlightBooking(pnr);
+                    } catch (Exception cleanupEx) {
+                        log.warn("Failed to void leg hold {} while rolling back a failed multi-city checkout", pnr, cleanupEx);
+                    }
+                }
+                throw ex;
+            }
+
+            booking.markOnHoldMultiLeg(pnrCodes, earliestDeadline);
+            bookingRepository.save(booking);
+            events.publishEvent(new BookingCreatedEvent(booking.getId()));
+        } catch (RuntimeException ex) {
+            log.warn("Provider hold failed for multi-city booking {}", bookingId, ex);
+            booking.markFailed(sanitizeFailureReason(ex));
+            bookingRepository.save(booking);
+        }
+        trackingService.publish(bookingId, booking.getStatus());
+    }
+
+    private List<String> legOfferIds(Booking booking) {
+        return List.of(booking.getSearchOfferId().split("\\|"));
+    }
+
+    /**
+     * Only {@link BusinessException} messages (offer expired, price changed, incomplete traveler
+     * data, ...) are safe and meaningful to show a guest - they're deliberately authored that way.
+     * Anything else is a raw provider/infrastructure failure (I/O errors, timeouts, internal
+     * upstream URLs, e.g. a Travelport client exception) that must never reach the client; callers
+     * still log the full exception server-side before calling this.
+     */
+    private String sanitizeFailureReason(Exception ex) {
+        if (ex instanceof BusinessException) {
+            return ex.getMessage();
+        }
+        return "Le fournisseur n'a pas pu confirmer cette réservation pour le moment. Vous pouvez réessayer ou recommencer la recherche.";
+    }
+
+    /**
+     * Resubmits the provider hold for a booking that failed before ever getting a provider PNR/
+     * confirmation number. Never allowed once a confirmation exists (rejected by
+     * {@link Booking#canRetryHold}), since re-running the hold at that point would risk creating a
+     * duplicate reservation with the provider.
+     */
+    public Booking retryHold(String bookingId) {
+        Booking booking = self.markRetrying(bookingId);
+        if (!booking.getItineraryLegs().isEmpty()) {
+            self.completeMultiCityHold(bookingId);
+        } else {
+            self.completeHold(bookingId);
+        }
+        return booking;
+    }
+
+    @Transactional
+    public Booking markRetrying(String bookingId) {
+        Booking booking = getById(bookingId);
+        if (!booking.canRetryHold()) {
+            throw new BusinessException("Booking " + bookingId + " cannot be retried");
+        }
+        booking.markRetrying();
+        bookingRepository.save(booking);
+        trackingService.publish(bookingId, booking.getStatus());
+        return booking;
+    }
+
+    // --- Fast path: builds a PENDING_HOLD Booking from the cached offer, no provider call ---
+
+    private Booking buildPendingFlightBooking(CheckoutRequest request, User user, List<BookedTraveler> travelers, PaymentPlan plan) {
         validateFlightTravelers(travelers);
         FlightOffer offer = offerCache.getFlightOffer(request.offerId())
+                .orElseThrow(() -> new BusinessException("This flight offer has expired, please search again"));
+        Money totalOfferPrice = FlightPricingCalculator.multiplyByPayingTravelers(offer.price(), travelers);
+        Money priceWithFee = commissionPolicy.addFlightFee(totalOfferPrice);
+        Booking booking = Booking.forFlight(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
+                offer.airline(), offer.flightNumber(), offer.origin(), offer.destination(),
+                offer.departureTime(), offer.arrivalTime(), offer.cabinClass(), priceWithFee, travelers);
+        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(priceWithFee.currency()) : null);
+        return booking;
+    }
+
+    private Booking buildPendingHotelBooking(CheckoutRequest request, User user, List<BookedTraveler> travelers, PaymentPlan plan) {
+        HotelOffer offer = offerCache.getHotelOffer(request.offerId())
+                .orElseThrow(() -> new BusinessException("This hotel offer has expired, please search again"));
+        Money totalOfferPrice = offer.price().multiply(request.quantityOrDefault());
+        Money priceWithFee = commissionPolicy.addHotelFee(totalOfferPrice);
+        Booking booking = Booking.forHotel(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
+                offer.hotelName(), offer.cityCode(), offer.checkIn(), offer.checkOut(), offer.roomType(),
+                priceWithFee, travelers);
+        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(priceWithFee.currency()) : null);
+        return booking;
+    }
+
+    private Booking buildPendingVehicleBooking(CheckoutRequest request, User user, List<BookedTraveler> travelers, PaymentPlan plan) {
+        VehicleOffer offer = offerCache.getVehicleOffer(request.offerId())
+                .orElseThrow(() -> new BusinessException("This vehicle offer has expired, please search again"));
+        Money priceWithFee = commissionPolicy.addVehicleFee(offer.totalPrice());
+        Booking booking = Booking.forVehicle(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
+                offer.brand(), offer.model(), offer.category(), offer.transmission(), offer.seats(),
+                offer.pickupCity(), offer.dropoffCity(), offer.rentalStart(), offer.pickupTime(),
+                offer.rentalEnd(), offer.dropoffTime(), offer.withDriver(), priceWithFee, travelers);
+        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(priceWithFee.currency()) : null);
+        return booking;
+    }
+
+    private Booking buildPendingPropertyBooking(CheckoutRequest request, User user, List<BookedTraveler> travelers, PaymentPlan plan) {
+        PropertyOffer offer = offerCache.getPropertyOffer(request.offerId())
+                .orElseThrow(() -> new BusinessException("This property offer has expired, please search again"));
+        Money priceWithFee = commissionPolicy.addPropertyFee(offer.totalPrice());
+        Booking booking = Booking.forProperty(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
+                offer.title(), offer.propertyType(), offer.city(), offer.country(), offer.bedrooms(),
+                offer.maxGuests(), offer.entirePlace(), offer.checkIn(), offer.checkOut(), priceWithFee, travelers);
+        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(priceWithFee.currency()) : null);
+        return booking;
+    }
+
+    // --- Async completion: the actual provider round trip, one per offer type ---
+
+    private void completeFlightHold(Booking booking) {
+        FlightOffer offer = offerCache.getFlightOffer(booking.getSearchOfferId())
                 .orElseThrow(() -> new BusinessException("This flight offer has expired, please search again"));
         TravelProviderClient client = clientFor(offer.providerType());
 
@@ -160,25 +334,17 @@ public class BookingService {
             throw new OfferExpiredException("This flight offer is no longer available at the quoted price, please search again");
         }
 
-        List<PassengerInfo> passengers = toPassengers(travelers);
+        List<PassengerInfo> passengers = toPassengers(booking.getTravelers());
         ProviderBookingConfirmation hold = client.createFlightHold(
-                new FlightBookingRequest(offer, passengers, request.contactEmail(), request.contactPhone()));
+                new FlightBookingRequest(offer, passengers, booking.getContactEmail(), booking.getContactPhone()));
         if (!hold.confirmed()) {
             throw new ProviderException("Unable to hold this flight with " + offer.providerType());
         }
-
-        Money totalOfferPrice = FlightPricingCalculator.multiplyByPayingTravelers(offer.price(), travelers);
-        Money priceWithFee = commissionPolicy.addFlightFee(totalOfferPrice);
-        Booking booking = Booking.forFlight(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
-                offer.airline(), offer.flightNumber(), offer.origin(), offer.destination(),
-                offer.departureTime(), offer.arrivalTime(), offer.cabinClass(), priceWithFee, travelers);
-        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(priceWithFee.currency()) : null);
         booking.markOnHold(hold.pnrCode(), hold.ticketingDeadline());
-        return booking;
     }
 
-    private Booking checkoutHotel(CheckoutRequest request, User user, List<BookedTraveler> travelers, PaymentPlan plan) {
-        HotelOffer offer = offerCache.getHotelOffer(request.offerId())
+    private void completeHotelHold(Booking booking) {
+        HotelOffer offer = offerCache.getHotelOffer(booking.getSearchOfferId())
                 .orElseThrow(() -> new BusinessException("This hotel offer has expired, please search again"));
         TravelProviderClient client = clientFor(offer.providerType());
 
@@ -187,31 +353,17 @@ public class BookingService {
             throw new OfferExpiredException("This hotel offer is no longer available at the quoted price, please search again");
         }
 
-        List<PassengerInfo> guests = toPassengers(travelers);
+        List<PassengerInfo> guests = toPassengers(booking.getTravelers());
         ProviderBookingConfirmation hold = client.createHotelHold(
-                new HotelBookingRequest(offer, guests, request.contactEmail()));
+                new HotelBookingRequest(offer, guests, booking.getContactEmail()));
         if (!hold.confirmed()) {
             throw new ProviderException("Unable to hold this room with " + offer.providerType());
         }
-
-        Money totalOfferPrice = offer.price().multiply(request.quantityOrDefault());
-        Money priceWithFee = commissionPolicy.addHotelFee(totalOfferPrice);
-        Booking booking = Booking.forHotel(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
-                offer.hotelName(), offer.cityCode(), offer.checkIn(), offer.checkOut(), offer.roomType(),
-                priceWithFee, travelers);
-        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(priceWithFee.currency()) : null);
         booking.markOnHold(hold.pnrCode(), hold.ticketingDeadline());
-        return booking;
     }
 
-    /**
-     * ⚠️ Pas de vérification de prix/disponibilité en amont (pas de VehiclePriceVerification équivalent
-     * à FlightPriceVerification/HotelPriceVerification) — le hold lui-même échoue silencieusement
-     * (confirmed() == false) si l'inventaire a changé depuis la recherche. Comportement à valider :
-     * les vols/hôtels re-vérifient explicitement AVANT de tenter le hold, pas seulement au moment du hold.
-     */
-    private Booking checkoutVehicle(CheckoutRequest request, User user, List<BookedTraveler> travelers, PaymentPlan plan) {
-        VehicleOffer offer = offerCache.getVehicleOffer(request.offerId())
+    private void completeVehicleHold(Booking booking) {
+        VehicleOffer offer = offerCache.getVehicleOffer(booking.getSearchOfferId())
                 .orElseThrow(() -> new BusinessException("This vehicle offer has expired, please search again"));
         TravelProviderClient client = clientFor(offer.providerType());
 
@@ -220,25 +372,17 @@ public class BookingService {
             throw new OfferExpiredException("This vehicle offer is no longer available at the quoted price, please search again");
         }
 
-        List<PassengerInfo> drivers = toPassengers(travelers);
+        List<PassengerInfo> drivers = toPassengers(booking.getTravelers());
         ProviderBookingConfirmation hold = client.createVehicleHold(
-                new VehicleBookingRequest(offer, drivers, request.contactEmail()));
+                new VehicleBookingRequest(offer, drivers, booking.getContactEmail()));
         if (!hold.confirmed()) {
             throw new ProviderException("Unable to hold this vehicle with " + offer.providerType());
         }
-
-        Money priceWithFee = commissionPolicy.addVehicleFee(offer.totalPrice());
-        Booking booking = Booking.forVehicle(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
-                offer.brand(), offer.model(), offer.category(), offer.transmission(), offer.seats(),
-                offer.pickupCity(), offer.dropoffCity(), offer.rentalStart(), offer.pickupTime(),
-                offer.rentalEnd(), offer.dropoffTime(), offer.withDriver(), priceWithFee, travelers);
-        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(priceWithFee.currency()) : null);
         booking.markOnHold(hold.pnrCode(), hold.ticketingDeadline());
-        return booking;
     }
 
-    private Booking checkoutProperty(CheckoutRequest request, User user, List<BookedTraveler> travelers, PaymentPlan plan) {
-        PropertyOffer offer = offerCache.getPropertyOffer(request.offerId())
+    private void completePropertyHold(Booking booking) {
+        PropertyOffer offer = offerCache.getPropertyOffer(booking.getSearchOfferId())
                 .orElseThrow(() -> new BusinessException("This property offer has expired, please search again"));
         TravelProviderClient client = clientFor(offer.providerType());
 
@@ -247,20 +391,13 @@ public class BookingService {
             throw new OfferExpiredException("This property offer is no longer available at the quoted price, please search again");
         }
 
-        List<PassengerInfo> guests = toPassengers(travelers);
+        List<PassengerInfo> guests = toPassengers(booking.getTravelers());
         ProviderBookingConfirmation hold = client.createPropertyHold(
-                new PropertyBookingRequest(offer, guests, request.contactEmail()));
+                new PropertyBookingRequest(offer, guests, booking.getContactEmail()));
         if (!hold.confirmed()) {
             throw new ProviderException("Unable to hold this property with " + offer.providerType());
         }
-
-        Money priceWithFee = commissionPolicy.addPropertyFee(offer.totalPrice());
-        Booking booking = Booking.forProperty(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
-                offer.title(), offer.propertyType(), offer.city(), offer.country(), offer.bedrooms(),
-                offer.maxGuests(), offer.entirePlace(), offer.checkIn(), offer.checkOut(), priceWithFee, travelers);
-        booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(priceWithFee.currency()) : null);
         booking.markOnHold(hold.pnrCode(), hold.ticketingDeadline());
-        return booking;
     }
 
     private Money reservationFee(String currency) {
@@ -391,7 +528,7 @@ public class BookingService {
             events.publishEvent(new BookingConfirmedEvent(booking.getId()));
         } catch (Exception ex) {
             log.error("Provider confirmation failed for booking {}", bookingId, ex);
-            booking.markFailed(ex.getMessage());
+            booking.markFailed(sanitizeFailureReason(ex));
             bookingRepository.save(booking);
             trackingService.publish(bookingId, BookingStatus.FAILED);
             events.publishEvent(new BookingFailedEvent(booking.getId()));
@@ -404,6 +541,9 @@ public class BookingService {
         Booking booking = getById(bookingId);
         if (booking.getStatus() == BookingStatus.CANCELLED || booking.getStatus() == BookingStatus.FAILED) {
             throw new BusinessException("Booking " + bookingId + " cannot be cancelled from status " + booking.getStatus());
+        }
+        if (booking.getStatus() == BookingStatus.PENDING_HOLD) {
+            throw new BusinessException("Booking " + bookingId + " is still being confirmed with the provider, please wait a moment before cancelling");
         }
 
         TravelProviderClient client = clientFor(booking.getProviderType());

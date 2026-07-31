@@ -65,6 +65,17 @@ class BookingFlowIntegrationTest {
                 "http://localhost:" + port + "/api/bookings/checkout", jsonEntity(checkoutBody), String.class);
         assertThat(checkoutResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         String bookingId = objectMapper.readTree(checkoutResponse.getBody()).get("id").asText();
+        assertThat(objectMapper.readTree(checkoutResponse.getBody()).get("status").asText()).isEqualTo("PENDING_HOLD");
+
+        URI bookingUri = withEmail("http://localhost:" + port + "/api/bookings/" + bookingId, contactEmail);
+        URI ticketsUri = withEmail("http://localhost:" + port + "/api/tickets/booking/" + bookingId, contactEmail);
+
+        // The provider hold now completes off-thread after checkout returns - wait for it before
+        // attempting payment, since PaymentService rejects paying a booking still in PENDING_HOLD.
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            ResponseEntity<String> bookingResponse = restTemplate.getForEntity(bookingUri, String.class);
+            assertThat(objectMapper.readTree(bookingResponse.getBody()).get("status").asText()).isEqualTo("PENDING_PAYMENT");
+        });
 
         String paymentBody = """
                 {
@@ -83,9 +94,6 @@ class BookingFlowIntegrationTest {
                 "http://localhost:" + port + "/api/payments", jsonEntity(paymentBody), String.class);
         assertThat(paymentResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(objectMapper.readTree(paymentResponse.getBody()).get("status").asText()).isEqualTo("SUCCEEDED");
-
-        URI bookingUri = withEmail("http://localhost:" + port + "/api/bookings/" + bookingId, contactEmail);
-        URI ticketsUri = withEmail("http://localhost:" + port + "/api/tickets/booking/" + bookingId, contactEmail);
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
             ResponseEntity<String> bookingResponse = restTemplate.getForEntity(bookingUri, String.class);

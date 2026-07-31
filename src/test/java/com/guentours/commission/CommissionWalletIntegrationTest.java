@@ -14,9 +14,11 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.time.Duration;
 import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 /**
  * Verifies the commission fee is added on top of the displayed price (never deducted from the
@@ -68,7 +70,10 @@ class CommissionWalletIntegrationTest {
         double bookingPrice = booking.get("price").get("amount").asDouble();
 
         assertThat(bookingPrice).isEqualTo(displayedPrice);
-        assertThat(walletService.entryCount()).isEqualTo(entriesBefore + 1);
+        // The commission wallet entry is only recorded once the (now-async) provider hold
+        // succeeds and BookingCreatedEvent fires - not at the moment the booking row is created.
+        await().atMost(Duration.ofSeconds(10))
+                .untilAsserted(() -> assertThat(walletService.entryCount()).isEqualTo(entriesBefore + 1));
     }
 
     private HttpEntity<String> jsonEntity(String body) {

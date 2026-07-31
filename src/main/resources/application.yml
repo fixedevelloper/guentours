@@ -120,6 +120,10 @@ app:
       token-url: ${TRAVELPORT_TOKEN_URL:}
       access-group: ${TRAVELPORT_ACCESS_GROUP:}
       pseudo-city-code: ${TRAVELPORT_PCC:}
+      # Booking-flow calls (add offer, add traveler, commit, payment, ticketing) get a longer
+      # timeout than search - real testing showed they can legitimately take longer on Travelport's
+      # side than a search call, and the shared search timeout was causing spurious hold failures.
+      booking-timeout-millis: ${TRAVELPORT_BOOKING_TIMEOUT_MILLIS:60000}
       # Company-owned guarantee/virtual card sent as the mandatory FormOfPayment on hotel
       # reservations; the real customer payment is collected separately via our PaymentGateway.
       guarantee-card-holder-name: ${TRAVELPORT_GUARANTEE_CARD_HOLDER_NAME:}
@@ -157,7 +161,27 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # health/info stay public (see SecurityConfig); metrics/prometheus require ADMIN.
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      # Anonymous/unauthenticated callers (uptime checks, load balancers) only ever see the
+      # overall UP/DOWN status; component-level detail (DB, disk space, mail...) only shows for
+      # an authenticated ADMIN, so a public health check never leaks internal infrastructure state.
+      show-details: when-authorized
+      roles: ADMIN
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: Guentours travel booking API - flights & hotels aggregation, secure checkout, real-time tracking
 
 logging:
   level:
