@@ -106,11 +106,13 @@ public class ResellerController {
      * Récupère l'historique paginé des réservations / billets générés par un revendeur.
      */
     @GetMapping("/{id}/bookings")
+    @PreAuthorize("#id == authentication.principal.resellerId or hasRole('ADMIN')")
     public Page<ResellerBookingResponse> listBookings(@PathVariable String id, Pageable pageable) {
         return bookingService.findByResellerId(id, pageable).map(ResellerBookingResponse::from);
     }
 
     @GetMapping("/{id}/commissions")
+    @PreAuthorize("#id == authentication.principal.resellerId or hasRole('ADMIN')")
     public Page<ResellerCommissionResponse> commissions(@PathVariable String id, Pageable pageable) {
         return commissionRepository.findByResellerId(id, pageable).map(ResellerCommissionResponse::from);
     }
@@ -119,6 +121,7 @@ public class ResellerController {
      * Consulte le solde retirable disponible en temps réel pour un revendeur.
      */
     @GetMapping("/{id}/balance")
+    @PreAuthorize("#id == authentication.principal.resellerId or hasRole('ADMIN')")
     public ResponseEntity<Map<String, BigDecimal>> getBalance(@PathVariable String id) {
         BigDecimal withdrawableBalance = withdrawalService.getWithdrawableBalance(id);
         return ResponseEntity.ok(Map.of("withdrawableBalance", withdrawableBalance));
@@ -133,6 +136,7 @@ public class ResellerController {
      */
     @PostMapping("/{id}/withdrawals")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("#id == authentication.principal.resellerId or hasRole('ADMIN')")
     public ResellerWithdrawalResponse requestWithdrawal(
             @PathVariable String id,
             @Valid @RequestBody ResellerWithdrawalRequest req) {
@@ -143,6 +147,7 @@ public class ResellerController {
      * Historique des demandes de retrait d'un revendeur donné.
      */
     @GetMapping("/{id}/withdrawals")
+    @PreAuthorize("#id == authentication.principal.resellerId or hasRole('ADMIN')")
     public Page<ResellerWithdrawalResponse> getResellerWithdrawals(@PathVariable String id, Pageable pageable) {
         return withdrawalService.findByResellerId(id, pageable).map(ResellerWithdrawalResponse::from);
     }

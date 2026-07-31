@@ -13,7 +13,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/partners/{partnerId}/vehicles")
-@PreAuthorize("hasRole('PARTNER_CAR_RENTAL') and #partnerId == authentication.principal.partnerId")
+@PreAuthorize("hasRole('PARTNER_CAR_RENTAL') or hasRole('ADMIN')")
 public class VehicleController {
 
     private final VehicleService service;

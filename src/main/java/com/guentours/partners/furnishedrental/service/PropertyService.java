@@ -7,6 +7,7 @@ import com.guentours.partners.furnishedrental.repository.PropertyRepository;
 import com.guentours.partners.furnishedrental.web.ImageUploadRequest;
 import com.guentours.partners.furnishedrental.web.PropertyAvailabilityRequest;
 import com.guentours.partners.furnishedrental.web.PropertyRegistrationRequest;
+import com.guentours.security.SecurityUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -32,6 +33,7 @@ public class PropertyService {
 
     @Transactional
     public Property create(String partnerId, PropertyRegistrationRequest req) {
+        SecurityUtils.verifyOwnsPartner(partnerId);
         Property property = new Property(
                 partnerId,
                 req.title(),
@@ -53,21 +55,22 @@ public class PropertyService {
 
     @Transactional(readOnly = true)
     public Page<Property> findByPartner(String partnerId, Pageable pageable) {
+        SecurityUtils.verifyOwnsPartner(partnerId);
         return propertyRepository.findByPartnerId(partnerId, pageable);
     }
 
+    /** Every other method in this class reaches a {@link Property} through here, so ownership is enforced once. */
     @Transactional(readOnly = true)
     public Property findById(String id) {
-        return propertyRepository.findById(id)
+        Property property = propertyRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Logement introuvable"));
+        SecurityUtils.verifyOwnsPartner(property.getPartnerId());
+        return property;
     }
 
     @Transactional
     public void delete(String id) {
-        if (!propertyRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Logement introuvable");
-        }
-        propertyRepository.deleteById(id);
+        propertyRepository.delete(findById(id));
     }
 
     @Transactional
@@ -145,6 +148,7 @@ public class PropertyService {
 
     @Transactional(readOnly = true)
     public List<PropertyAvailability> getAvailability(String propertyId, LocalDate from, LocalDate to) {
+        findById(propertyId);
         return availabilityRepository.findByProperty_IdAndStayDateBetween(propertyId, from, to);
     }
 }

@@ -12,6 +12,7 @@ import com.guentours.provider.dto.HotelPriceVerification;
 import com.guentours.provider.dto.PropertyPriceVerification;
 import com.guentours.provider.dto.VehiclePriceVerification;
 import com.guentours.search.OfferCache;
+import com.guentours.security.SecurityUtils;
 import com.guentours.shared.CommissionPolicy;
 import com.guentours.shared.Money;
 import com.guentours.shared.exception.BusinessException;
@@ -269,6 +270,30 @@ public class BookingService {
     public Booking getById(String bookingId) {
         return bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new NotFoundException("Booking not found: " + bookingId));
+    }
+
+    /**
+     * Guards guest access to a booking (and anything derived from it: payment, e-tickets, cancel):
+     * the caller must be an admin, the marketplace partner whose inventory the booking was made
+     * against (partner dashboards list bookings made on their own hotels/flights/vehicles/
+     * properties), be authenticated as the account that owns it, or - for the anonymous checkout
+     * flow, where no account login is required - supply the same contact email the booking was
+     * made with. Reports a 404 rather than 403 on mismatch, so a wrong/guessed id or email never
+     * confirms that a booking exists.
+     */
+    public void verifyGuestAccess(Booking booking, String suppliedEmail) {
+        if (SecurityUtils.isAdmin()) {
+            return;
+        }
+        String myPartnerId = SecurityUtils.currentPartnerId();
+        if (myPartnerId != null && myPartnerId.equals(booking.getPartnerId())) {
+            return;
+        }
+        String authenticatedEmail = SecurityUtils.currentUserEmail();
+        String candidate = authenticatedEmail != null ? authenticatedEmail : suppliedEmail;
+        if (candidate == null || !candidate.equalsIgnoreCase(booking.getContactEmail())) {
+            throw new NotFoundException("Booking not found: " + booking.getId());
+        }
     }
 
     public List<Booking> getForUser(String userId) {

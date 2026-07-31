@@ -14,6 +14,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
@@ -88,15 +91,16 @@ class MultiCityFlightSearchTest {
                 List.of(legs.get(0).get("offerId").asText(), legs.get(1).get("offerId").asText(),
                         legs.get(2).get("offerId").asText()));
 
+        String contactEmail = "traveler+%d@example.com".formatted(System.nanoTime());
         String checkoutBody = """
                 {
                   "legOfferIds": %s,
-                  "contactEmail": "traveler+%d@example.com",
+                  "contactEmail": "%s",
                   "contactFullName": "Jane Traveler",
                   "contactPhone": "+33600000000",
                   "travelers": [{"fullName": "Jane Traveler", "dateOfBirth": "1990-01-01", "nationality": "US", "passportNumber": "X1234567", "type": "ADULT"}]
                 }
-                """.formatted(legOfferIds, System.nanoTime());
+                """.formatted(legOfferIds, contactEmail);
 
         ResponseEntity<String> checkoutResponse = restTemplate.postForEntity(
                 "http://localhost:" + port + "/api/bookings/checkout/multi-city", jsonEntity(checkoutBody), String.class);
@@ -123,9 +127,9 @@ class MultiCityFlightSearchTest {
                 "http://localhost:" + port + "/api/payments", jsonEntity(paymentBody), String.class);
         assertThat(paymentResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
+        URI bookingUri = withEmail("http://localhost:" + port + "/api/bookings/" + bookingId, contactEmail);
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
-            ResponseEntity<String> bookingResponse = restTemplate.getForEntity(
-                    "http://localhost:" + port + "/api/bookings/" + bookingId, String.class);
+            ResponseEntity<String> bookingResponse = restTemplate.getForEntity(bookingUri, String.class);
             JsonNode confirmed = objectMapper.readTree(bookingResponse.getBody());
             assertThat(confirmed.get("status").asText()).isEqualTo("CONFIRMED");
             assertThat(confirmed.get("eTicketNumbers").size()).isEqualTo(3);
@@ -156,5 +160,16 @@ class MultiCityFlightSearchTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         return new HttpEntity<>(body, headers);
+    }
+
+    /**
+     * Builds a plain {@link URI} (not a String passed to RestTemplate's template-expanding
+     * overload) so the already-percent-encoded email is used verbatim - the query string needs
+     * form-encoding rules (URLEncoder: "+" -> "%2B") since that's how the servlet container
+     * decodes @RequestParam values, but Spring's own UriComponentsBuilder.encode() follows
+     * RFC 3986 instead, which leaves a literal "+" alone and lets the server misread it as a space.
+     */
+    private URI withEmail(String url, String contactEmail) {
+        return URI.create(url + "?email=" + URLEncoder.encode(contactEmail, StandardCharsets.UTF_8));
     }
 }

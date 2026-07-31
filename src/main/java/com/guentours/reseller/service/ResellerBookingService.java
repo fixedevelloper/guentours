@@ -73,6 +73,7 @@ public class ResellerBookingService {
     /** Resolves the reseller behind the currently authenticated principal, or 403s if the account isn't a reseller. */
     private Reseller resolveConnectedReseller(Authentication authentication) {
         AppUserPrincipal principal = (AppUserPrincipal) authentication.getPrincipal();
+        log.warn(principal.getRole());
         String resellerId = principal.getResellerId();
         if (resellerId == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Ce compte n'est pas un compte revendeur");

@@ -1,5 +1,6 @@
 package com.guentours.security;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,6 +13,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -32,6 +34,8 @@ public class SecurityConfig {
             "/api/payments/**",
             "/api/tickets/**",
             "/api/geo/**",
+            "/oauth2/**",
+            "/login/oauth2/**",
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/actuator/health"
@@ -41,15 +45,24 @@ public class SecurityConfig {
     private final AppUserDetailsService userDetailsService;
     private final PasswordEncoder passwordEncoder;
     private final List<String> allowedOrigins;
+    private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
+    private final OAuth2LoginFailureHandler oAuth2LoginFailureHandler;
+    private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepository;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
                           AppUserDetailsService userDetailsService,
                           PasswordEncoder passwordEncoder,
-                          @Value("${app.cors.allowed-origins}") List<String> allowedOrigins) {
+                          @Value("${app.cors.allowed-origins}") List<String> allowedOrigins,
+                          OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler,
+                          OAuth2LoginFailureHandler oAuth2LoginFailureHandler,
+                          ObjectProvider<ClientRegistrationRepository> clientRegistrationRepository) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.userDetailsService = userDetailsService;
         this.passwordEncoder = passwordEncoder;
         this.allowedOrigins = allowedOrigins;
+        this.oAuth2LoginSuccessHandler = oAuth2LoginSuccessHandler;
+        this.oAuth2LoginFailureHandler = oAuth2LoginFailureHandler;
+        this.clientRegistrationRepository = clientRegistrationRepository;
     }
 
     @Bean
@@ -57,7 +70,13 @@ public class SecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // IF_REQUIRED rather than STATELESS: the OAuth2 login handshake below needs a
+                // session to hold the authorization request's "state" (CSRF protection) between
+                // the redirect to Google/Facebook and the callback. Every other endpoint stays
+                // effectively stateless in practice - JwtAuthenticationFilter authenticates purely
+                // from the Authorization header and never touches HttpSession, so no session is
+                // ever created for ordinary API/JWT traffic.
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/partners/register").permitAll()
@@ -73,6 +92,15 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+        // Only wired once at least one provider's credentials are set (see
+        // OAuth2ClientRegistrationConfig) - .oauth2Login() would otherwise eagerly look up a
+        // ClientRegistrationRepository bean that doesn't exist yet and fail to build the chain.
+        if (clientRegistrationRepository.getIfAvailable() != null) {
+            http.oauth2Login(oauth2 -> oauth2
+                    .successHandler(oAuth2LoginSuccessHandler)
+                    .failureHandler(oAuth2LoginFailureHandler));
+        }
 
         return http.build();
     }

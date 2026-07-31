@@ -88,6 +88,33 @@ class FlutterwaveCardGatewayTest {
     }
 
     @Test
+    void prefersTheRedirectChallengeOverDataPendingWhenBothArePresent() {
+        // Real captured trace: some cards return data.status="pending" AND meta.authorization
+        // (mode=redirect) on the very same response - data is just a placeholder here, the challenge
+        // is what actually needs handling, so checking data first would silently swallow it as an
+        // ordinary async wait and neither prompt the payer nor send them to the 3DS page.
+        Response response = new Response();
+        response.setStatus("success");
+        response.setMessage("Charge initiated");
+        Data data = new Data();
+        data.setStatus("pending");
+        response.setData(data);
+        Authorization authorization = new Authorization();
+        authorization.setMode("redirect");
+        authorization.setRedirect("https://ravesandboxapi.flutterwave.com/mockvbvpage?ref=FLW-MOCK-x");
+        Meta meta = new Meta();
+        meta.setAuthorization(authorization);
+        response.setMeta(meta);
+
+        var result = gateway.resolveChargeOutcome(response, "tx-ref-7", "4242");
+
+        assertThat(result.status()).isEqualTo(ChargeStatus.PENDING_AUTHORIZATION);
+        assertThat(result.authorizationChallenge().type()).isEqualTo(AuthorizationChallenge.AuthorizationType.REDIRECT);
+        assertThat(result.authorizationChallenge().redirectUrl())
+                .isEqualTo("https://ravesandboxapi.flutterwave.com/mockvbvpage?ref=FLW-MOCK-x");
+    }
+
+    @Test
     void treatsAMetaOnlyRedirectChallengeAsPendingAuthorizationWithUrl() {
         Response response = new Response();
         response.setStatus("success");

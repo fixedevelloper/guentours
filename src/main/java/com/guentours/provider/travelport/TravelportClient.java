@@ -247,7 +247,7 @@ public class TravelportClient implements TravelProviderClient {
 
     private List<FlightOffer> callFlightApi(FlightSearchCriteria criteria) {
         TravelportSearchRequest request = buildSearchRequest(criteria);
-        log.info("[Travelport] flight search request for {}->{}: {}", criteria.origin(), criteria.destination(),
+        log.debug("[Travelport] flight search request for {}->{}: {}", criteria.origin(), criteria.destination(),
                 writeAsJson(request));
         TravelportSearchResponse response = restClient.post()
                 .uri("/air/catalog/search/catalogproductofferings")
@@ -520,7 +520,7 @@ public class TravelportClient implements TravelProviderClient {
                 new TravelportPriceRequest.PaymentCriteria(
                         "PaymentCriteria", "123456", "VI", true, true, true, true),
                 4);
-        log.info("[Travelport] price request for offer {}: {}", offer.providerOfferId(), writeAsJson(request));
+        log.debug("[Travelport] price request for offer {}: {}", offer.providerOfferId(), writeAsJson(request));
 
         TravelportPriceResponse response;
         try {
@@ -556,7 +556,7 @@ public class TravelportClient implements TravelProviderClient {
             throw new ProviderException("Travelport price re-check failed for offer "
                     + offer.providerOfferId() + ": " + e.getMessage());
         }
-        log.info("[Travelport] price response for offer {}: {}", offer.providerOfferId(), response);
+        log.debug("[Travelport] price response for offer {}: {}", offer.providerOfferId(), response);
 
         var pricedOffer = response == null || response.OfferListResponse() == null
                 || response.OfferListResponse().OfferID() == null || response.OfferListResponse().OfferID().isEmpty()
@@ -623,7 +623,7 @@ public class TravelportClient implements TravelProviderClient {
         var body = new TravelportCommitRequest(
                 new TravelportCommitRequest.ReservationQueryCommitReservation("ReservationQueryCommitReservation"));
         log.info("[Travelport] commit URL (issueTicket={}) for session {}: {}", issueTicket, session, commitUrl);
-        log.info("[Travelport] commit request for session {}: {}", session, writeAsJson(body));
+        log.debug("[Travelport] commit request for session {}: {}", session, writeAsJson(body));
 
         String raw;
         try {
@@ -647,7 +647,7 @@ public class TravelportClient implements TravelProviderClient {
         } catch (IOException e) {
             throw new ProviderException("Travelport commit response parsing failed: " + e.getMessage());
         }
-        log.info("[Travelport] commit response (issueTicket={}) for session {}: {}", issueTicket, session, response);
+        log.debug("[Travelport] commit response (issueTicket={}) for session {}: {}", issueTicket, session, response);
         return response;
     }
 
@@ -793,7 +793,7 @@ public class TravelportClient implements TravelProviderClient {
         String addOfferUrl = resolvedBaseUrl + WORKBENCH_AIROFFER_BASE + "/" + session
                 + "/offers/buildfromcatalogproductofferings";
         log.info("[Travelport] add offer URL for {}: {}", offeringId, addOfferUrl);
-        log.info("[Travelport] add offer request for {}: {}", offeringId, writeAsJson(request));
+        log.debug("[Travelport] add offer request for {}: {}", offeringId, writeAsJson(request));
 
         String raw;
         try {
@@ -821,7 +821,7 @@ public class TravelportClient implements TravelProviderClient {
         } catch (IOException e) {
             throw new ProviderException("Travelport add offer response parsing failed for " + offeringId + ": " + e.getMessage());
         }
-        log.info("[Travelport] add offer response for {}: {}", offeringId, response);
+        log.debug("[Travelport] add offer response for {}: {}", offeringId, response);
 
         var addedOffer = response == null || response.OfferListResponse() == null
                 || response.OfferListResponse().OfferID() == null || response.OfferListResponse().OfferID().isEmpty()
@@ -924,7 +924,7 @@ public class TravelportClient implements TravelProviderClient {
         } catch (RestClientException e) {
             throw new ProviderException("Travelport add form of payment failed: " + e.getMessage());
         }
-        log.info("[Travelport] form of payment response for session {}: {}", session, response);
+        log.debug("[Travelport] form of payment response for session {}: {}", session, response);
 
         var created = response == null || response.FormOfPaymentResponse() == null
                 ? null : response.FormOfPaymentResponse().FormOfPayment();
@@ -1052,7 +1052,7 @@ public class TravelportClient implements TravelProviderClient {
                 .retrieve()
                 .body(TravelportHotelSearchResponse.class);
 
-        log.info("[Travelport] hotel search response for {}: {}", criteria.cityCode(), response);
+        log.debug("[Travelport] hotel search response for {}: {}", criteria.cityCode(), response);
 
         var body = response == null ? null : response.PropertiesResponse();
         if (body == null || body.Properties() == null || body.Properties().PropertyInfo() == null) {
@@ -1247,7 +1247,7 @@ public class TravelportClient implements TravelProviderClient {
             throw new ProviderException("Travelport hotel availability check failed for "
                     + offer.providerOfferId() + ": " + e.getMessage());
         }
-        log.info("[Travelport] hotel availability response for {}: {}", offer.providerOfferId(), response);
+        log.debug("[Travelport] hotel availability response for {}: {}", offer.providerOfferId(), response);
         return response;
     }
 
@@ -1345,7 +1345,7 @@ public class TravelportClient implements TravelProviderClient {
             throw new ProviderException("Travelport hotel detail lookup failed for " + chainCode + propertyCode
                     + ": " + e.getMessage());
         }
-        log.info("[Travelport] hotel detail response for {}{}: {}", chainCode, propertyCode, response);
+        log.debug("[Travelport] hotel detail response for {}{}: {}", chainCode, propertyCode, response);
 
         var propertiesResponse = response == null ? null : response.PropertiesResponse();
         var properties = propertiesResponse == null ? null : propertiesResponse.Properties();
@@ -1493,7 +1493,7 @@ public class TravelportClient implements TravelProviderClient {
         } catch (RestClientException e) {
             throw new ProviderException("Travelport hotel reservation failed: " + e.getMessage());
         }
-        log.info("[Travelport] hotel reservation response for offer {}: {}", offer.providerOfferId(), response);
+        log.debug("[Travelport] hotel reservation response for offer {}: {}", offer.providerOfferId(), response);
 
         String confirmation = confirmationFrom(response);
         if (confirmation == null) {

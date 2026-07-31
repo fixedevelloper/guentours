@@ -15,7 +15,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/partners/{partnerId}/flights")
-//@PreAuthorize("hasRole('PARTNER_AIRLINE') and #partnerId == authentication.principal.partnerId")
+@PreAuthorize("hasRole('PARTNER_AIRLINE') or hasRole('ADMIN')")
 public class AirlineFlightController {
 
     private final AirlineFlightService service;

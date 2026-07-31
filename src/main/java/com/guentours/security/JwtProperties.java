@@ -5,8 +5,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app.jwt")
 public class JwtProperties {
 
-    /** Base64-encoded HMAC secret. Must be overridden via APP_JWT_SECRET in production. */
-    private String secret = "ZGV2LW9ubHktc2VjcmV0LWRvLW5vdC11c2UtaW4tcHJvZHVjdGlvbi1wbGVhc2U=";
+    /**
+     * Base64-encoded HMAC secret. No default on purpose: a hardcoded fallback here would be
+     * committed to git and known to anyone reading the source, letting them forge admin tokens
+     * the moment APP_JWT_SECRET is left unset. Must be supplied via that env var; the app fails
+     * to start otherwise.
+     */
+    private String secret;
 
     private long expirationMinutes = 60;
 

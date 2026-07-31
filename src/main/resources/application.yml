@@ -29,11 +29,25 @@ spring:
     password: ${MAIL_PASSWORD:}
     # SMTP AUTH and TLS/SSL are derived from MAIL_ENCRYPTION and the username in MailConfig.
 
+  # No spring.security.oauth2.client.registration.* here on purpose: Spring Boot's own
+  # OAuth2ClientPropertiesConfiguration validates every registration defined under that prefix at
+  # startup ("Client id must not be empty") even if it's never used, which would crash the whole
+  # app the moment GOOGLE_CLIENT_ID/FACEBOOK_CLIENT_ID are left blank (the expected state until
+  # those OAuth apps are created). See OAuth2ClientRegistrationConfig instead, which builds the
+  # ClientRegistrationRepository bean by hand and only includes a provider once both its client id
+  # and secret are actually set - Boot's autoconfiguration never activates without those properties.
+
 app:
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:https://www.guenstravel.com,https://guenstravel.com,http://localhost:3000}
+  oauth2:
+    # Where OAuth2LoginSuccessHandler sends the browser back to, with the freshly-issued JWT as
+    # a query param - the frontend's /auth/callback page then stores it exactly like a classic
+    # login and redirects into the app.
+    frontend-redirect-uri: ${APP_OAUTH2_FRONTEND_REDIRECT_URI:http://localhost:3000/auth/callback}
   jwt:
-    secret: ${APP_JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LWRvLW5vdC11c2UtaW4tcHJvZHVjdGlvbi1wbGVhc2U=}
+    # No fallback: a committed default would let anyone forge tokens the moment this is left unset.
+    secret: ${APP_JWT_SECRET}
     expiration-minutes: ${APP_JWT_EXPIRATION_MINUTES:60}
   storage:
     minio:

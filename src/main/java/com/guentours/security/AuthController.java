@@ -6,10 +6,13 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -42,5 +45,21 @@ public class AuthController {
         AppUserPrincipal principal = new AppUserPrincipal(user);
         String token = jwtService.generateToken(principal, principal.getRole());
         return ResponseEntity.ok(AuthResponse.of(token, user.getEmail(), user.getFullName(), principal.getRole(), user.getPartnerId(), user.getId()));
+    }
+
+    /**
+     * Resolves the current profile from the Bearer token alone - used by the social login
+     * callback page, which only receives a JWT from the backend redirect (not a full
+     * {@link AuthResponse}) and needs the rest of the profile to populate the session client-side.
+     */
+    @GetMapping("/me")
+    public ResponseEntity<AuthResponse> me() {
+        String email = SecurityUtils.currentUserEmail();
+        if (email == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not authenticated");
+        }
+        User user = userService.getByEmail(email);
+        return ResponseEntity.ok(AuthResponse.of(null, user.getEmail(), user.getFullName(),
+                user.getRole().name(), user.getPartnerId(), user.getId()));
     }
 }

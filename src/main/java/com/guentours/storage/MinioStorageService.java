@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -22,6 +23,13 @@ public class MinioStorageService implements StorageService {
     private static final Logger log = LoggerFactory.getLogger(MinioStorageService.class);
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "image/jpeg", "image/png", "image/webp");
+    /** Extension is derived from the validated content type, never from the client-supplied
+     *  filename - which could otherwise smuggle path segments (e.g. "a.png/../../x") into the
+     *  object key. */
+    private static final Map<String, String> EXTENSION_BY_CONTENT_TYPE = Map.of(
+            "image/jpeg", ".jpg",
+            "image/png", ".png",
+            "image/webp", ".webp");
     private static final long MAX_FILE_SIZE_BYTES = 5L * 1024 * 1024; // 5 MB
 
     private final MinioClient client;
@@ -36,7 +44,7 @@ public class MinioStorageService implements StorageService {
     public String upload(String keyPrefix, MultipartFile file) {
         validate(file);
 
-        String extension = extractExtension(file.getOriginalFilename());
+        String extension = EXTENSION_BY_CONTENT_TYPE.getOrDefault(file.getContentType(), "");
         String objectKey = "%s/%s%s".formatted(keyPrefix, UUID.randomUUID(), extension);
 
         try (InputStream stream = file.getInputStream()) {
@@ -81,12 +89,6 @@ public class MinioStorageService implements StorageService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Format non supporté (JPEG, PNG ou WebP uniquement)");
         }
-    }
-
-    private String extractExtension(String originalFilename) {
-        if (originalFilename == null) return "";
-        int dotIndex = originalFilename.lastIndexOf('.');
-        return dotIndex >= 0 ? originalFilename.substring(dotIndex) : "";
     }
 
     private String extractObjectKey(String publicUrl) {

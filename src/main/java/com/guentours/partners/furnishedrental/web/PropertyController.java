@@ -13,7 +13,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/partners/{partnerId}/properties")
-//@PreAuthorize("hasRole('PARTNER_FURNISHED_RENTAL') and #partnerId == authentication.principal.partnerId")
+@PreAuthorize("hasRole('PARTNER_FURNISHED_RENTAL') or hasRole('ADMIN')")
 public class PropertyController {
 
     private final PropertyService service;

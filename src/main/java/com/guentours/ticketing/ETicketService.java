@@ -33,7 +33,9 @@ public class ETicketService {
         log.info("Generated {} e-ticket(s) for booking {}", booking.getETicketNumbers().size(), booking.getId());
     }
 
-    public List<ETicket> getForBooking(String bookingId) {
+    public List<ETicket> getForBooking(String bookingId, String email) {
+        Booking booking = bookingService.getById(bookingId);
+        bookingService.verifyGuestAccess(booking, email);
         return eTicketRepository.findByBookingId(bookingId);
     }
 

@@ -1,5 +1,6 @@
 package com.guentours.payment.web;
 
+import com.guentours.booking.BookingService;
 import com.guentours.payment.domain.Payment;
 import com.guentours.payment.service.PaymentService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 public class PaymentController {
 
     private final PaymentService paymentService;
+    private final BookingService bookingService;
 
     @PostMapping
     public ResponseEntity<Payment> pay(@Valid @RequestBody PaymentRequest request,
@@ -23,9 +25,13 @@ public class PaymentController {
         return ResponseEntity.ok(payment);
     }
 
+    /** {@code email} is required for guest access - must match the booking's contact email. */
     @GetMapping("/{paymentId}")
-    public ResponseEntity<Payment> getById(@PathVariable String paymentId) {
-        return ResponseEntity.ok(paymentService.getById(paymentId));
+    public ResponseEntity<Payment> getById(@PathVariable String paymentId,
+                                           @RequestParam(required = false) String email) {
+        Payment payment = paymentService.getById(paymentId);
+        bookingService.verifyGuestAccess(bookingService.getById(payment.getBookingId()), email);
+        return ResponseEntity.ok(payment);
     }
 
     /**

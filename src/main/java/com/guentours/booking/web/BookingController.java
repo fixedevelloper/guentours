@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -58,20 +59,30 @@ public class BookingController {
         return ResponseEntity.status(HttpStatus.CREATED).body(BookingResponse.from(booking));
     }
 
+    /**
+     * {@code email} is required for anonymous/guest access (must match the booking's contact
+     * email) - not needed when authenticated as the owning account or as an admin.
+     */
     @GetMapping("/{id}")
-    public ResponseEntity<BookingResponse> getBooking(@PathVariable String id) {
-        return ResponseEntity.ok(BookingResponse.from(bookingService.getById(id)));
+    public ResponseEntity<BookingResponse> getBooking(@PathVariable String id,
+                                                      @RequestParam(required = false) String email) {
+        Booking booking = bookingService.getById(id);
+        bookingService.verifyGuestAccess(booking, email);
+        return ResponseEntity.ok(BookingResponse.from(booking));
     }
 
     /** Voids the provider's PNR/reservation and marks the booking cancelled. */
     @PostMapping("/{id}/cancel")
-    public ResponseEntity<BookingResponse> cancel(@PathVariable String id) {
+    public ResponseEntity<BookingResponse> cancel(@PathVariable String id,
+                                                  @RequestParam(required = false) String email) {
+        bookingService.verifyGuestAccess(bookingService.getById(id), email);
         return ResponseEntity.ok(BookingResponse.from(bookingService.cancel(id)));
     }
 
     /** Server-Sent Events stream of status transitions: PENDING_PAYMENT -> PAID -> CONFIRMING -> CONFIRMED/FAILED. */
     @GetMapping("/{id}/track")
-    public SseEmitter track(@PathVariable String id) {
+    public SseEmitter track(@PathVariable String id, @RequestParam(required = false) String email) {
+        bookingService.verifyGuestAccess(bookingService.getById(id), email);
         return bookingService.track(id);
     }
 }

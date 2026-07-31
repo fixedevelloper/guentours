@@ -34,9 +34,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ProviderException.class)
     public ResponseEntity<ApiError> handleProvider(ProviderException ex) {
+        // ex.getMessage() often embeds the raw upstream error/URL (see TravelportClient/TraveloproClient) -
+        // logged in full for support/debugging, but never sent to the client to avoid leaking internal
+        // provider details. Genuine business rejections (offer expired, rate unavailable, etc.) are
+        // already raised as BusinessException, not this one.
         log.error("Upstream provider call failed", ex);
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(ApiError.of(502, "Provider Error", ex.getMessage()));
+                .body(ApiError.of(502, "Provider Error",
+                        "Le fournisseur est momentanément indisponible. Veuillez réessayer."));
     }
 
     @ExceptionHandler(BadCredentialsException.class)

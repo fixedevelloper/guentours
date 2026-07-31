@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import { getRememberedContactEmail } from "@/lib/booking-contact";
 import type { BookingPaymentRequest, PaymentResponse } from "./types";
 
 export async function pay(request: BookingPaymentRequest) {
@@ -7,7 +8,9 @@ export async function pay(request: BookingPaymentRequest) {
 }
 
 export async function getPayment(paymentId: string) {
-  const { data } = await apiClient.get<PaymentResponse>(`/api/payments/${paymentId}`);
+  const { data } = await apiClient.get<PaymentResponse>(`/api/payments/${paymentId}`, {
+    params: { email: getRememberedContactEmail() ?? undefined },
+  });
   return data;
 }
 

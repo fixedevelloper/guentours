@@ -3,6 +3,7 @@ package com.guentours.partners.hotel.service;
 import com.guentours.partners.hotel.domain.*;
 import com.guentours.partners.hotel.repository.*;
 import com.guentours.partners.hotel.web.*;
+import com.guentours.security.SecurityUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -31,6 +32,7 @@ public class HotelService {
 
     @Transactional
     public Hotel create(String partnerId, HotelRegistrationRequest req) {
+        SecurityUtils.verifyOwnsPartner(partnerId);
         Hotel hotel = new Hotel(
                 partnerId,
                 req.name(),
@@ -49,21 +51,22 @@ public class HotelService {
 
     @Transactional(readOnly = true)
     public Page<Hotel> findByPartner(String partnerId, Pageable pageable) {
+        SecurityUtils.verifyOwnsPartner(partnerId);
         return hotelRepository.findByPartnerId(partnerId, pageable);
     }
 
+    /** Every other method in this class reaches a {@link Hotel} through here, so ownership is enforced once. */
     @Transactional(readOnly = true)
     public Hotel findById(String id) {
-        return hotelRepository.findById(id)
+        Hotel hotel = hotelRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Hôtel introuvable"));
+        SecurityUtils.verifyOwnsPartner(hotel.getPartnerId());
+        return hotel;
     }
 
     @Transactional
     public void delete(String id) {
-        if (!hotelRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Hôtel introuvable");
-        }
-        hotelRepository.deleteById(id);
+        hotelRepository.delete(findById(id));
     }
 
     @Transactional
@@ -153,13 +156,17 @@ public class HotelService {
 
     @Transactional(readOnly = true)
     public List<RoomType> getRoomTypes(String hotelId) {
+        findById(hotelId);
         return roomTypeRepository.findByHotelId(hotelId);
     }
 
+    /** Every other method reaching a {@link RoomType} goes through here, so ownership is enforced once. */
     @Transactional(readOnly = true)
     public RoomType findRoomTypeById(String roomTypeId) {
-        return roomTypeRepository.findById(roomTypeId)
+        RoomType roomType = roomTypeRepository.findById(roomTypeId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Type de chambre introuvable"));
+        SecurityUtils.verifyOwnsPartner(roomType.getHotel().getPartnerId());
+        return roomType;
     }
 
     // --- Galeries d'images : Types de chambres ---
@@ -205,6 +212,7 @@ public class HotelService {
 
     @Transactional(readOnly = true)
     public List<RoomAvailability> getAvailability(String roomTypeId, java.time.LocalDate from, java.time.LocalDate to) {
+        findRoomTypeById(roomTypeId);
         return availabilityRepository.findByRoomTypeIdAndStayDateBetween(roomTypeId, from, to);
     }
 }

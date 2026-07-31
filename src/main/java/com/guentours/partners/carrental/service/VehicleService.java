@@ -9,6 +9,7 @@ import com.guentours.partners.carrental.repository.VehicleRepository;
 import com.guentours.partners.carrental.web.ImageUploadRequest;
 import com.guentours.partners.carrental.web.VehicleAvailabilityRequest;
 import com.guentours.partners.carrental.web.VehicleRegistrationRequest;
+import com.guentours.security.SecurityUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -34,6 +35,7 @@ public class VehicleService {
 
     @Transactional
     public Vehicle create(String partnerId, VehicleRegistrationRequest req) {
+        SecurityUtils.verifyOwnsPartner(partnerId);
         Vehicle vehicle = new Vehicle(
                 partnerId,
                 req.brand(),
@@ -69,21 +71,22 @@ public class VehicleService {
 
     @Transactional(readOnly = true)
     public Page<Vehicle> findByPartner(String partnerId, Pageable pageable) {
+        SecurityUtils.verifyOwnsPartner(partnerId);
         return vehicleRepository.findByPartnerId(partnerId, pageable);
     }
 
+    /** Every other method in this class reaches a {@link Vehicle} through here, so ownership is enforced once. */
     @Transactional(readOnly = true)
     public Vehicle findById(String id) {
-        return vehicleRepository.findById(id)
+        Vehicle vehicle = vehicleRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Véhicule introuvable"));
+        SecurityUtils.verifyOwnsPartner(vehicle.getPartnerId());
+        return vehicle;
     }
 
     @Transactional
     public void delete(String id) {
-        if (!vehicleRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Véhicule introuvable");
-        }
-        vehicleRepository.deleteById(id);
+        vehicleRepository.delete(findById(id));
     }
 
     @Transactional
@@ -160,6 +163,7 @@ public class VehicleService {
 
     @Transactional(readOnly = true)
     public List<VehicleAvailability> getAvailability(String vehicleId, LocalDate from, LocalDate to) {
+        findById(vehicleId);
         return availabilityRepository.findByVehicle_IdAndRentDateBetween(vehicleId, from, to);
     }
 }

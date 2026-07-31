@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,6 +27,7 @@ public class ResellerBookingController {
      * GET /api/reseller/bookings/{resellerId}
      */
     @GetMapping("/{resellerId}")
+    @PreAuthorize("#resellerId == authentication.principal.resellerId or hasRole('ADMIN')")
     public ResponseEntity<Page<ResellerBookingResponse>> findByResellerId(
             @PathVariable String resellerId,
             Pageable pageable) {

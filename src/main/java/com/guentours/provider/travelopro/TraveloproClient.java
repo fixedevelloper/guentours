@@ -847,7 +847,6 @@ public class TraveloproClient implements TravelProviderClient {
     private ProviderBookingConfirmation callBookApi(FlightBookingRequest request) {
         TraveloproBookRequest bookRequest = buildBookRequest(request);
         TraveloproBookResponse bookResponse;
-        log.error(bookRequest.toString());
         try {
             // Reads the raw body first - see callFlightPriceVerification for why: a shape we
             // haven't modeled deserializes into an all-null record with ignoreUnknown=true, and

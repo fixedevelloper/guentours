@@ -62,6 +62,21 @@ public class UserService {
         });
     }
 
+    /**
+     * Called from social login (Google/Facebook): returns the existing account for the given
+     * email - auto-linking, since the provider already verified it - or creates one with a
+     * random, never-surfaced password (unlike {@link #findOrCreateForCheckout}, there's no
+     * temporary password to email; the account is only ever unlocked via the provider).
+     */
+    @Transactional
+    public User findOrCreateForOAuth(String email, String fullName) {
+        return userRepository.findByEmailIgnoreCase(email).orElseGet(() -> {
+            String unusablePassword = passwordEncoder.encode(java.util.UUID.randomUUID().toString());
+            User user = new User(email, unusablePassword, fullName, Role.CUSTOMER, null);
+            return userRepository.save(user);
+        });
+    }
+
     public User getById(String id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("User not found: " + id));

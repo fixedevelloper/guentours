@@ -77,25 +77,13 @@ class FlutterwaveCardGateway {
     }
 
     /**
-     * Une charge carte réussie sans aucune étape d'authorization (fréquent sur certains BIN, et
-     * systématique sur le sandbox Flutterwave) ne porte que {@code data} - pas de {@code meta}.
-     * Une charge qui exige un défi (PIN/AVS/REDIRECT/OTP) ne porte, à l'inverse, que
-     * {@code meta.authorization} - pas de {@code data}. Ce n'est donc qu'en l'absence des deux que
-     * la réponse est réellement de structure inattendue.
+     * meta.authorization l'emporte dès qu'il est présent, même à côté d'un bloc data : une trace
+     * réelle a montré Flutterwave renvoyer À LA FOIS un challenge REDIRECT dans meta.authorization
+     * ET data.status="pending" sur la même réponse - vérifier data en premier traitait ça
+     * silencieusement comme une simple attente asynchrone, et ni le PIN ni la redirection 3DS
+     * n'étaient jamais déclenchés.
      */
     ChargeResult resolveChargeOutcome(Response response, String paymentReference, String payerReferenceLast4) {
-        if (response.getData() != null && response.getData().getStatus() != null) {
-            String flwStatus = response.getData().getStatus();
-            return switch (flwStatus) {
-                case "successful" -> new ChargeResult(ChargeStatus.SUCCEEDED, paymentReference,
-                        payerReferenceLast4, null, null);
-                case "pending" -> new ChargeResult(ChargeStatus.PENDING, paymentReference,
-                        payerReferenceLast4, null, null);
-                default -> new ChargeResult(ChargeStatus.FAILED, paymentReference, payerReferenceLast4,
-                        "Paiement carte rejeté (" + flwStatus + ")", null);
-            };
-        }
-
         if (response.getMeta() != null && response.getMeta().getAuthorization() != null) {
             var authorization = response.getMeta().getAuthorization();
             return switch (authorization.getMode()) {
@@ -112,6 +100,18 @@ class FlutterwaveCardGateway {
                 case OTP -> new ChargeResult(ChargeStatus.PENDING_AUTHORIZATION, paymentReference,
                         payerReferenceLast4, null,
                         new AuthorizationChallenge(AuthorizationChallenge.AuthorizationType.OTP, null));
+            };
+        }
+
+        if (response.getData() != null && response.getData().getStatus() != null) {
+            String flwStatus = response.getData().getStatus();
+            return switch (flwStatus) {
+                case "successful" -> new ChargeResult(ChargeStatus.SUCCEEDED, paymentReference,
+                        payerReferenceLast4, null, null);
+                case "pending" -> new ChargeResult(ChargeStatus.PENDING, paymentReference,
+                        payerReferenceLast4, null, null);
+                default -> new ChargeResult(ChargeStatus.FAILED, paymentReference, payerReferenceLast4,
+                        "Paiement carte rejeté (" + flwStatus + ")", null);
             };
         }
 

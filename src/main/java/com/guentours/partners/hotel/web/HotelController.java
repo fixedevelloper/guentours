@@ -14,7 +14,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/partners/{partnerId}/hotels")
-//@PreAuthorize("hasRole('PARTNER_HOTEL') and #partnerId == authentication.principal.partnerId")
+@PreAuthorize("hasRole('PARTNER_HOTEL') or hasRole('ADMIN')")
 public class HotelController {
     private final HotelService service;
     public HotelController(HotelService service) { this.service = service; }

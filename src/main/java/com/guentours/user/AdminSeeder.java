@@ -50,7 +50,7 @@ class AdminSeeder {
             return;
         }
         User admin = new User(email,passwordEncoder.encode(password), fullName, Role.ADMIN,null);
-        admin.isMustChangePassword();
+        admin.setMustChangePassword(true);
         userRepository.save(admin);
         log.warn("Seeded default super-admin account ({}) - change its password before going to production", email);
     }
