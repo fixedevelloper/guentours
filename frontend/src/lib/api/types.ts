@@ -131,6 +131,34 @@ export interface HotelCityUpsertRequest {
   longitude: number;
 }
 
+/** Public shape: the homepage's "popular destinations" cards. */
+export interface FeaturedDestination {
+  cityName: string;
+  countryName: string;
+  destinationCode: string | null;
+  imageUrl: string | null;
+}
+
+export interface FeaturedDestinationAdminResponse {
+  id: string;
+  cityName: string;
+  countryName: string;
+  destinationCode: string | null;
+  imageUrl: string | null;
+  displayOrder: number;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface FeaturedDestinationUpsertRequest {
+  cityName: string;
+  countryName: string;
+  destinationCode?: string | null;
+  imageUrl?: string | null;
+  displayOrder: number;
+  active: boolean;
+}
+
 export interface ProviderQuote {
   offerId: string;
   providerType: ProviderType;

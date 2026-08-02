@@ -144,6 +144,12 @@ app:
     # 30 days in milliseconds; initial delay of 0 populates airports/hotel_cities on first boot.
     sync-interval-ms: ${REFERENCE_DATA_SYNC_INTERVAL_MS:2592000000}
     sync-initial-delay-ms: ${REFERENCE_DATA_SYNC_INITIAL_DELAY_MS:0}
+  destinations:
+    # 24h in milliseconds; suggests new homepage "popular destinations" from real flight booking
+    # volume without ever touching an admin-curated entry - safe to run often.
+    refresh-interval-ms: ${DESTINATIONS_REFRESH_INTERVAL_MS:86400000}
+    refresh-initial-delay-ms: ${DESTINATIONS_REFRESH_INITIAL_DELAY_MS:60000}
+    refresh-top-n: ${DESTINATIONS_REFRESH_TOP_N:10}
   # application.yml
   flutterwave:
     secret-key: ${FLUTTERWAVE_SECRET_KEY}

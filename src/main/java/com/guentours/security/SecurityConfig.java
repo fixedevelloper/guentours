@@ -37,6 +37,7 @@ public class SecurityConfig {
             "/api/payments/**",
             "/api/tickets/**",
             "/api/geo/**",
+            "/api/destinations/**",
             "/oauth2/**",
             "/login/oauth2/**",
             "/v3/api-docs/**",
