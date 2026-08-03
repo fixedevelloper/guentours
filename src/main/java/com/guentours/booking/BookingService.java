@@ -349,6 +349,10 @@ public class BookingService {
         TravelProviderClient client = clientFor(offer.providerType());
 
         HotelPriceVerification verification = client.verifyHotelPrice(offer, booking.getRoomQuantity());
+
+        log.warn(offer.price().toString());
+        log.info(verification.toString());
+
         if (verification.priceChanged(offer.price()) || !verification.available()) {
             throw new OfferExpiredException("This hotel offer is no longer available at the quoted price, please search again");
         }

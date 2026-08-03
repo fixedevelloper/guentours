@@ -69,11 +69,13 @@ app:
     reservation-fee: ${APP_PAYMENT_RESERVATION_FEE:5000}
 
   commission:
-    # Fixed fee added on top of the provider's price (never deducted from it), charged to the
-    # customer and tracked separately in the commission wallet. One fee per flight leg booked,
-    # one fee per room booked.
-    flight-fee-amount: ${APP_COMMISSION_FLIGHT_FEE_AMOUNT:15}
-    hotel-fee-amount: ${APP_COMMISSION_HOTEL_FEE_AMOUNT:15}
+    # Fee added on top of the provider's price (never deducted from it) as a fraction of that price
+    # (e.g. 0.15 = 15%), charged to the customer and tracked separately in the commission wallet.
+    # One fee per flight leg booked, one fee per room booked.
+    flight-fee-rate: ${APP_COMMISSION_FLIGHT_FEE_RATE:0.15}
+    hotel-fee-rate: ${APP_COMMISSION_HOTEL_FEE_RATE:0.15}
+    vehicle-fee-rate: ${APP_COMMISSION_VEHICLE_FEE_RATE:0.15}
+    property-fee-rate: ${APP_COMMISSION_PROPERTY_FEE_RATE:0.15}
 
   booking:
     # How often unpaid/deposit-only holds past their provider ticketing deadline get auto-cancelled.

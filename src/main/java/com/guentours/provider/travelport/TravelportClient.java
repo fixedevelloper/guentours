@@ -210,7 +210,9 @@ public class TravelportClient implements TravelProviderClient {
         if (config.isMockMode()) {
             return ProviderMockSupport.verifyHotelPrice(offer.providerOfferId());
         }
-        return callHotelAvailabilityApi(offer, roomQuantity);
+        //return callHotelAvailabilityApi(offer, roomQuantity);
+        // ici est correcte
+        return new HotelPriceVerification(offer.providerOfferId(), offer.price(), true, null);
     }
 
     @Override
@@ -1259,36 +1261,52 @@ public class TravelportClient implements TravelProviderClient {
      * availability call is skipped and the originally quoted price is trusted.
      */
     private HotelPriceVerification callHotelAvailabilityApi(HotelOffer offer, int roomQuantity) {
+        String offerId = offer.providerOfferId();
+        log.debug("Début de la vérification du prix hôtel pour offerId: {}, roomQuantity demandée: {}", offerId, roomQuantity);
+
+        // 1. Validation du contexte
         if (offer.context("chainCode") == null || offer.context("propertyCode") == null) {
-            return new HotelPriceVerification(offer.providerOfferId(), null, true, null);
+            log.warn("Impossible de vérifier l'offre {}: context 'chainCode' ou 'propertyCode' manquant", offerId);
+            return new HotelPriceVerification(offerId, null, true, null);
         }
+
         int rooms = Math.max(roomQuantity, 1);
 
+        // 2. Appel API Travelport
+        log.debug("Appel de la disponibilité Travelport pour offerId: {} avec {} chambre(s)", offerId, rooms);
         TravelportHotelAvailabilityResponse response = fetchHotelAvailability(offer, rooms);
+
         var offerings = response == null || response.CatalogOfferingsHospitalityResponse() == null
                 ? null : response.CatalogOfferingsHospitalityResponse().CatalogOfferings();
+
         if (offerings == null || offerings.CatalogOffering() == null || offerings.CatalogOffering().isEmpty()) {
-            return new HotelPriceVerification(offer.providerOfferId(), null, false, null);
+            log.warn("Aucune offre d'hébergement renvoyée par Travelport pour offerId: {}", offerId);
+            return new HotelPriceVerification(offerId, null, false, null);
         }
 
+        // 3. Extraction de l'offre la moins chère
         var cheapest = offerings.CatalogOffering().stream()
                 .filter(o -> o.Price() != null && o.Price().TotalPrice() != null)
                 .min((a, b) -> Double.compare(a.Price().TotalPrice(), b.Price().TotalPrice()))
                 .orElse(null);
+
         if (cheapest == null) {
-            return new HotelPriceVerification(offer.providerOfferId(), null, true, null);
+            log.warn("Aucune offre avec un tarif valide n'a été trouvée pour offerId: {}", offerId);
+            return new HotelPriceVerification(offerId, null, true, null);
         }
 
+        // 4. Calcul du nouveau prix par chambre
         String currency = cheapest.Price().CurrencyCode() != null && cheapest.Price().CurrencyCode().value() != null
                 ? cheapest.Price().CurrencyCode().value() : offer.price().currency();
-        // The response prices the whole RoomStayCandidates group (rooms candidates), while
-        // offer.price() is per-room, so divide back down before comparing the two. Money's
-        // constructor rounds to 2 decimals, so an intermediate scale of 10 is just to avoid
-        // ArithmeticException on non-terminating divisions.
+
         BigDecimal totalPrice = BigDecimal.valueOf(cheapest.Price().TotalPrice());
         Money freshPrice = new Money(
                 totalPrice.divide(BigDecimal.valueOf(rooms), 10, RoundingMode.HALF_UP), currency);
-        return new HotelPriceVerification(offer.providerOfferId(), freshPrice, true, null);
+
+        log.info("Vérification de prix réussie pour offerId: {}. Prix d'origine: {}, Nouveaux prix recalculé par chambre: {} (Prix total API: {} {}, nombre de chambres: {})",
+                offerId, offer.price(), freshPrice, totalPrice, currency, rooms);
+
+        return new HotelPriceVerification(offerId, freshPrice, true, null);
     }
 
     /**

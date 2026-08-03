@@ -24,6 +24,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.awaitility.Awaitility.await;
 
 /** Exercises the "pay later" deposit flow, local mobile-money payments, and hold auto-expiry. */
@@ -107,8 +108,8 @@ class PaymentPlanAndExpiryTest {
     void hotelCheckoutForMultipleRoomsPersistsQuantityAndScalesThePrice() throws Exception {
         CheckedOutBooking singleRoom = checkoutHotel("PAY_NOW", 1);
         awaitPendingPayment(singleRoom);
-        // CommissionPolicy.addHotelFee is a single flat fee added once to the (already
-        // quantity-multiplied) total, so per-room price = (price with 1 room - fee).
+        // CommissionPolicy.addHotelFee is now a percentage of the (already quantity-multiplied)
+        // total, so the fee-inclusive price scales linearly with room quantity.
         double singleRoomPriceWithFee = getBooking(singleRoom).get("price").get("amount").asDouble();
 
         CheckedOutBooking threeRooms = checkoutHotel("PAY_NOW", 3);
@@ -121,11 +122,11 @@ class PaymentPlanAndExpiryTest {
 
         JsonNode afterCheckout = getBooking(threeRooms);
         assertThat(afterCheckout.get("roomQuantity").asInt()).isEqualTo(3);
-        double hotelFeeAmount = 15;
-        double perRoomPrice = singleRoomPriceWithFee - hotelFeeAmount;
-        double expectedThreeRoomsPrice = perRoomPrice * 3 + hotelFeeAmount;
+        // Allow a cent of rounding slack: the server rounds the 3-room total once, while this
+        // reconstruction multiplies an already-rounded single-room price, so the two can round to
+        // adjacent cents at the boundary.
         assertThat(afterCheckout.get("price").get("amount").asDouble())
-                .isEqualTo(Math.round(expectedThreeRoomsPrice * 100) / 100.0);
+                .isCloseTo(singleRoomPriceWithFee * 3, within(0.02));
     }
 
     @Test

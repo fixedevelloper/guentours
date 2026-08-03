@@ -17,8 +17,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FlightHarmonizerTest {
 
     private final FlightHarmonizer harmonizer =
-            new FlightHarmonizer(new OfferCache(), new CommissionPolicy(BigDecimal.valueOf(15), BigDecimal.valueOf(15),
-                    BigDecimal.valueOf(15), BigDecimal.valueOf(15)));
+            new FlightHarmonizer(new OfferCache(), new CommissionPolicy(BigDecimal.valueOf(0.15), BigDecimal.valueOf(0.15),
+                    BigDecimal.valueOf(0.15), BigDecimal.valueOf(0.15)));
 
     @Test
     void mergesSameFlightQuotedByMultipleProvidersAndKeepsTheCheapestPrice() {
@@ -41,7 +41,7 @@ class FlightHarmonizerTest {
         HarmonizedFlightOffer af123 = result.stream()
                 .filter(o -> o.flightNumber().equals("AF123")).findFirst().orElseThrow();
         assertThat(af123.quotes()).hasSize(3);
-        assertThat(af123.quotes().get(0).price().amount()).isEqualByComparingTo("365.00");
+        assertThat(af123.quotes().get(0).price().amount()).isEqualByComparingTo("402.50");
         assertThat(af123.quotes().get(0).providerType()).isEqualTo(ProviderType.SABRE);
 
         HarmonizedFlightOffer dl999 = result.stream()
