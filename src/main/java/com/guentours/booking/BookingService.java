@@ -294,7 +294,7 @@ public class BookingService {
         Money priceWithFee = commissionPolicy.addHotelFee(totalOfferPrice);
         Booking booking = Booking.forHotel(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
                 offer.hotelName(), offer.cityCode(), offer.checkIn(), offer.checkOut(), offer.roomType(),
-                priceWithFee, travelers);
+                priceWithFee, travelers, request.quantityOrDefault());
         booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(priceWithFee.currency()) : null);
         return booking;
     }
@@ -348,14 +348,14 @@ public class BookingService {
                 .orElseThrow(() -> new BusinessException("This hotel offer has expired, please search again"));
         TravelProviderClient client = clientFor(offer.providerType());
 
-        HotelPriceVerification verification = client.verifyHotelPrice(offer);
+        HotelPriceVerification verification = client.verifyHotelPrice(offer, booking.getRoomQuantity());
         if (verification.priceChanged(offer.price()) || !verification.available()) {
             throw new OfferExpiredException("This hotel offer is no longer available at the quoted price, please search again");
         }
 
         List<PassengerInfo> guests = toPassengers(booking.getTravelers());
         ProviderBookingConfirmation hold = client.createHotelHold(
-                new HotelBookingRequest(offer, guests, booking.getContactEmail()));
+                new HotelBookingRequest(offer, guests, booking.getContactEmail(), booking.getRoomQuantity()));
         if (!hold.confirmed()) {
             throw new ProviderException("Unable to hold this room with " + offer.providerType());
         }

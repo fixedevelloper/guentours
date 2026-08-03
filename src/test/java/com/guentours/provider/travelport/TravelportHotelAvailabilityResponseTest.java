@@ -213,4 +213,27 @@ class TravelportHotelAvailabilityResponseTest {
         assertThat(json).contains("\"@type\":\"RoomStayCandidates\"");
         assertThat(json).contains("\"count\":2");
     }
+
+    /**
+     * Booking N rooms means N separate {@code RoomStayCandidate} entries in the list, one per
+     * physical room - {@link TravelportClient#fetchHotelAvailability} builds this list from the
+     * guest's room quantity so the availability re-check and reservation call both actually price
+     * and reserve every room being paid for, instead of always just one.
+     */
+    @Test
+    void serializesMultipleRoomStayCandidatesForMultiRoomBookings() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        var roomStayCandidate = new TravelportHotelAvailabilityRequest.RoomStayCandidate(
+                "RoomStayCandidate",
+                new TravelportHotelAvailabilityRequest.GuestCounts("GuestCounts", List.of(
+                        new TravelportHotelAvailabilityRequest.GuestCount("GuestCount", 1))));
+        var guests = new TravelportHotelAvailabilityRequest.RoomStayCandidates(
+                "RoomStayCandidates", List.of(roomStayCandidate, roomStayCandidate, roomStayCandidate));
+
+        String json = mapper.writeValueAsString(guests);
+        ObjectMapper reader = new ObjectMapper();
+        var deserialized = reader.readValue(json, TravelportHotelAvailabilityRequest.RoomStayCandidates.class);
+
+        assertThat(deserialized.RoomStayCandidate()).hasSize(3);
+    }
 }

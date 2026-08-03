@@ -72,4 +72,19 @@ class TravelportHotelReservationRequestTest {
         assertThat(json).contains("\"Surname\":\"Deaconu\"");
         assertThat(json).doesNotContain("\"passengerTypeCode\"");
     }
+
+    @Test
+    void productQuantityCarriesTheRoomCountBookedNotJustOne() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+
+        var product = new TravelportHotelReservationRequest.Product(
+                "ProductHospitality", "APB174", "3", 4,
+                new TravelportHotelReservationRequest.PropertyKey("PropertyKey", "2772", "HH"),
+                new TravelportHotelReservationRequest.DateRange("2026-09-11", "2026-09-15"));
+
+        String json = mapper.writeValueAsString(product);
+
+        assertThat(json).contains("\"Quantity\":\"3\"");
+        assertThat(json).contains("\"guests\":4");
+    }
 }

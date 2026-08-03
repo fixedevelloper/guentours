@@ -22,8 +22,16 @@ record TravelportHotelSearchResponse(PropertiesResponse PropertiesResponse) {
     record PropertiesResponse(Properties Properties) {
     }
 
+    /**
+     * {@code Identifier.value} (a UUID in the verified sample trace, see
+     * TravelportHotelSearchResponseTest) is this search's own id - the same value Travelport's
+     * paginated follow-up endpoint ({@code GET
+     * /hotel/search/properties/{identifier}?pageNumber=N}, see TravelportClient#loadMoreHotels)
+     * expects as its path parameter to fetch another page of the same result set.
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Properties(
+            Identifier Identifier,
             int totalProperties,
             int propertiesPerPage,
             int numberOfPages,

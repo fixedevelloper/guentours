@@ -27,6 +27,23 @@ public interface TravelProviderClient {
 
     /** Must never throw for a plain "no results"/timeout - return an empty list instead. */
     List<HotelOffer> searchHotels(HotelSearchCriteria criteria);
+
+    /**
+     * Fetches an additional page of hotel results for a search already performed via
+     * {@link #searchHotels}. {@code searchIdentifier} is whatever pagination token this same
+     * adapter captured on its page-1 offers (see {@link HotelOffer#context}, key
+     * {@code "searchIdentifier"}) - the caller (see {@code HotelSearchService}) only calls this
+     * for providers that actually captured one, so an adapter never has to guard against a null
+     * identifier it doesn't understand. Must never throw for a plain "no more results"/timeout -
+     * return an empty list instead, exactly like {@link #searchHotels}.
+     *
+     * <p>Default returns an empty list: only adapters whose upstream API actually supports
+     * incremental pagination (e.g. Travelport's {@code GET
+     * /hotel/search/properties/{identifier}?pageNumber=N}) need to override this.
+     */
+    default List<HotelOffer> loadMoreHotels(HotelSearchCriteria criteria, String searchIdentifier, int pageNumber) {
+        return List.of();
+    }
 // Ajouts dans TravelProviderClient, à la suite de searchHotels
 
     /**
@@ -74,8 +91,11 @@ public interface TravelProviderClient {
      * Verifies current hotel room availability and final tax inclusions before checkout. Receives
      * the full cached offer (not just its id) because availability re-checks re-query by property
      * details (e.g. Travelport's chain/property codes) rather than an opaque offer reference.
+     * {@code roomQuantity} is how many rooms the guest is paying for; {@link HotelOffer#price()} is
+     * per-room, so implementations that re-query a total price must normalize it back to a per-room
+     * price before comparing.
      */
-    HotelPriceVerification verifyHotelPrice(HotelOffer offer);
+    HotelPriceVerification verifyHotelPrice(HotelOffer offer, int roomQuantity);
     HotelDetail getDetailHotel(HotelOffer offer);
     List<RoomOffer> getRoomOffers(HotelOffer offer);
     // ==========================================

@@ -88,6 +88,14 @@ public class Booking {
     @Column(name = "hotel_name")
     private String hotelName;
 
+    /** How many rooms this hotel booking covers - the price above is already the total for this
+     *  many rooms (see BookingService.buildPendingHotelBooking), but the provider hold/booking
+     *  call itself also needs this number (e.g. Travelport's per-room Quantity field) so it
+     *  actually reserves/prices the same number of rooms the guest is paying for. Always 1 for
+     *  non-hotel offer types. */
+    @Column(name = "room_quantity", nullable = false)
+    private int roomQuantity = 1;
+
     @Column(name = "city_code")
     private String cityCode;
 
@@ -256,7 +264,7 @@ public class Booking {
     public static Booking forHotel(String userId, String contactEmail, ProviderType providerType,
                                    String providerOfferId, String hotelName, String cityCode,
                                    LocalDate checkIn, LocalDate checkOut, String roomType, Money price,
-                                   List<BookedTraveler> travelers) {
+                                   List<BookedTraveler> travelers, int roomQuantity) {
         Booking booking = new Booking();
         booking.userId = userId;
         booking.contactEmail = contactEmail;
@@ -270,6 +278,7 @@ public class Booking {
         booking.fareClass = roomType;
         booking.price = price;
         booking.travelers = travelers;
+        booking.roomQuantity = Math.max(roomQuantity, 1);
         return booking;
     }
 

@@ -62,8 +62,16 @@ public class SearchController {
     }
 
     @GetMapping("/hotels")
-    public ResponseEntity<List<HarmonizedHotelOffer>> searchHotels(@Valid @ModelAttribute HotelSearchRequest request) {
+    public ResponseEntity<HotelSearchResult> searchHotels(@Valid @ModelAttribute HotelSearchRequest request) {
         return ResponseEntity.ok(hotelSearchService.search(request));
+    }
+
+    /** Fetches an additional page of results for a search already returned by {@code /hotels}
+     *  (see {@link HotelSearchResult#searchId()}); returns an empty list once there's nothing more. */
+    @GetMapping("/hotels/load-more")
+    public ResponseEntity<List<HarmonizedHotelOffer>> loadMoreHotels(@RequestParam String searchId,
+                                                                     @RequestParam int pageNumber) {
+        return ResponseEntity.ok(hotelSearchService.loadMore(searchId, pageNumber));
     }
 
     /** Récupère la fiche détaillée d'un hôtel à partir de l'identifiant d'offre mis en cache. */

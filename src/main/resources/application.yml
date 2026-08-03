@@ -150,6 +150,19 @@ app:
     refresh-interval-ms: ${DESTINATIONS_REFRESH_INTERVAL_MS:86400000}
     refresh-initial-delay-ms: ${DESTINATIONS_REFRESH_INITIAL_DELAY_MS:60000}
     refresh-top-n: ${DESTINATIONS_REFRESH_TOP_N:10}
+  rate-limit:
+    # In-memory token bucket per client IP + endpoint category (see RateLimitFilter). Disable only
+    # for local dev/testing - never in production.
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    auth:
+      capacity: ${RATE_LIMIT_AUTH_CAPACITY:10}
+      refill-period-seconds: ${RATE_LIMIT_AUTH_REFILL_SECONDS:60}
+    booking:
+      capacity: ${RATE_LIMIT_BOOKING_CAPACITY:30}
+      refill-period-seconds: ${RATE_LIMIT_BOOKING_REFILL_SECONDS:60}
+    general:
+      capacity: ${RATE_LIMIT_GENERAL_CAPACITY:300}
+      refill-period-seconds: ${RATE_LIMIT_GENERAL_REFILL_SECONDS:60}
   # application.yml
   flutterwave:
     secret-key: ${FLUTTERWAVE_SECRET_KEY}

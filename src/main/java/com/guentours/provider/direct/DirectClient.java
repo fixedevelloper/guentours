@@ -462,7 +462,9 @@ public class DirectClient implements TravelProviderClient {
     @Override
     public FlightPriceVerification verifyFlightPrice(FlightOffer offer) { return null; }
     @Override
-    public HotelPriceVerification verifyHotelPrice(HotelOffer offer) { return null; }
+    public HotelPriceVerification verifyHotelPrice(HotelOffer offer, int roomQuantity) {
+        return new HotelPriceVerification(offer.providerOfferId(), null, true, null);
+    }
     @Override
     public HotelDetail getDetailHotel(HotelOffer offer) { return null; }
     @Override

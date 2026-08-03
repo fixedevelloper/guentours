@@ -82,7 +82,7 @@ class PaymentPlanAndExpiryTest {
 
     @Test
     void hotelPayLaterDepositThenBalanceReachesConfirmed() throws Exception {
-        CheckedOutBooking booking = checkoutHotel("PAY_LATER");
+        CheckedOutBooking booking = checkoutHotel("PAY_LATER", 1);
         String bookingId = booking.id();
 
         // The provider hold now completes off-thread after checkout returns.
@@ -101,6 +101,31 @@ class PaymentPlanAndExpiryTest {
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
                 assertThat(getBooking(booking).get("status").asText()).isEqualTo("CONFIRMED"));
+    }
+
+    @Test
+    void hotelCheckoutForMultipleRoomsPersistsQuantityAndScalesThePrice() throws Exception {
+        CheckedOutBooking singleRoom = checkoutHotel("PAY_NOW", 1);
+        awaitPendingPayment(singleRoom);
+        // CommissionPolicy.addHotelFee is a single flat fee added once to the (already
+        // quantity-multiplied) total, so per-room price = (price with 1 room - fee).
+        double singleRoomPriceWithFee = getBooking(singleRoom).get("price").get("amount").asDouble();
+
+        CheckedOutBooking threeRooms = checkoutHotel("PAY_NOW", 3);
+        // The async provider hold (verifyHotelPrice + createHotelHold) must also succeed for 3
+        // rooms, not just the checkout's synchronous price computation - this is what confirms
+        // Travelport's hardcoded Quantity:"1" bug and the single-room availability recheck are
+        // both actually fixed, not just the price shown at checkout time.
+        await().atMost(Duration.ofSeconds(10))
+                .untilAsserted(() -> assertThat(getBooking(threeRooms).get("status").asText()).isEqualTo("PENDING_PAYMENT"));
+
+        JsonNode afterCheckout = getBooking(threeRooms);
+        assertThat(afterCheckout.get("roomQuantity").asInt()).isEqualTo(3);
+        double hotelFeeAmount = 15;
+        double perRoomPrice = singleRoomPriceWithFee - hotelFeeAmount;
+        double expectedThreeRoomsPrice = perRoomPrice * 3 + hotelFeeAmount;
+        assertThat(afterCheckout.get("price").get("amount").asDouble())
+                .isEqualTo(Math.round(expectedThreeRoomsPrice * 100) / 100.0);
     }
 
     @Test
@@ -179,13 +204,13 @@ class PaymentPlanAndExpiryTest {
         return new CheckedOutBooking(bookingId, contactEmail);
     }
 
-    private CheckedOutBooking checkoutHotel(String paymentPlan) throws Exception {
+    private CheckedOutBooking checkoutHotel(String paymentPlan, int quantity) throws Exception {
         String url = "http://localhost:" + port + "/api/search/hotels?cityCode=PAR&checkIn="
                 + LocalDate.now().plusDays(30) + "&checkOut=" + LocalDate.now().plusDays(34)
                 + "&adults=1&rooms=1&currency=XAF";
         ResponseEntity<String> searchResponse = restTemplate.getForEntity(url, String.class);
-        JsonNode offers = objectMapper.readTree(searchResponse.getBody());
-        String offerId = offers.get(0).get("bestOfferId").asText();
+        JsonNode result = objectMapper.readTree(searchResponse.getBody());
+        String offerId = result.get("offers").get(0).get("bestOfferId").asText();
 
         String contactEmail = "traveler+%d@example.com".formatted(System.nanoTime());
         String checkoutBody = """
@@ -196,9 +221,10 @@ class PaymentPlanAndExpiryTest {
                   "contactFullName": "Jane Traveler",
                   "contactPhone": "+33600000000",
                   "travelers": [{"fullName": "Jane Traveler", "dateOfBirth": "1990-01-01", "nationality": "US", "passportNumber": "X1234567", "type": "ADULT"}],
-                  "paymentPlan": "%s"
+                  "paymentPlan": "%s",
+                  "quantity": %d
                 }
-                """.formatted(offerId, contactEmail, paymentPlan);
+                """.formatted(offerId, contactEmail, paymentPlan, quantity);
 
         ResponseEntity<String> checkoutResponse = restTemplate.postForEntity(
                 "http://localhost:" + port + "/api/bookings/checkout", jsonEntity(checkoutBody), String.class);

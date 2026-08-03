@@ -18,12 +18,14 @@ import org.springframework.web.client.RestClientException;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -204,11 +206,11 @@ public class TravelportClient implements TravelProviderClient {
     }
 
     @Override
-    public HotelPriceVerification verifyHotelPrice(HotelOffer offer) {
+    public HotelPriceVerification verifyHotelPrice(HotelOffer offer, int roomQuantity) {
         if (config.isMockMode()) {
             return ProviderMockSupport.verifyHotelPrice(offer.providerOfferId());
         }
-        return callHotelAvailabilityApi(offer);
+        return callHotelAvailabilityApi(offer, roomQuantity);
     }
 
     @Override
@@ -1109,8 +1111,62 @@ public class TravelportClient implements TravelProviderClient {
             return List.of();
         }
 
+        String searchIdentifier = body.Properties().Identifier() != null ? body.Properties().Identifier().value() : null;
         return body.Properties().PropertyInfo().stream()
-                .map(info -> toHotelOffer(info, criteria))
+                .map(info -> toHotelOffer(info, criteria, searchIdentifier))
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    /**
+     * Fetches the next page of an already-run hotel search ({@code GET
+     * /hotel/search/properties/{identifier}?pageNumber=N}), reusing the same
+     * {@link TravelportHotelSearchResponse} shape as the initial POST search since this is meant
+     * to be the same result set, just paged. {@code searchIdentifier} is only ever passed in by
+     * {@code HotelSearchService} when Travelport actually captured one on page 1 (see
+     * {@link #callHotelApi}), so a blank/missing one here would be a caller bug, not a "no more
+     * pages" signal - guarded anyway since this must never throw for the caller.
+     */
+    @Override
+    public List<HotelOffer> loadMoreHotels(HotelSearchCriteria criteria, String searchIdentifier, int pageNumber) {
+        if (config.isMockMode() || searchIdentifier == null || searchIdentifier.isBlank()) {
+            return List.of();
+        }
+
+        TravelportHotelSearchResponse response;
+        try {
+            response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/hotel/search/properties/{identifier}")
+                            .queryParam("pageNumber", pageNumber)
+                            .build(searchIdentifier))
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                    .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
+                    .header(PCC_HEADER, config.getPseudoCityCode())
+                    .header("TVP-Correlation-Id", UUID.randomUUID().toString())
+                    .header("TraceId", "HotelLoadMore_" + UUID.randomUUID())
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .body(TravelportHotelSearchResponse.class);
+        } catch (RestClientException e) {
+            log.warn("[Travelport] load more hotels failed for page {} of search {}: {}",
+                    pageNumber, searchIdentifier, e.getMessage());
+            return List.of();
+        }
+
+        log.debug("[Travelport] hotel load-more response for search {} page {}: {}", searchIdentifier, pageNumber, response);
+
+        var body = response == null ? null : response.PropertiesResponse();
+        if (body == null || body.Properties() == null || body.Properties().PropertyInfo() == null) {
+            return List.of();
+        }
+
+        // The response carrying the same search's identifier lets a later page keep paginating
+        // even if Travelport reissues/rotates it - falls back to the one we called with otherwise.
+        String nextIdentifier = body.Properties().Identifier() != null
+                ? body.Properties().Identifier().value() : searchIdentifier;
+        return body.Properties().PropertyInfo().stream()
+                .map(info -> toHotelOffer(info, criteria, nextIdentifier))
                 .filter(Objects::nonNull)
                 .toList();
     }
@@ -1151,7 +1207,8 @@ public class TravelportClient implements TravelProviderClient {
         return new TravelportHotelSearchRequest(query);
     }
 
-    private HotelOffer toHotelOffer(TravelportHotelSearchResponse.PropertyInfo info, HotelSearchCriteria criteria) {
+    private HotelOffer toHotelOffer(TravelportHotelSearchResponse.PropertyInfo info, HotelSearchCriteria criteria,
+                                     String searchIdentifier) {
         if (info == null || info.Property() == null || info.LowestAvailableRate() == null
                 || info.LowestAvailableRate().value() == null || info.LowestAvailableRate().code() == null) {
             return null;
@@ -1173,6 +1230,9 @@ public class TravelportClient implements TravelProviderClient {
             }
         }
         context.put("adults", String.valueOf(Math.max(criteria.adults(), 1)));
+        if (searchIdentifier != null && !searchIdentifier.isBlank()) {
+            context.put("searchIdentifier", searchIdentifier);
+        }
 
         String coverImageUrl = property.Image() != null && !property.Image().isEmpty()
                 ? property.Image().get(0).value() : null;
@@ -1198,12 +1258,13 @@ public class TravelportClient implements TravelProviderClient {
      * comes back. When the property key is missing (e.g. an offer that carried no context), the
      * availability call is skipped and the originally quoted price is trusted.
      */
-    private HotelPriceVerification callHotelAvailabilityApi(HotelOffer offer) {
+    private HotelPriceVerification callHotelAvailabilityApi(HotelOffer offer, int roomQuantity) {
         if (offer.context("chainCode") == null || offer.context("propertyCode") == null) {
             return new HotelPriceVerification(offer.providerOfferId(), null, true, null);
         }
+        int rooms = Math.max(roomQuantity, 1);
 
-        TravelportHotelAvailabilityResponse response = fetchHotelAvailability(offer);
+        TravelportHotelAvailabilityResponse response = fetchHotelAvailability(offer, rooms);
         var offerings = response == null || response.CatalogOfferingsHospitalityResponse() == null
                 ? null : response.CatalogOfferingsHospitalityResponse().CatalogOfferings();
         if (offerings == null || offerings.CatalogOffering() == null || offerings.CatalogOffering().isEmpty()) {
@@ -1220,7 +1281,13 @@ public class TravelportClient implements TravelProviderClient {
 
         String currency = cheapest.Price().CurrencyCode() != null && cheapest.Price().CurrencyCode().value() != null
                 ? cheapest.Price().CurrencyCode().value() : offer.price().currency();
-        Money freshPrice = new Money(BigDecimal.valueOf(cheapest.Price().TotalPrice()), currency);
+        // The response prices the whole RoomStayCandidates group (rooms candidates), while
+        // offer.price() is per-room, so divide back down before comparing the two. Money's
+        // constructor rounds to 2 decimals, so an intermediate scale of 10 is just to avoid
+        // ArithmeticException on non-terminating divisions.
+        BigDecimal totalPrice = BigDecimal.valueOf(cheapest.Price().TotalPrice());
+        Money freshPrice = new Money(
+                totalPrice.divide(BigDecimal.valueOf(rooms), 10, RoundingMode.HALF_UP), currency);
         return new HotelPriceVerification(offer.providerOfferId(), freshPrice, true, null);
     }
 
@@ -1236,7 +1303,9 @@ public class TravelportClient implements TravelProviderClient {
             return List.of();
         }
 
-        TravelportHotelAvailabilityResponse response = fetchHotelAvailability(offer);
+        // Room browsing (not a firm price check) always queries a single room; only the
+        // price-verification and reservation paths need the guest's actual room count.
+        TravelportHotelAvailabilityResponse response = fetchHotelAvailability(offer, 1);
         var offerings = response == null || response.CatalogOfferingsHospitalityResponse() == null
                 ? null : response.CatalogOfferingsHospitalityResponse().CatalogOfferings();
         if (offerings == null || offerings.CatalogOffering() == null || offerings.CatalogOffering().isEmpty()) {
@@ -1249,7 +1318,7 @@ public class TravelportClient implements TravelProviderClient {
                 .collect(Collectors.toList());
     }
 
-    private TravelportHotelAvailabilityResponse fetchHotelAvailability(HotelOffer offer) {
+    private TravelportHotelAvailabilityResponse fetchHotelAvailability(HotelOffer offer, int roomQuantity) {
         String chainCode = offer.context("chainCode");
         String propertyCode = offer.context("propertyCode");
 
@@ -1259,12 +1328,13 @@ public class TravelportClient implements TravelProviderClient {
         } catch (NumberFormatException ignored) {
             // fall back to a single guest
         }
+        int rooms = Math.max(roomQuantity, 1);
+        var roomStayCandidate = new TravelportHotelAvailabilityRequest.RoomStayCandidate(
+                "RoomStayCandidate",
+                new TravelportHotelAvailabilityRequest.GuestCounts("GuestCounts", List.of(
+                        new TravelportHotelAvailabilityRequest.GuestCount("GuestCount", adults))));
         var guests = new TravelportHotelAvailabilityRequest.RoomStayCandidates(
-                "RoomStayCandidates",
-                List.of(new TravelportHotelAvailabilityRequest.RoomStayCandidate(
-                        "RoomStayCandidate",
-                        new TravelportHotelAvailabilityRequest.GuestCounts("GuestCounts", List.of(
-                                new TravelportHotelAvailabilityRequest.GuestCount("GuestCount", adults))))));
+                "RoomStayCandidates", Collections.nCopies(rooms, roomStayCandidate));
         var request = new TravelportHotelAvailabilityRequest(
                 new TravelportHotelAvailabilityRequest.CatalogOfferingsQueryRequest(
                         List.of(new TravelportHotelAvailabilityRequest.CatalogOfferingsRequest(
@@ -1487,22 +1557,24 @@ public class TravelportClient implements TravelProviderClient {
                 .mapToObj(i -> toHotelTraveler(guests.get(i), request.contactEmail()))
                 .toList();
 
+        int roomQuantity = Math.max(request.quantity(), 1);
         String bookingCode = offer.context("bookingCode") != null ? offer.context("bookingCode")
                 : offer.providerOfferId();
         var product = new TravelportHotelReservationRequest.Product(
                 "ProductHospitality",
                 bookingCode,
-                "1",
+                String.valueOf(roomQuantity),
                 Math.max(guests.size(), 1),
                 new TravelportHotelReservationRequest.PropertyKey(
                         "PropertyKey", offer.context("propertyCode"), offer.context("chainCode")),
                 new TravelportHotelReservationRequest.DateRange(
                         offer.checkIn().toString(), offer.checkOut().toString()));
 
+        // offer.price() is per-room; Travelport expects the total across every room being booked.
         var price = new TravelportHotelReservationRequest.PriceDetail(
                 "PriceDetail",
                 new TravelportHotelReservationRequest.CurrencyCode(offer.price().currency()),
-                null, null, offer.price().amount().doubleValue());
+                null, null, offer.price().multiply(roomQuantity).amount().doubleValue());
 
         // La grille tarifaire (rateID) n'est capturée qu'à l'étape disponibilité (getRoomOffers) et
         // n'est pas encore propagée jusqu'à l'offre mise en cache ; on l'omet donc tant qu'elle

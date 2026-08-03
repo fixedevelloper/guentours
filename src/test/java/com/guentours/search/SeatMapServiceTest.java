@@ -94,7 +94,7 @@ class SeatMapServiceTest {
         }
 
         @Override
-        public HotelPriceVerification verifyHotelPrice(HotelOffer offer) {
+        public HotelPriceVerification verifyHotelPrice(HotelOffer offer, int roomQuantity) {
             return null;
         }
 

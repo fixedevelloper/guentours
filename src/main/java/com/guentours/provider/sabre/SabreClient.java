@@ -108,7 +108,7 @@ public class SabreClient implements TravelProviderClient {
     }
 
     @Override
-    public HotelPriceVerification verifyHotelPrice(HotelOffer offer) {
+    public HotelPriceVerification verifyHotelPrice(HotelOffer offer, int roomQuantity) {
         if (config.isMockMode()) {
             return ProviderMockSupport.verifyHotelPrice(offer.providerOfferId());
         }

@@ -32,3 +32,9 @@ app:
     # Keep the recurring sync from firing mid-test and racing with tests that trigger it directly.
     sync-interval-ms: 999999999999
     sync-initial-delay-ms: 999999999999
+
+  # Every MockMvc request in the suite shares the same simulated remote address, so a shared
+  # in-memory bucket would see far more than a real client's traffic and start rejecting
+  # legitimate test requests - not what's under test here, so it's off for the whole suite.
+  rate-limit:
+    enabled: false

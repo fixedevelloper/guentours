@@ -2,6 +2,8 @@ package com.guentours.search;
 
 import com.guentours.provider.FlightOffer;
 import com.guentours.provider.HotelOffer;
+import com.guentours.provider.HotelSearchCriteria;
+import com.guentours.provider.ProviderType;
 import com.guentours.provider.PropertyOffer;
 import com.guentours.provider.VehicleOffer;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -89,11 +91,38 @@ public class OfferCache {
         }
         return Optional.of(entry.value());
     }
+    /**
+     * One hotel search's original criteria plus whichever providers captured a pagination token
+     * on their page-1 offers (see {@code HotelOffer#context}, key {@code "searchIdentifier"}) -
+     * lets {@code HotelSearchService#loadMore} re-run only those providers for page N without the
+     * frontend ever needing to know criteria or provider-specific tokens.
+     */
+    public record HotelSearchSession(HotelSearchCriteria criteria, Map<ProviderType, String> providerSearchIdentifiers) {
+    }
+
+    private final Map<String, Entry<HotelSearchSession>> hotelSearchSessions = new ConcurrentHashMap<>();
+
+    public String cacheHotelSearchSession(HotelSearchCriteria criteria, Map<ProviderType, String> providerSearchIdentifiers) {
+        String id = UUID.randomUUID().toString();
+        hotelSearchSessions.put(id, new Entry<>(new HotelSearchSession(criteria, Map.copyOf(providerSearchIdentifiers)),
+                Instant.now().toEpochMilli() + TTL_MILLIS));
+        return id;
+    }
+
+    public Optional<HotelSearchSession> getHotelSearchSession(String searchId) {
+        Entry<HotelSearchSession> entry = hotelSearchSessions.get(searchId);
+        if (entry == null || entry.isExpired()) {
+            return Optional.empty();
+        }
+        return Optional.of(entry.value());
+    }
+
     @Scheduled(fixedRate = 5 * 60 * 1000)
     void evictExpired() {
         flightOffers.values().removeIf(Entry::isExpired);
         hotelOffers.values().removeIf(Entry::isExpired);
         vehicleOffers.values().removeIf(Entry::isExpired);
         propertyOffers.values().removeIf(Entry::isExpired);
+        hotelSearchSessions.values().removeIf(Entry::isExpired);
     }
 }

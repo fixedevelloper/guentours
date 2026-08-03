@@ -66,6 +66,7 @@ class TravelportHotelSearchResponseTest {
         TravelportHotelSearchResponse response = mapper.readValue(SAMPLE_RESPONSE, TravelportHotelSearchResponse.class);
 
         var properties = response.PropertiesResponse().Properties();
+        assertThat(properties.Identifier().value()).isEqualTo("d84ecc13-2ebf-4e33-8ecc-132ebf8e33b0");
         assertThat(properties.totalProperties()).isEqualTo(1);
         assertThat(properties.propertiesPerPage()).isEqualTo(100);
         assertThat(properties.numberOfPages()).isEqualTo(1);

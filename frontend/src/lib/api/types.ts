@@ -190,6 +190,16 @@ export interface HarmonizedHotelOffer {
   quotes: ProviderQuote[];
 }
 
+/**
+ * searchId is null when no enabled provider captured a pagination token for this search (e.g. the
+ * only one that supports it, Travelport, was disabled or returned nothing) - hide "load more" in
+ * that case, there's nothing to resume.
+ */
+export interface HotelSearchResult {
+  searchId: string | null;
+  offers: HarmonizedHotelOffer[];
+}
+
 export interface Seat {
   seatNumber: string;
   available: boolean;
