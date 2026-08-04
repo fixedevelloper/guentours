@@ -269,7 +269,7 @@ public class TraveloproClient implements TravelProviderClient {
     }
 
     @Override
-    public void cancelHotelBooking(String hotelBookingRef) {
+    public void cancelHotelBooking(String hotelBookingRef, String providerOfferId, String supplierLocator) {
         if (config.isMockMode()) {
             log.info("Mock-cancelled Travelopro hotel booking {}", hotelBookingRef);
             return;

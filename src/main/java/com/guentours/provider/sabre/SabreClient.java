@@ -179,7 +179,7 @@ public class SabreClient implements TravelProviderClient {
     }
 
     @Override
-    public void cancelHotelBooking(String hotelBookingRef) {
+    public void cancelHotelBooking(String hotelBookingRef, String providerOfferId, String supplierLocator) {
         if (config.isMockMode()) {
             log.info("Mock-cancelled Sabre hotel booking {}", hotelBookingRef);
             return;

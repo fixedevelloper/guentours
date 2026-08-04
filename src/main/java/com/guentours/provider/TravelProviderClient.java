@@ -184,6 +184,8 @@ public interface TravelProviderClient {
 
     /**
      * Cancels an existing hotel reservation based on the provider's cancellation policy.
+     * {@code providerOfferId} and {@code supplierLocator} are Travelport-only extras its
+     * cancellation call needs alongside the confirmation - ignored by every other provider.
      */
-    void cancelHotelBooking(String hotelBookingRef);
+    void cancelHotelBooking(String hotelBookingRef, String providerOfferId, String supplierLocator);
 }

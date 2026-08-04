@@ -364,6 +364,7 @@ public class BookingService {
             throw new ProviderException("Unable to hold this room with " + offer.providerType());
         }
         booking.markOnHold(hold.pnrCode(), hold.ticketingDeadline());
+        booking.recordHotelSupplierLocator(hold.supplierLocator());
     }
 
     private void completeVehicleHold(Booking booking) {
@@ -557,7 +558,8 @@ public class BookingService {
                     client.cancelFlightBooking(pnr);
                 }
             }
-            case HOTEL -> client.cancelHotelBooking(booking.getProviderConfirmationNumber());
+            case HOTEL -> client.cancelHotelBooking(booking.getProviderConfirmationNumber(),
+                    booking.getProviderOfferId(), booking.getHotelSupplierLocator());
             case CAR_RENTAL -> client.cancelVehicleBooking(booking.getProviderConfirmationNumber());
             case FURNISHED_RENTAL -> client.cancelPropertyBooking(booking.getProviderConfirmationNumber());
         }

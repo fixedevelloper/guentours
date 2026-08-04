@@ -134,7 +134,7 @@ class SeatMapServiceTest {
         }
 
         @Override
-        public void cancelHotelBooking(String hotelBookingRef) {
+        public void cancelHotelBooking(String hotelBookingRef, String providerOfferId, String supplierLocator) {
         }
     }
 }

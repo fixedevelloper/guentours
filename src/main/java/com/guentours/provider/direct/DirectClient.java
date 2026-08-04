@@ -480,5 +480,5 @@ public class DirectClient implements TravelProviderClient {
     @Override
     public void cancelFlightBooking(String pnrCode) {}
     @Override
-    public void cancelHotelBooking(String hotelBookingRef) {}
+    public void cancelHotelBooking(String hotelBookingRef, String providerOfferId, String supplierLocator) {}
 }

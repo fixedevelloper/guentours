@@ -290,13 +290,42 @@ public class TravelportClient implements TravelProviderClient {
         log.info("Cancelled Travelport reservation {}", pnrCode);
     }
 
+    /**
+     * Cancels a Stays hotel reservation via {@code PUT /hotel/book/reservations/{reservationIdentifier}
+     * /canceloffer?supplierLocator=...&offerID=...}. {@code reservationIdentifier} is the same
+     * confirmation captured at hold time ({@link #confirmationFrom}); {@code supplierLocator} is the
+     * offer-level receipt locator captured alongside it (see {@link #supplierLocatorFrom}), and
+     * {@code offerID} is the original search offer id ({@code Booking.providerOfferId}, already
+     * persisted for every offer type). Both query params are omitted rather than sent blank when the
+     * booking doesn't have them (e.g. bookings held before this field existed).
+     */
     @Override
-    public void cancelHotelBooking(String hotelBookingRef) {
+    public void cancelHotelBooking(String hotelBookingRef, String providerOfferId, String supplierLocator) {
         if (config.isMockMode()) {
             log.info("Mock-cancelled Travelport hotel booking {}", hotelBookingRef);
             return;
         }
-        throw new ProviderException("Travelport live hotel cancellation is not yet integrated");
+        try {
+            withBookingRetry("cancel hotel reservation " + hotelBookingRef, () -> bookingRestClient.put()
+                    .uri(uriBuilder -> {
+                        uriBuilder.path("/hotel/book/reservations/{reservationIdentifier}/canceloffer");
+                        if (supplierLocator != null) {
+                            uriBuilder.queryParam("supplierLocator", supplierLocator);
+                        }
+                        if (providerOfferId != null) {
+                            uriBuilder.queryParam("offerID", providerOfferId);
+                        }
+                        return uriBuilder.build(hotelBookingRef);
+                    })
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                    .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
+                    .header(PCC_HEADER, config.getPseudoCityCode())
+                    .retrieve()
+                    .toBodilessEntity());
+        } catch (RestClientException e) {
+            throw new ProviderException("Travelport hotel cancellation failed for " + hotelBookingRef + ": " + e.getMessage());
+        }
+        log.info("Cancelled Travelport hotel reservation {}", hotelBookingRef);
     }
 
     private List<FlightOffer> callFlightApi(FlightSearchCriteria criteria) {
@@ -751,6 +780,35 @@ public class TravelportClient implements TravelProviderClient {
         var display = response.ReservationDisplayResponse();
         if (display != null && display.ReservationShort() != null && display.ReservationShort().Identifier() != null) {
             return display.ReservationShort().Identifier().value();
+        }
+        return null;
+    }
+
+    /**
+     * Hotel-only: Travelport's cancellation call ({@code PUT .../canceloffer}) needs a supplier
+     * locator alongside the GDS-level confirmation {@link #confirmationFrom} already extracts.
+     * {@link TravelportReservationResponse.Receipt} models exactly two kinds of receipt - a
+     * reservation-wide one with no {@code OfferRef} (that's the GDS locator used as the booking's
+     * confirmation number) and one tied to a specific offer via {@code OfferRef} (the supplier's own
+     * locator for that offer) - so this picks the other one {@link #confirmationFrom} skips. Returns
+     * null when the response doesn't carry an offer-level receipt, same as the confirmation lookup
+     * would for a missing field rather than guessing at a value.
+     */
+    private String supplierLocatorFrom(TravelportReservationResponse response) {
+        if (response == null) {
+            return null;
+        }
+        var reservation = response.Reservation() != null
+                ? response.Reservation()
+                : (response.ReservationResponse() != null ? response.ReservationResponse().Reservation() : null);
+        if (reservation == null || reservation.Receipt() == null) {
+            return null;
+        }
+        for (var receipt : reservation.Receipt()) {
+            boolean offerLevel = receipt.OfferRef() != null && !receipt.OfferRef().isEmpty();
+            if (offerLevel && receipt.Confirmation() != null && receipt.Confirmation().Locator() != null) {
+                return receipt.Confirmation().Locator().value();
+            }
         }
         return null;
     }
@@ -1639,7 +1697,8 @@ public class TravelportClient implements TravelProviderClient {
         if (confirmation == null) {
             throw new ProviderException("Travelport hotel reservation failed: " + commitFailureReason(response));
         }
-        return new ProviderBookingConfirmation(getType(), confirmation, LocalDateTime.now().plusHours(24), true);
+        return new ProviderBookingConfirmation(getType(), confirmation, LocalDateTime.now().plusHours(24), true,
+                supplierLocatorFrom(response));
     }
 
     /**

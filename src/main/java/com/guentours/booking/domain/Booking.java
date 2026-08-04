@@ -188,6 +188,11 @@ public class Booking {
     @Column(name = "provider_confirmation_number")
     private String providerConfirmationNumber;
 
+    /** Travelport hotel-only: a supplier-specific locator distinct from providerConfirmationNumber,
+     *  needed by the Stays cancellation call alongside it. Null for every other case. */
+    @Column(name = "hotel_supplier_locator")
+    private String hotelSupplierLocator;
+
     @Column(name = "ticketing_deadline")
     private LocalDateTime ticketingDeadline;
 
@@ -369,6 +374,14 @@ public class Booking {
         this.providerConfirmationNumber = pnrCode;
         this.ticketingDeadline = ticketingDeadline;
         this.status = BookingStatus.PENDING_PAYMENT;
+    }
+
+    /** Records the extra locator Travelport hotel cancellation needs alongside the confirmation
+     *  number - a no-op when the provider hold didn't return one. */
+    public void recordHotelSupplierLocator(String hotelSupplierLocator) {
+        if (hotelSupplierLocator != null) {
+            this.hotelSupplierLocator = hotelSupplierLocator;
+        }
     }
 
     /** The provider hold succeeded: moves out of {@code PENDING_HOLD} into the ordinary payment flow. */
