@@ -1,6 +1,7 @@
 package com.guentours.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.guentours.security.service.RateLimiterService;
 import com.guentours.shared.web.ApiError;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -24,6 +25,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final String AUTH_PREFIX = "/api/auth/login";
     private static final String REGISTER_PREFIX = "/api/auth/register";
     private static final String CHECKOUT_PREFIX = "/api/bookings/checkout";
+    private static final String FORGOT_PASSWORD_PREFIX = "/api/auth/forgot-password";
+    private static final String RESET_PASSWORD_PREFIX = "/api/auth/reset-password";
+
 
     private final RateLimiterService rateLimiterService;
     private final RateLimitProperties properties;
@@ -63,7 +67,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private RateLimitCategory categoryFor(String path) {
-        if (path.startsWith(AUTH_PREFIX) || path.startsWith(REGISTER_PREFIX)) {
+        if (path.startsWith(AUTH_PREFIX) || path.startsWith(REGISTER_PREFIX)
+                               || path.startsWith(FORGOT_PASSWORD_PREFIX) || path.startsWith(RESET_PASSWORD_PREFIX)) {
             return RateLimitCategory.AUTH;
         }
         if (path.startsWith(CHECKOUT_PREFIX)) {

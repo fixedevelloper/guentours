@@ -1,5 +1,6 @@
-package com.guentours.security;
+package com.guentours.security.service;
 
+import com.guentours.security.AppUserPrincipal;
 import com.guentours.user.domain.UserRepository;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;

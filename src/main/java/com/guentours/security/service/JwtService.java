@@ -1,5 +1,6 @@
-package com.guentours.security;
+package com.guentours.security.service;
 
+import com.guentours.security.JwtProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;

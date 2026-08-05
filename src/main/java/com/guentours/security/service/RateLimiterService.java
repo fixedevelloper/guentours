@@ -1,5 +1,8 @@
-package com.guentours.security;
+package com.guentours.security.service;
 
+import com.guentours.security.RateLimitCategory;
+import com.guentours.security.RateLimitProperties;
+import com.guentours.security.RateLimitResult;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;

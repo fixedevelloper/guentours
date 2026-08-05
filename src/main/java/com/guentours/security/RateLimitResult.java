@@ -4,11 +4,11 @@ package com.guentours.security;
  *                           a client always gets a positive Retry-After. */
 public record RateLimitResult(boolean allowed, long retryAfterSeconds) {
 
-    static RateLimitResult allow() {
+    public static RateLimitResult allow() {
         return new RateLimitResult(true, 0);
     }
 
-    static RateLimitResult deny(long retryAfterSeconds) {
+    public static RateLimitResult deny(long retryAfterSeconds) {
         return new RateLimitResult(false, Math.max(1, retryAfterSeconds));
     }
 }

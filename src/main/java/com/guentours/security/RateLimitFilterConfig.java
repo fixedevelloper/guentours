@@ -1,6 +1,7 @@
 package com.guentours.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.guentours.security.service.RateLimiterService;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

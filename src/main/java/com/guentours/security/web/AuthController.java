@@ -1,5 +1,7 @@
-package com.guentours.security;
+package com.guentours.security.web;
 
+import com.guentours.security.*;
+import com.guentours.security.service.JwtService;
 import com.guentours.user.domain.User;
 import com.guentours.user.service.UserService;
 import jakarta.validation.Valid;

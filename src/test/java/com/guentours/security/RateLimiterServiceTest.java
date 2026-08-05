@@ -1,5 +1,6 @@
 package com.guentours.security;
 
+import com.guentours.security.service.RateLimiterService;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

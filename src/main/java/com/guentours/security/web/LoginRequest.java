@@ -1,4 +1,4 @@
-package com.guentours.security;
+package com.guentours.security.web;
 
 import jakarta.validation.constraints.NotBlank;
 

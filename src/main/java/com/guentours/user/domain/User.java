@@ -2,6 +2,7 @@ package com.guentours.user.domain;
 
 import jakarta.persistence.*;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
@@ -21,6 +22,7 @@ public class User {
     @Column(length = 30)
     private String phone;
 
+    @Setter
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
@@ -54,6 +56,12 @@ public class User {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();
+    @Column(nullable = false)
+
+
+    public String getPasswordHash() {
+        return passwordHash;
+    }
 
     protected User() {}
 

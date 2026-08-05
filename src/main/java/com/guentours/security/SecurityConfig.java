@@ -1,5 +1,6 @@
 package com.guentours.security;
 
+import com.guentours.security.service.AppUserDetailsService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
