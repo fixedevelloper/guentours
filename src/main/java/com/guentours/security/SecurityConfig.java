@@ -18,6 +18,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -43,6 +45,28 @@ public class SecurityConfig {
             "/login/oauth2/**",
             "/v3/api-docs/**",
             "/swagger-ui/**"
+    };
+
+    /**
+     * CSRF is only meaningful where a request's authorization comes from an ambient cookie the
+     * browser attaches automatically (now true here, since the JWT lives in an HttpOnly cookie -
+     * see AuthCookieService). Endpoints that are already {@code permitAll} don't need it: an
+     * attacker's page can already call them directly without borrowing a victim's session, so a
+     * CSRF token would add no protection - it would only get in the way of the public
+     * login/register/guest-checkout/webhook flows below.
+     */
+    private static final String[] CSRF_IGNORED_ENDPOINTS = {
+            "/api/auth/**",
+            "/api/search/**",
+            "/api/bookings/**",
+            "/api/payments/**",
+            "/api/tickets/**",
+            "/api/geo/**",
+            "/api/destinations/**",
+            "/api/partners/register",
+            "/api/newsletter/subscribe",
+            "/oauth2/**",
+            "/login/oauth2/**"
     };
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -98,18 +122,39 @@ public class SecurityConfig {
     @Order(2)
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(AbstractHttpConfigurer::disable)
+                // CookieCsrfTokenRepository + CsrfTokenRequestAttributeHandler is the standard
+                // Spring Security pattern for an SPA: the token is exposed as a readable
+                // "XSRF-TOKEN" cookie (NOT HttpOnly, unlike the auth cookie) and the frontend's
+                // axios client is configured to echo it back as the X-XSRF-TOKEN header on every
+                // mutating request (see frontend/src/lib/api/client.ts). The attribute handler
+                // (rather than the default deferred/Xor handler) is required here because that
+                // default assumes a server-rendered form reading the token via a request
+                // attribute, which a same-page SPA client never does.
+                .csrf(csrf -> csrf
+                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                        .ignoringRequestMatchers(CSRF_IGNORED_ENDPOINTS))
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                // IF_REQUIRED rather than STATELESS: the OAuth2 login handshake below needs a
-                // session to hold the authorization request's "state" (CSRF protection) between
-                // the redirect to Google/Facebook and the callback. Every other endpoint stays
-                // effectively stateless in practice - JwtAuthenticationFilter authenticates purely
-                // from the Authorization header and never touches HttpSession, so no session is
-                // ever created for ordinary API/JWT traffic.
-                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                // STATELESS, not IF_REQUIRED: with IF_REQUIRED, Spring Security's own
+                // SessionManagementFilter silently creates a session and copies the
+                // JwtAuthenticationFilter-derived Authentication into it on the very first
+                // authenticated request (SessionFixationProtectionStrategy + an explicit
+                // securityContextRepository.saveContext() call - see SessionManagementFilter,
+                // triggered any time it finds an authenticated context that isn't already
+                // session-backed, regardless of which filter put it there). That JSESSIONID then
+                // keeps authenticating the caller even after /api/auth/logout clears the gt_auth
+                // cookie, defeating logout entirely - confirmed by testing logout with curl before
+                // this was caught. STATELESS swaps the shared SecurityContextRepository for a
+                // request-attribute-only one, so nothing can leak into a session that way.
+                // The OAuth2 login handshake below still works under STATELESS: it stores the
+                // authorization request's "state" via HttpSessionOAuth2AuthorizationRequestRepository,
+                // which calls request.getSession(true) directly and unconditionally - independent
+                // of this policy, which only governs Spring Security's own automatic session use.
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/partners/register").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/newsletter/subscribe").permitAll()
                         // Liste complète des partenaires : réservée à l'admin (utilisée par AdminPartnersPage)
                         .requestMatchers(HttpMethod.GET, "/api/partners").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/partners/*/approve", "/api/partners/*/reject").hasRole("ADMIN")

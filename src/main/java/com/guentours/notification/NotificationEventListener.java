@@ -4,6 +4,7 @@ import com.guentours.booking.domain.Booking;
 import com.guentours.booking.event.BookingConfirmedEvent;
 import com.guentours.booking.event.BookingFailedEvent;
 import com.guentours.booking.BookingService;
+import com.guentours.newsletter.event.NewsletterSubscribedEvent;
 import com.guentours.security.service.PasswordResetService;
 import com.guentours.user.domain.User;
 import com.guentours.user.event.PasswordResetRequestedEvent;
@@ -100,5 +101,19 @@ class NotificationEventListener {
                         emailService.send(user.getEmail(), "Reinitialisation de votre mot de passe Guens travel", body);
                     }, () -> log.warn("No pending reset link available for user {} - not sending reset email", event.userId()));
             }
+
+    @ApplicationModuleListener
+    void on(NewsletterSubscribedEvent event) {
+        String body = """
+                Bonjour,
+
+                Merci de vous etre inscrit(e) a la newsletter Guens travel !
+
+                Vous recevrez desormais nos meilleures offres et alertes tarifaires.
+
+                L'equipe Guens travel
+                """;
+        emailService.send(event.email(), "Bienvenue dans la newsletter Guens travel", body);
+    }
 
 }

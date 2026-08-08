@@ -49,6 +49,10 @@ app:
     # No fallback: a committed default would let anyone forge tokens the moment this is left unset.
     secret: ${APP_JWT_SECRET}
     expiration-minutes: ${APP_JWT_EXPIRATION_MINUTES:60}
+    cookie-name: ${APP_JWT_COOKIE_NAME:gt_auth}
+    # Must be true in production (HTTPS only). Only set APP_COOKIE_SECURE=false for local
+    # http://localhost dev, where a Secure cookie would never be stored by the browser.
+    cookie-secure: ${APP_COOKIE_SECURE:true}
   storage:
     minio:
       endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
@@ -81,6 +85,10 @@ app:
     # How often unpaid/deposit-only holds past their provider ticketing deadline get auto-cancelled.
     expiry-check-interval-ms: ${APP_BOOKING_EXPIRY_CHECK_INTERVAL_MS:300000}
     expiry-check-initial-delay-ms: ${APP_BOOKING_EXPIRY_DELAY_MS:60000}
+
+  notifications:
+    # How long a read in-app notification is kept before the daily cleanup job deletes it.
+    retention-read-days: ${RETENTION_READ_NOTIFICATIONS_DAYS:30}
 
   admin:
     # Seeds a default super-admin account on first boot (skipped once that email already exists),
@@ -177,6 +185,15 @@ app:
 
 server:
   port: ${SERVER_PORT:8080}
+  servlet:
+    session:
+      cookie:
+        # Applies to the transient JSESSIONID used only during the OAuth2 login handshake (see
+        # SecurityConfig) - same Secure flag as the JWT cookie so both behave consistently in
+        # local http dev vs. production HTTPS.
+        http-only: true
+        same-site: lax
+        secure: ${APP_COOKIE_SECURE:true}
 
 management:
   endpoints:

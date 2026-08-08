@@ -21,6 +21,15 @@ public final class SecurityUtils {
         return null;
     }
 
+    /** Returns the authenticated user's id, or {@code null} for anonymous/guest requests. */
+    public static String currentUserId() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof AppUserPrincipal principal) {
+            return principal.getUserId();
+        }
+        return null;
+    }
+
     /** Returns the authenticated partner account's {@code partnerId}, or {@code null} otherwise. */
     public static String currentPartnerId() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();

@@ -577,6 +577,7 @@ public class BookingService {
         for (Booking booking : expired) {
             try {
                 cancel(booking.getId());
+                events.publishEvent(new BookingAutoCancelledEvent(booking.getId(), "HOLD_EXPIRED"));
                 log.info("Auto-cancelled expired booking hold {}", booking.getId());
             } catch (Exception ex) {
                 log.warn("Failed to auto-cancel expired booking {}: {}", booking.getId(), ex.getMessage());

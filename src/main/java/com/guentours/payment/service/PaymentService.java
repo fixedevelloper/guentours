@@ -11,6 +11,7 @@ import com.guentours.payment.domain.PaymentRepository;
 import com.guentours.payment.domain.PaymentStatus;
 import com.guentours.payment.events.BookingDepositPaidEvent;
 import com.guentours.payment.events.BookingFullyPaidEvent;
+import com.guentours.payment.events.PaymentFailedEvent;
 import com.guentours.payment.gateway.AuthorizationChallenge;
 import com.guentours.payment.gateway.ChargeRequest;
 import com.guentours.payment.gateway.ChargeResult;
@@ -86,8 +87,7 @@ public class PaymentService {
         } catch (Exception ex) {
             log.error("Erreur lors de l'appel au gateway pour le payment {} (booking {})",
                     payment.getId(), booking.id(), ex);
-            payment.markFailed("Erreur technique gateway : " + ex.getMessage());
-            paymentRepository.save(payment);
+            failPayment(payment, "Erreur technique gateway : " + ex.getMessage());
             return payment;
         }
 
@@ -113,8 +113,7 @@ public class PaymentService {
 
         ChargeRequest originalRequest = pendingCardAuthorizationCache.take(paymentId).orElse(null);
         if (originalRequest == null) {
-            payment.markFailed("Session d'autorisation expirée, veuillez recommencer le paiement.");
-            paymentRepository.save(payment);
+            failPayment(payment, "Session d'autorisation expirée, veuillez recommencer le paiement.");
             return payment;
         }
 
@@ -124,8 +123,7 @@ public class PaymentService {
             result = gateway.completeCardPinAuthorization(paymentId, originalRequest, pin);
         } catch (Exception ex) {
             log.error("Erreur lors de la validation du PIN pour le payment {}", paymentId, ex);
-            payment.markFailed("Erreur technique gateway : " + ex.getMessage());
-            paymentRepository.save(payment);
+            failPayment(payment, "Erreur technique gateway : " + ex.getMessage());
             return payment;
         }
 
@@ -178,8 +176,7 @@ public class PaymentService {
             applyConfirmedPayment(payment, booking);
 
         } else if (result.isFailed()) {
-            payment.markFailed(result.failureReason());
-            paymentRepository.save(payment);
+            failPayment(payment, result.failureReason());
 
         } else if (result.requiresAuthorization()) {
             AuthorizationChallenge challenge = result.authorizationChallenge();
@@ -194,9 +191,8 @@ public class PaymentService {
                 // L'AVS a besoin de l'adresse de facturation, que le formulaire carte ne collecte pas
                 // aujourd'hui (elle n'est demandée que pour Google/Apple Pay et PayPal) : on échoue
                 // proprement plutôt que de rester bloqué sans jamais pouvoir compléter le défi.
-                payment.markFailed("Ce mode de vérification carte (AVS) n'est pas encore supporté - "
+                failPayment(payment, "Ce mode de vérification carte (AVS) n'est pas encore supporté - "
                         + "veuillez réessayer avec un autre moyen de paiement.");
-                paymentRepository.save(payment);
                 return;
             }
 
@@ -205,9 +201,8 @@ public class PaymentService {
                 // le flw_ref de Flutterwave) que ce paiement ne sait pas encore soumettre : on échoue
                 // proprement plutôt que de laisser le paiement PENDING_AUTHORIZATION sans jamais
                 // pouvoir en sortir.
-                payment.markFailed("Ce mode de vérification carte (OTP) n'est pas encore supporté - "
+                failPayment(payment, "Ce mode de vérification carte (OTP) n'est pas encore supporté - "
                         + "veuillez réessayer avec un autre moyen de paiement.");
-                paymentRepository.save(payment);
                 return;
             }
 
@@ -246,6 +241,12 @@ public class PaymentService {
                     booking.id(), payment.getId(), payment.getGatewayReference(),
                     payment.getPayerReferenceLast4()));
         }
+    }
+
+    private void failPayment(Payment payment, String reason) {
+        payment.markFailed(reason);
+        paymentRepository.save(payment);
+        eventPublisher.publishEvent(new PaymentFailedEvent(payment.getBookingId(), payment.getId(), reason));
     }
 
     public Payment getById(String paymentId) {

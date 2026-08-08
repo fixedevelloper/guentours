@@ -15,6 +15,16 @@ public class JwtProperties {
 
     private long expirationMinutes = 60;
 
+    /** Name of the HttpOnly cookie carrying the JWT - kept in sync with frontend/src/proxy.ts. */
+    private String cookieName = "gt_auth";
+
+    /**
+     * Whether the auth cookie requires HTTPS. Must stay true in production; only disable via
+     * APP_COOKIE_SECURE=false for local http://localhost dev, where a Secure cookie would
+     * otherwise never be stored by the browser.
+     */
+    private boolean cookieSecure = true;
+
     public String getSecret() {
         return secret;
     }
@@ -29,5 +39,21 @@ public class JwtProperties {
 
     public void setExpirationMinutes(long expirationMinutes) {
         this.expirationMinutes = expirationMinutes;
+    }
+
+    public String getCookieName() {
+        return cookieName;
+    }
+
+    public void setCookieName(String cookieName) {
+        this.cookieName = cookieName;
+    }
+
+    public boolean isCookieSecure() {
+        return cookieSecure;
+    }
+
+    public void setCookieSecure(boolean cookieSecure) {
+        this.cookieSecure = cookieSecure;
     }
 }

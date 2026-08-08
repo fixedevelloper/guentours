@@ -6,6 +6,7 @@ import com.guentours.user.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
@@ -17,21 +18,25 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * On successful Google/Facebook login, resolves (or auto-provisions) the local account by email
- * and redirects the browser back to the frontend with a freshly-issued JWT. The app is otherwise
- * entirely stateless/Bearer-token based, so the session this OAuth2 handshake used is never
- * relied on again past this point.
+ * and redirects the browser back to the frontend, with the freshly-issued JWT set as an HttpOnly
+ * cookie on the redirect response (never in the URL, which would otherwise leak the token into
+ * browser history, the Referer header and server access logs). The app is otherwise entirely
+ * stateless, so the session this OAuth2 handshake used is never relied on again past this point.
  */
 @Component
 class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private final UserService userService;
     private final JwtService jwtService;
+    private final AuthCookieService authCookieService;
     private final String frontendRedirectUri;
 
     OAuth2LoginSuccessHandler(UserService userService, JwtService jwtService,
+                              AuthCookieService authCookieService,
                               @Value("${app.oauth2.frontend-redirect-uri}") String frontendRedirectUri) {
         this.userService = userService;
         this.jwtService = jwtService;
+        this.authCookieService = authCookieService;
         this.frontendRedirectUri = frontendRedirectUri;
     }
 
@@ -54,6 +59,7 @@ class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         AppUserPrincipal principal = new AppUserPrincipal(user);
         String token = jwtService.generateToken(principal, principal.getRole());
 
-        response.sendRedirect(frontendRedirectUri + "?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8));
+        response.addHeader(HttpHeaders.SET_COOKIE, authCookieService.buildAuthCookie(token).toString());
+        response.sendRedirect(frontendRedirectUri);
     }
 }

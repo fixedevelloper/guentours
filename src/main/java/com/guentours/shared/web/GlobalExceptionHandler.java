@@ -12,6 +12,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -69,6 +70,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiError.of(400, "Bad Request", ex.getMessage()));
+    }
+
+    /**
+     * Used throughout the codebase (AuthController#me, PartnerService, ResellerService, ...) to
+     * reject with an arbitrary status - without this handler it fell through to
+     * {@link #handleGeneric}, turning every one of those into a misleading 500 instead of the
+     * intended 401/404/etc.
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiError> handleResponseStatus(ResponseStatusException ex) {
+        HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
+        return ResponseEntity.status(status)
+                .body(ApiError.of(status.value(), status.getReasonPhrase(), ex.getReason()));
     }
 
     @ExceptionHandler(Exception.class)

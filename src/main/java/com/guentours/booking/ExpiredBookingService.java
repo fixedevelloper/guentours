@@ -4,8 +4,10 @@ import com.guentours.booking.domain.Booking;
 import com.guentours.booking.domain.BookingRepository;
 import com.guentours.booking.domain.BookingStatus;
 import com.guentours.booking.domain.PaymentPlan;
+import com.guentours.booking.event.BookingAutoCancelledEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,7 @@ import java.util.List;
 public class ExpiredBookingService {
 
     private final BookingRepository bookingRepository;
+    private final ApplicationEventPublisher events;
     // Injecter ici un service d'intégration avec le Provider (ex: ProviderService) si besoin d'annuler le PNR chez le fournisseur
 
     /**
@@ -71,8 +74,8 @@ public class ExpiredBookingService {
 
             bookingRepository.save(booking);
 
-            // 3. (Optionnel) Envoyer un email au client pour notifier l'annulation
-            // notificationService.sendBookingCancelledEmail(booking);
+            // 3. Notifier le client (notification temps réel + email, voir usernotification/notification)
+            events.publishEvent(new BookingAutoCancelledEvent(booking.getId(), "PAY_LATER_EXPIRED"));
 
         } catch (Exception e) {
             log.error("Échec lors de l'annulation automatique de la réservation ID: {}", booking.getId(), e);

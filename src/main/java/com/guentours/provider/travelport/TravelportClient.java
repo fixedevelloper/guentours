@@ -277,13 +277,14 @@ public class TravelportClient implements TravelProviderClient {
             return;
         }
         try {
-            withBookingRetry("cancel PNR " + pnrCode, () -> bookingRestClient.delete()
+        /*    withBookingRetry("cancel PNR " + pnrCode, () -> bookingRestClient.post()
                     .uri(RESERVATIONS_BASE + "/{locator}", pnrCode)
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
                     .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
                     .header(PCC_HEADER, config.getPseudoCityCode())
                     .retrieve()
-                    .toBodilessEntity());
+                    .toBodilessEntity());*/
+            callDeleteTicketApi(pnrCode);
         } catch (RestClientException e) {
             throw new ProviderException("Travelport cancellation failed for PNR " + pnrCode + ": " + e.getMessage());
         }
@@ -989,6 +990,72 @@ public class TravelportClient implements TravelProviderClient {
         }
 
         return new FinalTicketConfirmation(getType(), pnrCode, List.of(), true);
+    }
+
+    private void callDeleteTicketApi(String pnrCode) {
+        String session = UUID.randomUUID().toString();
+
+        // --- Step 1 : construire la session workbench à partir du PNR ---
+        String buildFromLocatorUrl = resolvedBaseUrl
+                + "/air/book/session/reservationworkbench/buildfromlocator?Locator=" + pnrCode;
+
+        ReservationWorkbenchResponse buildResponse = bookingRestClient.post()
+                .uri(buildFromLocatorUrl)
+                .headers(h -> workbenchHeaders(h, session))
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .body(ReservationWorkbenchResponse.class);
+
+        if (buildResponse == null || buildResponse.id() == null) {
+            throw new IllegalStateException("Impossible de construire la session workbench pour le PNR " + pnrCode);
+        }
+
+        String reservationId = buildResponse.id();
+        log.info("Session workbench construite pour le PNR {} (reservationId={})", pnrCode, reservationId);
+
+        // --- Step 2 : annuler tous les items de la réservation ---
+        String cancelItemsUrl = resolvedBaseUrl
+                + "/air/book/reservationworkbench/" + reservationId + "/reservations/cancelitems";
+
+        bookingRestClient.post()
+                .uri(cancelItemsUrl)
+                .headers(h -> workbenchHeaders(h, session))
+                .accept(MediaType.APPLICATION_JSON)
+                .body(new CancelRequest())
+                .retrieve()
+                .toBodilessEntity();
+
+        log.info("Items annulés pour la réservation {} (PNR {})", reservationId, pnrCode);
+
+        // --- Step 3 : commit de l'annulation ---
+        String commitUrl = resolvedBaseUrl
+                + "/air/book/reservation/reservations/" + reservationId;
+
+        bookingRestClient.post()
+                .uri(commitUrl)
+                .headers(h -> workbenchHeaders(h, session))
+                .accept(MediaType.APPLICATION_JSON)
+                .body(new ReservationQueryCommitReservation())
+                .retrieve()
+                .toBodilessEntity();
+
+        log.info("Annulation confirmée pour la réservation {} (PNR {})", reservationId, pnrCode);
+    }
+
+    private record CancelRequest(String type, boolean cancelAllInd) {
+        CancelRequest() {
+            this("CancelRequest", true);
+        }
+    }
+
+    private record ReservationQueryCommitReservation(String type) {
+        ReservationQueryCommitReservation() {
+            this("ReservationQueryCommitReservation");
+        }
+    }
+
+    // ⚠️ Champs à ajuster selon la vraie réponse de buildfromlocator (voir note ci-dessous)
+    private record ReservationWorkbenchResponse(String id) {
     }
 
     /**
