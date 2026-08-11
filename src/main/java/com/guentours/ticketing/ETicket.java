@@ -27,8 +27,14 @@ public class ETicket {
     @Column(name = "provider_confirmation_number")
     private String providerConfirmationNumber;
 
+    /**
+     * columnDefinition pinned to "TEXT" on purpose: plain {@code @Lob} on a MySQL String column
+     * defaults to {@code TINYTEXT} (255-byte max) - real rendered ticket text was silently failing
+     * every insert against MySQL (see V35 migration) while every H2-backed test stayed green,
+     * since H2 generates an unbounded column from {@code @Lob} alone with no such limit.
+     */
     @Lob
-    @Column(name = "document")
+    @Column(name = "document", columnDefinition = "TEXT")
     private String document;
 
     /** Public MinIO URL of the branded PDF (company logo, plus the reseller's when the booking
