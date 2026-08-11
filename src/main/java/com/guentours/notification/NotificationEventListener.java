@@ -5,6 +5,9 @@ import com.guentours.booking.event.BookingConfirmedEvent;
 import com.guentours.booking.event.BookingFailedEvent;
 import com.guentours.booking.BookingService;
 import com.guentours.newsletter.event.NewsletterSubscribedEvent;
+import com.guentours.storage.StorageService;
+import com.guentours.ticketing.ETicket;
+import com.guentours.ticketing.ETicketService;
 import com.guentours.user.domain.User;
 import com.guentours.user.event.PasswordResetRequestedEvent;
 import com.guentours.user.event.UserAutoProvisionedEvent;
@@ -15,6 +18,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 @Component
 class NotificationEventListener {
 
@@ -24,11 +29,18 @@ class NotificationEventListener {
     private final UserService userService;
     private final BookingService bookingService;
     private final PendingPasswordResetLinkSource passwordResetLinkSource;
-    NotificationEventListener(EmailService emailService, UserService userService, BookingService bookingService, PendingPasswordResetLinkSource passwordResetLinkSource) {
+    private final ETicketService eTicketService;
+    private final StorageService storageService;
+
+    NotificationEventListener(EmailService emailService, UserService userService, BookingService bookingService,
+                              PendingPasswordResetLinkSource passwordResetLinkSource, ETicketService eTicketService,
+                              StorageService storageService) {
         this.emailService = emailService;
         this.userService = userService;
         this.bookingService = bookingService;
         this.passwordResetLinkSource = passwordResetLinkSource;
+        this.eTicketService = eTicketService;
+        this.storageService = storageService;
     }
 
     @ApplicationModuleListener
@@ -55,6 +67,7 @@ class NotificationEventListener {
     void on(BookingConfirmedEvent event) {
         Booking booking = bookingService.getById(event.bookingId());
         User user = userService.getById(booking.getUserId());
+        String subject = "Confirmation de votre reservation Guens travel";
         String body = """
                 Bonjour %s,
 
@@ -67,7 +80,35 @@ class NotificationEventListener {
                 Merci de voyager avec Guens travel.
                 """.formatted(user.getFullName(), booking.getId(), booking.getProviderConfirmationNumber(),
                 String.join(", ", booking.getETicketNumbers()));
-        emailService.send(booking.getContactEmail(), "Confirmation de votre reservation Guens travel", body);
+
+        byte[] ticketPdf = firstTicketPdf(booking.getId());
+        if (ticketPdf != null) {
+            emailService.sendWithAttachment(booking.getContactEmail(), subject, body, false, ticketPdf,
+                    "billet.pdf", "application/pdf");
+        } else {
+            emailService.send(booking.getContactEmail(), subject, body);
+        }
+    }
+
+    /**
+     * Best-effort: the PDF is generated asynchronously by the ticketing module reacting to the
+     * same event (see {@code ETicketService.on(BookingConfirmedEvent)}, running independently of
+     * this listener) and can legitimately be unavailable (rendering failed, or this listener races
+     * ahead of it) - falls back to the plain-text confirmation without an attachment rather than
+     * failing the whole notification.
+     */
+    private byte[] firstTicketPdf(String bookingId) {
+        List<ETicket> tickets = eTicketService.getForBookingInternal(bookingId);
+        if (tickets.isEmpty() || tickets.get(0).getPdfUrl() == null) {
+            return null;
+        }
+        try {
+            return storageService.download(tickets.get(0).getPdfUrl());
+        } catch (Exception ex) {
+            log.warn("Could not download ticket PDF for booking {}, sending confirmation without attachment: {}",
+                    bookingId, ex.getMessage());
+            return null;
+        }
     }
 
     @ApplicationModuleListener

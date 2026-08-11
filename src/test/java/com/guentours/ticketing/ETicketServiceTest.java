@@ -5,6 +5,7 @@ import com.guentours.booking.domain.Booking;
 import com.guentours.booking.event.BookingConfirmedEvent;
 import com.guentours.provider.ProviderType;
 import com.guentours.shared.Money;
+import com.guentours.shared.exception.BusinessException;
 import com.guentours.shared.exception.NotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -28,12 +29,16 @@ class ETicketServiceTest {
     private ETicketRepository eTicketRepository;
     @Mock
     private BookingService bookingService;
+    @Mock
+    private TicketDocumentService ticketDocumentService;
+    @Mock
+    private TicketEmailService ticketEmailService;
 
     private ETicketService eTicketService;
 
     @BeforeEach
     void setUp() {
-        eTicketService = new ETicketService(eTicketRepository, bookingService);
+        eTicketService = new ETicketService(eTicketRepository, bookingService, ticketDocumentService, ticketEmailService);
     }
 
     private Booking confirmedFlightBooking(List<String> eTicketNumbers) {
@@ -45,10 +50,13 @@ class ETicketServiceTest {
     }
 
     @Test
-    @DisplayName("on(BookingConfirmedEvent) saves one ETicket per e-ticket number, each with a rendered document")
+    @DisplayName("on(BookingConfirmedEvent) saves one ETicket per e-ticket number, each with a rendered document and PDF URL")
     void generatesOneETicketPerNumber() {
         Booking booking = confirmedFlightBooking(List.of("ET-001", "ET-002"));
         when(bookingService.getById("booking-1")).thenReturn(booking);
+        when(ticketDocumentService.renderPdf(eq(booking), anyString())).thenReturn(new byte[] {1, 2, 3});
+        when(ticketDocumentService.uploadPdf(eq(booking.getId()), anyString(), any(byte[].class)))
+                .thenAnswer(inv -> "https://minio.example/sandbox/tickets/" + booking.getId() + "/" + inv.getArgument(1) + ".pdf");
 
         eTicketService.on(new BookingConfirmedEvent("booking-1"));
 
@@ -61,7 +69,24 @@ class ETicketServiceTest {
             assertThat(ticket.getBookingId()).isEqualTo(booking.getId());
             assertThat(ticket.getProviderConfirmationNumber()).isEqualTo("PNR123");
             assertThat(ticket.getDocument()).contains("PNR123", "jean@example.com", "FLIGHT");
+            assertThat(ticket.getPdfUrl()).endsWith(ticket.getTicketNumber() + ".pdf");
         });
+    }
+
+    @Test
+    @DisplayName("on(BookingConfirmedEvent) still saves the ticket (with a null pdfUrl) when PDF rendering fails")
+    void savesTicketWithoutPdfUrlWhenPdfRenderingFails() {
+        Booking booking = confirmedFlightBooking(List.of("ET-001"));
+        when(bookingService.getById("booking-1")).thenReturn(booking);
+        when(ticketDocumentService.renderPdf(eq(booking), anyString())).thenThrow(new RuntimeException("boom"));
+
+        eTicketService.on(new BookingConfirmedEvent("booking-1"));
+
+        ArgumentCaptor<ETicket> savedCaptor = ArgumentCaptor.forClass(ETicket.class);
+        verify(eTicketRepository).save(savedCaptor.capture());
+        assertThat(savedCaptor.getValue().getPdfUrl()).isNull();
+        assertThat(savedCaptor.getValue().getDocument()).contains("PNR123");
+        verify(ticketDocumentService, never()).uploadPdf(anyString(), anyString(), any());
     }
 
     @Test
@@ -101,5 +126,80 @@ class ETicketServiceTest {
                 .isInstanceOf(NotFoundException.class);
 
         verifyNoInteractions(eTicketRepository);
+    }
+
+    @Test
+    @DisplayName("getForBookingInternal returns the repository's tickets without any access check")
+    void getForBookingInternalSkipsAccessCheck() {
+        List<ETicket> tickets = List.of(new ETicket("booking-1", "ET-001", "PNR123", "doc"));
+        when(eTicketRepository.findByBookingId("booking-1")).thenReturn(tickets);
+
+        List<ETicket> result = eTicketService.getForBookingInternal("booking-1");
+
+        assertThat(result).isEqualTo(tickets);
+        verifyNoInteractions(bookingService);
+    }
+
+    private ETicket ticketWithPdf(String bookingId, String ticketNumber, String pdfUrl) {
+        ETicket ticket = new ETicket(bookingId, ticketNumber, "PNR123", "doc");
+        ticket.setPdfUrl(pdfUrl);
+        return ticket;
+    }
+
+    @Test
+    @DisplayName("sendByEmail defaults the recipient to the booking's own contact email")
+    void sendByEmailDefaultsRecipientToContactEmail() {
+        Booking booking = confirmedFlightBooking(List.of("ET-001"));
+        ETicket ticket = ticketWithPdf("booking-1", "ET-001", "https://minio.example/sandbox/tickets/booking-1/ET-001.pdf");
+        when(eTicketRepository.findById("ticket-1")).thenReturn(java.util.Optional.of(ticket));
+        when(bookingService.getById("booking-1")).thenReturn(booking);
+
+        eTicketService.sendByEmail("ticket-1", "jean@example.com", null);
+
+        verify(bookingService).verifyGuestAccess(booking, "jean@example.com");
+        verify(ticketEmailService).sendTicketByEmail(ticket, "jean@example.com");
+    }
+
+    @Test
+    @DisplayName("sendByEmail sends to an explicit recipient when one is given")
+    void sendByEmailUsesExplicitRecipient() {
+        Booking booking = confirmedFlightBooking(List.of("ET-001"));
+        ETicket ticket = ticketWithPdf("booking-1", "ET-001", "https://minio.example/sandbox/tickets/booking-1/ET-001.pdf");
+        when(eTicketRepository.findById("ticket-1")).thenReturn(java.util.Optional.of(ticket));
+        when(bookingService.getById("booking-1")).thenReturn(booking);
+
+        eTicketService.sendByEmail("ticket-1", "jean@example.com", "friend@example.com");
+
+        verify(ticketEmailService).sendTicketByEmail(ticket, "friend@example.com");
+    }
+
+    @Test
+    @DisplayName("sendByEmail propagates access-denied instead of sending to/for a stranger")
+    void sendByEmailPropagatesAccessDenied() {
+        Booking booking = confirmedFlightBooking(List.of("ET-001"));
+        ETicket ticket = ticketWithPdf("booking-1", "ET-001", "https://minio.example/sandbox/tickets/booking-1/ET-001.pdf");
+        when(eTicketRepository.findById("ticket-1")).thenReturn(java.util.Optional.of(ticket));
+        when(bookingService.getById("booking-1")).thenReturn(booking);
+        doThrow(new NotFoundException("Booking not found: booking-1"))
+                .when(bookingService).verifyGuestAccess(booking, "wrong@example.com");
+
+        assertThatThrownBy(() -> eTicketService.sendByEmail("ticket-1", "wrong@example.com", null))
+                .isInstanceOf(NotFoundException.class);
+
+        verifyNoInteractions(ticketEmailService);
+    }
+
+    @Test
+    @DisplayName("sendByEmail refuses when no PDF has been generated for this ticket yet")
+    void sendByEmailRejectsWhenNoPdfAvailable() {
+        Booking booking = confirmedFlightBooking(List.of("ET-001"));
+        ETicket ticket = new ETicket("booking-1", "ET-001", "PNR123", "doc"); // pdfUrl left null
+        when(eTicketRepository.findById("ticket-1")).thenReturn(java.util.Optional.of(ticket));
+        when(bookingService.getById("booking-1")).thenReturn(booking);
+
+        assertThatThrownBy(() -> eTicketService.sendByEmail("ticket-1", "jean@example.com", null))
+                .isInstanceOf(BusinessException.class);
+
+        verifyNoInteractions(ticketEmailService);
     }
 }

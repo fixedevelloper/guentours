@@ -100,11 +100,20 @@ class BookingFlowIntegrationTest {
             assertThat(objectMapper.readTree(bookingResponse.getBody()).get("status").asText()).isEqualTo("CONFIRMED");
         });
 
-        ResponseEntity<String> ticketsResponse = restTemplate.getForEntity(ticketsUri, String.class);
-        assertThat(ticketsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-        JsonNode tickets = objectMapper.readTree(ticketsResponse.getBody());
-        assertThat(tickets.size()).isGreaterThan(0);
-        JsonNode firstTicket = tickets.get(0);
+        // Ticket rows are written by a separate async event listener reacting to the same
+        // BookingConfirmedEvent that flipped the booking to CONFIRMED above (see ETicketService) -
+        // now that it also renders/uploads a PDF (real Thymeleaf + PDF rendering, not just a JPA
+        // save), it can genuinely still be running a moment after the booking itself already shows
+        // CONFIRMED, so this polls instead of asserting immediately.
+        java.util.concurrent.atomic.AtomicReference<JsonNode> ticketsRef = new java.util.concurrent.atomic.AtomicReference<>();
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            ResponseEntity<String> ticketsResponse = restTemplate.getForEntity(ticketsUri, String.class);
+            assertThat(ticketsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+            JsonNode tickets = objectMapper.readTree(ticketsResponse.getBody());
+            assertThat(tickets.size()).isGreaterThan(0);
+            ticketsRef.set(tickets);
+        });
+        JsonNode firstTicket = ticketsRef.get().get(0);
         assertThat(firstTicket.get("ticketNumber").asText()).isNotBlank();
         assertThat(firstTicket.get("bookingId").asText()).isEqualTo(bookingId);
         assertThat(firstTicket.get("document").asText()).contains("ELECTRONIC TICKET", contactEmail);

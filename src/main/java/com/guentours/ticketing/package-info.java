@@ -3,6 +3,6 @@
  * ticket per traveler/e-ticket number the provider issued.
  */
 @org.springframework.modulith.ApplicationModule(
-        allowedDependencies = {"booking"}
+        allowedDependencies = {"booking", "reseller::domain", "storage", "shared"}
 )
 package com.guentours.ticketing;

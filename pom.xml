@@ -25,6 +25,7 @@
         <springdoc.version>2.6.0</springdoc.version>
         <spring-dotenv.version>5.1.0</spring-dotenv.version>
         <kotlin.version>2.3.20</kotlin.version>
+        <openhtmltopdf.version>1.0.10</openhtmltopdf.version>
     </properties>
 
     <dependencyManagement>
@@ -120,6 +121,17 @@
             <groupId>io.minio</groupId>
             <artifactId>minio</artifactId>
             <version>8.5.17</version>
+        </dependency>
+        <!-- PDF rendering: converts a Thymeleaf-rendered XHTML ticket document to PDF bytes -->
+        <dependency>
+            <groupId>com.openhtmltopdf</groupId>
+            <artifactId>openhtmltopdf-pdfbox</artifactId>
+            <version>${openhtmltopdf.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.openhtmltopdf</groupId>
+            <artifactId>openhtmltopdf-slf4j</artifactId>
+            <version>${openhtmltopdf.version}</version>
         </dependency>
         <!-- Flyway (schema migrations, MySQL dialect support) -->
         <dependency>

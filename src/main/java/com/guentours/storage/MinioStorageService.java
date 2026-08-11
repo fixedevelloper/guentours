@@ -1,5 +1,6 @@
 package com.guentours.storage;
 
+import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
@@ -10,6 +11,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
@@ -60,6 +62,45 @@ public class MinioStorageService implements StorageService {
         }
 
         return "%s/%s/%s".formatted(properties.getPublicUrl(), properties.getBucket(), objectKey);
+    }
+
+    @Override
+    public String upload(String keyPrefix, byte[] content, String contentType, String filename) {
+        if (content == null || content.length == 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Fichier vide ou manquant");
+        }
+        String objectKey = "%s/%s".formatted(keyPrefix, filename);
+
+        try (InputStream stream = new ByteArrayInputStream(content)) {
+            client.putObject(PutObjectArgs.builder()
+                    .bucket(properties.getBucket())
+                    .object(objectKey)
+                    .stream(stream, content.length, -1)
+                    .contentType(contentType)
+                    .build());
+        } catch (Exception ex) {
+            log.error("Failed to upload object '{}' to MinIO: {}", objectKey, ex.getMessage());
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Échec de l'upload du fichier");
+        }
+
+        return "%s/%s/%s".formatted(properties.getPublicUrl(), properties.getBucket(), objectKey);
+    }
+
+    @Override
+    public byte[] download(String publicUrl) {
+        String objectKey = extractObjectKey(publicUrl);
+        if (objectKey == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Fichier introuvable");
+        }
+        try (InputStream stream = client.getObject(GetObjectArgs.builder()
+                .bucket(properties.getBucket())
+                .object(objectKey)
+                .build())) {
+            return stream.readAllBytes();
+        } catch (Exception ex) {
+            log.error("Failed to download object '{}' from MinIO: {}", objectKey, ex.getMessage());
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Échec du téléchargement du fichier");
+        }
     }
 
     @Override

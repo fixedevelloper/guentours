@@ -396,6 +396,10 @@ export interface ETicket {
   ticketNumber: string;
   providerConfirmationNumber: string | null;
   document: string;
+  /** Public MinIO URL of the branded PDF (company logo, plus the reseller's when the booking went
+   *  through one) - null when PDF generation hasn't completed yet or failed; `document` (plain
+   *  text) is always available as a fallback. */
+  pdfUrl: string | null;
   issuedAt: string;
 }
 

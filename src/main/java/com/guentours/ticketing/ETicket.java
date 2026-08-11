@@ -31,6 +31,12 @@ public class ETicket {
     @Column(name = "document")
     private String document;
 
+    /** Public MinIO URL of the branded PDF (company logo, plus the reseller's when the booking
+     *  went through one) - null when PDF generation failed, in which case {@link #document} (the
+     *  plain-text fallback) is still available. */
+    @Column(name = "pdf_url", length = 512)
+    private String pdfUrl;
+
     @Column(name = "issued_at", nullable = false)
     private Instant issuedAt = Instant.now();
 
@@ -63,6 +69,14 @@ public class ETicket {
 
     public String getDocument() {
         return document;
+    }
+
+    public String getPdfUrl() {
+        return pdfUrl;
+    }
+
+    public void setPdfUrl(String pdfUrl) {
+        this.pdfUrl = pdfUrl;
     }
 
     public Instant getIssuedAt() {
