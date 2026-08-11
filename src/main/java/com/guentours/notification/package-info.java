@@ -4,6 +4,6 @@
  * triggered entirely by domain events from the user/booking modules.
  */
 @org.springframework.modulith.ApplicationModule(
-        allowedDependencies = {"user", "booking", "newsletter"}
+        allowedDependencies = {"user", "booking", "newsletter::event"}
 )
 package com.guentours.notification;

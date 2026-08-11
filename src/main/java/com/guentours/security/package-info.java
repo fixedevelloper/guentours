@@ -3,6 +3,6 @@
  * Security filter chain. Bridges to the user module to load account details.
  */
 @org.springframework.modulith.ApplicationModule(
-        allowedDependencies = {"user"}
+        allowedDependencies = {"user", "shared"}
 )
 package com.guentours.security;

@@ -5,6 +5,6 @@
  * (see {@code UserNotificationRetentionCleanup}).
  */
 @org.springframework.modulith.ApplicationModule(
-        allowedDependencies = {"booking", "payment", "security"}
+        allowedDependencies = {"booking", "payment", "security", "shared"}
 )
 package com.guentours.usernotification;
