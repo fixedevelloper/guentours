@@ -101,7 +101,19 @@ class BookingFlowIntegrationTest {
         });
 
         ResponseEntity<String> ticketsResponse = restTemplate.getForEntity(ticketsUri, String.class);
-        assertThat(objectMapper.readTree(ticketsResponse.getBody()).size()).isGreaterThan(0);
+        assertThat(ticketsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode tickets = objectMapper.readTree(ticketsResponse.getBody());
+        assertThat(tickets.size()).isGreaterThan(0);
+        JsonNode firstTicket = tickets.get(0);
+        assertThat(firstTicket.get("ticketNumber").asText()).isNotBlank();
+        assertThat(firstTicket.get("bookingId").asText()).isEqualTo(bookingId);
+        assertThat(firstTicket.get("document").asText()).contains("ELECTRONIC TICKET", contactEmail);
+
+        // A guest supplying the wrong contact email must not be able to read someone else's e-tickets.
+        URI ticketsUriWrongEmail = withEmail("http://localhost:" + port + "/api/tickets/booking/" + bookingId,
+                "someone-else@example.com");
+        assertThat(restTemplate.getForEntity(ticketsUriWrongEmail, String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     /**

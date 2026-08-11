@@ -394,7 +394,6 @@ export interface ETicket {
   id: string;
   bookingId: string;
   ticketNumber: string;
-  tempPassword:string;
   providerConfirmationNumber: string | null;
   document: string;
   issuedAt: string;

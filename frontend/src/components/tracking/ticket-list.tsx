@@ -1,18 +1,55 @@
 // components/tracking/ticket-list.tsx
 "use client";
 
+import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Printer, Ticket, CheckCircle2, Calendar, FileText } from "lucide-react";
+import { Printer, Ticket, CheckCircle2, Calendar, FileText, ChevronDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTicketsQuery } from "@/hooks/use-tickets";
 import { formatDateTime } from "@/lib/format";
+import type { ETicket } from "@/lib/api/types";
+
+function escapeHtml(value: string): string {
+  return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+}
+
+/**
+ * window.print() alone would print the whole current page (nav, every other ticket in the list,
+ * ...) with no way to scope it to just this one - opens a minimal, self-contained window with
+ * only this ticket's rendered document instead, so printing one ticket never drags the rest of
+ * the page (or the other travelers' tickets) along with it.
+ */
+function printTicket(ticket: ETicket) {
+  const printWindow = window.open("", "_blank", "width=480,height=640");
+  if (!printWindow) return;
+  printWindow.document.write(`<!doctype html>
+<html>
+<head>
+<title>Billet ${escapeHtml(ticket.ticketNumber)}</title>
+<meta charset="utf-8" />
+<style>
+  body { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; white-space: pre-wrap;
+         font-size: 13px; line-height: 1.5; padding: 24px; color: #111; }
+</style>
+</head>
+<body>${escapeHtml(ticket.document)}</body>
+</html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.onafterprint = () => printWindow.close();
+  printWindow.print();
+}
 
 export function TicketList({ bookingId, enabled }: { bookingId: string; enabled: boolean }) {
   const t = useTranslations("Tickets");
   const locale = useLocale();
   const { data, isLoading } = useTicketsQuery(bookingId, enabled);
+  const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
 
   if (!enabled) return null;
 
@@ -89,11 +126,22 @@ export function TicketList({ bookingId, enabled }: { bookingId: string; enabled:
             </div>
 
             {/* Actions du billet */}
-            <div className="flex items-center sm:self-center">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => window.print()}
+            <div className="flex items-center gap-2 sm:self-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setExpandedTicketId(expandedTicketId === ticket.id ? null : ticket.id)}
+                className="w-full sm:w-auto gap-1.5 rounded-xl font-bold text-xs py-5 px-4 transition-all active:scale-97"
+              >
+                <ChevronDown
+                    className={`size-3.5 shrink-0 transition-transform ${expandedTicketId === ticket.id ? "rotate-180" : ""}`}
+                />
+                {expandedTicketId === ticket.id ? (t("hide") ?? "Masquer") : (t("view") ?? "Voir le billet")}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => printTicket(ticket)}
                 className="w-full sm:w-auto gap-1.5 rounded-xl border-border/80 hover:border-primary/30 hover:bg-primary/5 hover:text-primary font-bold text-xs py-5 px-4 shadow-2xs transition-all active:scale-97"
               >
                 <Printer className="size-3.5 shrink-0" />
@@ -101,6 +149,12 @@ export function TicketList({ bookingId, enabled }: { bookingId: string; enabled:
               </Button>
             </div>
           </div>
+
+          {expandedTicketId === ticket.id && (
+            <div className="mx-5 mb-5 sm:mx-6 sm:mb-6 rounded-xl border border-border/60 bg-background/60 p-4 overflow-x-auto">
+              <pre className="text-xs font-mono whitespace-pre-wrap text-foreground/90">{ticket.document}</pre>
+            </div>
+          )}
 
           {/* Décoration style billet d'avion (encoches latérales typiques en pointillés) */}
           <div className="absolute top-1/2 -translate-y-1/2 left-0 -ml-2 size-4 rounded-full bg-background border-r border-border/60 hidden sm:block" />
