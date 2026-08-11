@@ -1,12 +1,19 @@
-package com.guentours.partners.web;
+package com.guentours.booking.web;
 
 import com.guentours.booking.domain.BookingRepository;
-import com.guentours.booking.web.BookingResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * Lives in the {@code booking} module (like {@link AdminBookingController}) rather than
+ * {@code partners}, even though every caller is a partner account: a {@code partners -> booking}
+ * dependency here used to close a {@code booking -> provider -> partners -> booking} cycle that
+ * Spring Modulith's {@code ModularityTests} flagged. Booking-listing endpoints belong to the
+ * module that owns {@link BookingRepository}/{@link BookingResponse}, regardless of which actor
+ * (admin, partner, customer) consumes them - the route path is unaffected by the package move.
+ */
 @RestController
 @RequestMapping("/api/partners/{partnerId}/bookings")
 public class PartnerBookingController {
