@@ -34,7 +34,7 @@ public class PartnerController {
     }
 
     @GetMapping("/{id}")
-    //@PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("#id == authentication.principal.partnerId or hasRole('ADMIN')")
     public PartnerResponse getOne(@PathVariable String id) {
         return PartnerResponse.from(service.findById(id));
     }
