@@ -1,6 +1,5 @@
 package com.guentours.user.service;
 
-import com.guentours.notification.service.PartnerWelcomeNotifier;
 import com.guentours.shared.exception.BusinessException;
 import com.guentours.shared.exception.NotFoundException;
 

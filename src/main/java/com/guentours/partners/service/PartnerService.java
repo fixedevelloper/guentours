@@ -68,7 +68,7 @@ public class PartnerService {
 
         events.publishEvent(new PartnerApprovedEvent(
                 saved.getId(), saved.getEmail(), saved.getCompanyName(),
-                saved.getContactName(), saved.getPartnerType()
+                saved.getContactName(), saved.getPartnerType().name()
         ));
 
         return saved;

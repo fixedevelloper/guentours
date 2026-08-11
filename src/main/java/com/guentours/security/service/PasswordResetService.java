@@ -5,6 +5,7 @@ import com.guentours.user.domain.PasswordResetToken;
 import com.guentours.user.domain.PasswordResetTokenRepository;
 import com.guentours.user.domain.UserRepository;
 import com.guentours.user.event.PasswordResetRequestedEvent;
+import com.guentours.user.service.PendingPasswordResetLinkSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -21,7 +22,7 @@ import java.util.Base64;
 import java.util.Optional;
 
 @Service
-public class PasswordResetService {
+public class PasswordResetService implements PendingPasswordResetLinkSource {
 
     private static final Logger log = LoggerFactory.getLogger(PasswordResetService.class);
     private static final Duration TOKEN_TTL = Duration.ofMinutes(30);
@@ -75,6 +76,7 @@ public class PasswordResetService {
      * à envoyer par email. Le lien n'est jamais transporté dans l'event lui-même.
      * Expire après 5 minutes si non consommé (ex: échec transitoire de publication de l'event).
      */
+    @Override
     public Optional<String> consumePendingResetLink(String userId) {
         return resetLinkCache.consume(userId);
     }

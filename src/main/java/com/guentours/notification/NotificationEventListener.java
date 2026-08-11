@@ -5,10 +5,10 @@ import com.guentours.booking.event.BookingConfirmedEvent;
 import com.guentours.booking.event.BookingFailedEvent;
 import com.guentours.booking.BookingService;
 import com.guentours.newsletter.event.NewsletterSubscribedEvent;
-import com.guentours.security.service.PasswordResetService;
 import com.guentours.user.domain.User;
 import com.guentours.user.event.PasswordResetRequestedEvent;
 import com.guentours.user.event.UserAutoProvisionedEvent;
+import com.guentours.user.service.PendingPasswordResetLinkSource;
 import com.guentours.user.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,12 +23,12 @@ class NotificationEventListener {
     private final EmailService emailService;
     private final UserService userService;
     private final BookingService bookingService;
-    private final PasswordResetService passwordResetService;
-    NotificationEventListener(EmailService emailService, UserService userService, BookingService bookingService, PasswordResetService passwordResetService) {
+    private final PendingPasswordResetLinkSource passwordResetLinkSource;
+    NotificationEventListener(EmailService emailService, UserService userService, BookingService bookingService, PendingPasswordResetLinkSource passwordResetLinkSource) {
         this.emailService = emailService;
         this.userService = userService;
         this.bookingService = bookingService;
-        this.passwordResetService = passwordResetService;
+        this.passwordResetLinkSource = passwordResetLinkSource;
     }
 
     @ApplicationModuleListener
@@ -88,7 +88,7 @@ class NotificationEventListener {
     }
     @ApplicationModuleListener
    void on(PasswordResetRequestedEvent event) {
-                passwordResetService.consumePendingResetLink(event.userId()).ifPresentOrElse(resetLink -> {
+                passwordResetLinkSource.consumePendingResetLink(event.userId()).ifPresentOrElse(resetLink -> {
                         User user = userService.getById(event.userId());
                         String body = """
                    Bonjour %s,

@@ -1,5 +1,6 @@
 package com.guentours.notification.service;
 
+import com.guentours.user.service.PartnerWelcomeNotifier;
 import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
