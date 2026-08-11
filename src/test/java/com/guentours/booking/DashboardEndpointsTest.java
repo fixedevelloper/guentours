@@ -121,18 +121,33 @@ class DashboardEndpointsTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
+    /**
+     * Returns the {@code gt_auth} cookie value, not the response body's {@code token} field -
+     * {@link com.guentours.security.web.AuthResponse#token()} is always {@code null}
+     * (AuthController.login/register both call {@code AuthResponse.of(null, ...)}) precisely so
+     * the JWT never touches JS-reachable JSON; the cookie set via {@code Set-Cookie} is the only
+     * real credential, matching how the frontend itself authenticates (see auth-storage.ts).
+     */
     private String login(String email, String password) throws Exception {
         String body = """
                 {"email": "%s", "password": "%s"}
                 """.formatted(email, password);
         ResponseEntity<String> response = restTemplate.postForEntity(url("/api/auth/login"), jsonEntity(body), String.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        return objectMapper.readTree(response.getBody()).get("token").asText();
+        return authCookieValue(response);
     }
 
-    private HttpEntity<Void> authEntity(String token) {
+    private String authCookieValue(ResponseEntity<String> response) {
+        return response.getHeaders().get(HttpHeaders.SET_COOKIE).stream()
+                .filter(cookie -> cookie.startsWith("gt_auth="))
+                .map(cookie -> cookie.substring(0, cookie.indexOf(';')))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("No gt_auth cookie in login response"));
+    }
+
+    private HttpEntity<Void> authEntity(String authCookie) {
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(token);
+        headers.add(HttpHeaders.COOKIE, authCookie);
         return new HttpEntity<>(headers);
     }
 

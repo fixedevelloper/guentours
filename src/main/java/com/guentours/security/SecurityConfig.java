@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -17,9 +18,11 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -41,6 +44,13 @@ public class SecurityConfig {
             "/api/tickets/**",
             "/api/geo/**",
             "/api/destinations/**",
+            // Spring Boot's BasicErrorController renders every error response (403, 404, 500, ...)
+            // via an internal forward to /error, which re-enters this same filter chain on the
+            // same request. Left unauthenticated-by-default like any other path, that second pass
+            // can itself get rejected (e.g. the original request was anonymous/access-denied) and
+            // silently replace the intended error status with a fresh auth challenge instead - a
+            // 403 was observed turning into a 302-to-login (then 200 once followed) this way.
+            "/error",
             "/oauth2/**",
             "/login/oauth2/**",
             "/v3/api-docs/**",
@@ -174,6 +184,22 @@ public class SecurityConfig {
                         .requestMatchers("/api/bookings/me").authenticated()
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                         .anyRequest().authenticated())
+                // Without this, an unauthenticated /api/** call gets whatever AuthenticationEntryPoint
+                // Spring Security picks as the chain's overall default - fine (a plain 403, matching the
+                // STATELESS comment above) until oauth2Login() below is wired, at which point Spring
+                // Security promotes its LoginUrlAuthenticationEntryPoint to that role, since it's the only
+                // interactive auth mechanism configured: every unauthenticated /api/** request would then
+                // get 302-redirected to a login page (200 OK, HTML body) instead of a 403, silently
+                // breaking the frontend's error handling (axios only special-cases response.status===401,
+                // never a "successful" 200 with an HTML page). Registering this mapping first - before
+                // oauth2Login() gets a chance to register its own broader one - keeps /api/** on a plain
+                // 403 regardless of whether social login is configured; caught by
+                // DashboardEndpointsTest, which was actually failing on a stale test helper (see that
+                // commit) but surfaced this real gap while investigating why.
+                .exceptionHandling(exceptions -> exceptions
+                        .defaultAuthenticationEntryPointFor(
+                                new HttpStatusEntryPoint(HttpStatus.FORBIDDEN),
+                                new AntPathRequestMatcher("/api/**")))
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 

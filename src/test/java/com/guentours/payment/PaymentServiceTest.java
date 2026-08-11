@@ -11,6 +11,7 @@ import com.guentours.payment.domain.PaymentRepository;
 import com.guentours.payment.domain.PaymentStatus;
 import com.guentours.payment.events.BookingDepositPaidEvent;
 import com.guentours.payment.events.BookingFullyPaidEvent;
+import com.guentours.payment.events.PaymentFailedEvent;
 import com.guentours.payment.gateway.AuthorizationChallenge;
 import com.guentours.payment.gateway.ChargeRequest;
 import com.guentours.payment.gateway.ChargeResult;
@@ -276,7 +277,7 @@ class PaymentServiceTest {
     class FailureAndAsyncCases {
 
         @Test
-        @DisplayName("paiement refusé par le gateway : Payment FAILED, aucun event publié")
+        @DisplayName("paiement refusé par le gateway : Payment FAILED, PaymentFailedEvent publié")
         void shouldMarkFailedWhenGatewayRejects() {
             when(bookingService.getSummary(BOOKING_ID)).thenReturn(fullPaymentBooking());
             when(paymentGateway.charge(any(ChargeRequest.class))).thenReturn(
@@ -286,7 +287,7 @@ class PaymentServiceTest {
 
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
             assertThat(result.getFailureReason()).isEqualTo("Fonds insuffisants");
-            verifyNoInteractions(eventPublisher);
+            verify(eventPublisher).publishEvent(new PaymentFailedEvent(BOOKING_ID, result.getId(), "Fonds insuffisants"));
             verify(bookingService, never()).markPaidAndConfirm(anyString(), anyString(), anyString());
         }
 
@@ -315,7 +316,10 @@ class PaymentServiceTest {
 
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
             assertThat(result.getFailureReason()).contains("Timeout gateway");
-            verifyNoInteractions(eventPublisher);
+            ArgumentCaptor<PaymentFailedEvent> eventCaptor = ArgumentCaptor.forClass(PaymentFailedEvent.class);
+            verify(eventPublisher).publishEvent(eventCaptor.capture());
+            assertThat(eventCaptor.getValue().bookingId()).isEqualTo(BOOKING_ID);
+            assertThat(eventCaptor.getValue().reason()).contains("Timeout gateway");
         }
     }
 
@@ -366,7 +370,7 @@ class PaymentServiceTest {
             Payment result = paymentService.pay(cardRequest());
 
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
-            verifyNoInteractions(eventPublisher);
+            verify(eventPublisher).publishEvent(any(PaymentFailedEvent.class));
         }
 
         @Test
@@ -379,7 +383,7 @@ class PaymentServiceTest {
             Payment result = paymentService.pay(cardRequest());
 
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
-            verifyNoInteractions(eventPublisher);
+            verify(eventPublisher).publishEvent(any(PaymentFailedEvent.class));
         }
     }
 
@@ -428,7 +432,7 @@ class PaymentServiceTest {
             Payment result = paymentService.completeCardPinAuthorization("payment-pin", "0000");
 
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
-            verifyNoInteractions(eventPublisher);
+            verify(eventPublisher).publishEvent(any(PaymentFailedEvent.class));
         }
 
         @Test
@@ -441,7 +445,10 @@ class PaymentServiceTest {
 
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
             assertThat(result.getFailureReason()).contains("expirée");
-            verifyNoInteractions(paymentGateway, eventPublisher);
+            verifyNoInteractions(paymentGateway);
+            ArgumentCaptor<PaymentFailedEvent> eventCaptor = ArgumentCaptor.forClass(PaymentFailedEvent.class);
+            verify(eventPublisher).publishEvent(eventCaptor.capture());
+            assertThat(eventCaptor.getValue().reason()).contains("expirée");
         }
 
         @Test
@@ -474,7 +481,7 @@ class PaymentServiceTest {
             Payment result = paymentService.completeCardPinAuthorization("payment-pin", "1234");
 
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.FAILED);
-            verifyNoInteractions(eventPublisher);
+            verify(eventPublisher).publishEvent(any(PaymentFailedEvent.class));
         }
 
         @Test
@@ -570,10 +577,12 @@ class PaymentServiceTest {
         assertThat(pendingPayment.getStatus()).isEqualTo(PaymentStatus.FAILED);
         assertThat(pendingPayment.getFailureReason()).isEqualTo("Délai de validation dépassé");
 
-        // Aucun événement de succès ne doit être émis et la réservation reste inchangée
+        // Aucun événement de succès ne doit être émis et la réservation reste inchangée, mais un
+        // PaymentFailedEvent part bien (voir usernotification, qui prévient le client concerné)
         verify(bookingService, never()).markPaidAndConfirm(anyString(), anyString(), anyString());
         verify(bookingService, never()).markDepositPaid(anyString());
-        verifyNoInteractions(eventPublisher);
+        verify(eventPublisher).publishEvent(
+                new PaymentFailedEvent(BOOKING_ID, pendingPayment.getId(), "Délai de validation dépassé"));
         verify(paymentRepository).save(pendingPayment);
     }
 }
