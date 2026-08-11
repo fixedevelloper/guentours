@@ -1,0 +1,44 @@
+Subject: Add Form of Payment fails with "TVP-PCC-CORE HEADER IS MISSING OR INVALID" — same PCC/Access Group succeeds on all prior Booking API calls
+
+Hello,
+
+We're integrating the Travelport JSON API (pre-production) for the full Air booking + ticketing workflow, and we've hit a consistent failure at the Add Form of Payment step. We believe this is an account/PCC provisioning issue rather than a request-formatting issue, and would appreciate your team checking the entitlements below.
+
+Environment
+- Base URL: https://api.pp.travelport.net/11
+- Access Group (XAUTH_TRAVELPORT_ACCESSGROUP): 50C1BCC1-615D-4F7F-AD66-919730C8FD0C
+- PCC (TVP-PCC-Core): 7K7L 1G
+
+What works
+Full "Required Full Workflow" booking flow succeeds end to end, confirming a real PNR:
+1. POST /air/book/session/reservationworkbench — New Workbench
+2. POST /air/book/airoffer/reservationworkbench/{session}/offers/buildfromcatalogproductofferings — Add Offer
+3. POST /air/book/traveler/reservationworkbench/{session}/travelers — Add Traveler
+4. POST /air/book/reservation/reservations/{session} — Commit (creates the PNR)
+5. POST /air/book/session/reservationworkbench/buildfromlocator?Locator={pnr} — Post-Commit Workbench (re-opens a session on the confirmed PNR)
+
+Example successful reservation from our testing: PNR HMXGTP (Turkish Airlines TK1832).
+
+All five calls above carry the same XAUTH_TRAVELPORT_ACCESSGROUP and TVP-PCC-Core header values shown above, and all succeed.
+
+What fails
+Immediately after step 5 succeeds and returns a valid session identifier, the very next call in the same session fails:
+
+POST /air/payment/reservationworkbench/{session}/formofpayment?authorizePaymentInd=true
+
+Response: 400 Bad Request — TVP-PCC-CORE HEADER IS MISSING OR INVALID
+
+The request carries the exact same XAUTH_TRAVELPORT_ACCESSGROUP and TVP-PCC-Core header values that just succeeded on step 5, seconds earlier, in the same workbench session — so we can rule out a missing/malformed header on our side. The only difference is the API family (/air/payment/... instead of /air/book/...).
+
+Our hypothesis
+The Payment/Ticketing API may be a separate product entitlement from the Booking API, and our PCC/Access Group may not yet be provisioned for it (or may be missing a linked Form-of-Payment profile in your back office).
+
+Could you please confirm:
+1. Is PCC 7K7L 1G (Access Group 50C1BCC1-615D-4F7F-AD66-919730C8FD0C) enabled for the Air Payment / Ticketing API, not just Air Booking?
+2. Is a Form-of-Payment (cash/account) profile configured for this PCC?
+3. If possible, could you pull server-side logs for the failed request against PNR HMXGTP? We can provide the exact timestamp and a full request/response trace on request.
+
+Happy to provide a full HAR/request log of the sequence above if useful.
+
+Thank you,
+Rodrigue mbah/ guen's travel and tours
