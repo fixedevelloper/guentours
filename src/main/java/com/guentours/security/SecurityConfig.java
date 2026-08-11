@@ -65,6 +65,9 @@ public class SecurityConfig {
             "/api/destinations/**",
             "/api/partners/register",
             "/api/newsletter/subscribe",
+            "/api/resellers/register",
+            "/api/resellers/register-with-logo",
+            "/api/resellers/promo/**",
             "/oauth2/**",
             "/login/oauth2/**"
     };
@@ -155,6 +158,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/partners/register").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/newsletter/subscribe").permitAll()
+                        // Reseller application form (/become-reseller, no login required) and promo-code
+                        // lookup at checkout: these are meant to be public per ResellerController's own
+                        // Javadoc, but had no matcher here, so they fell through to anyRequest().authenticated()
+                        // and 401'd for the anonymous visitors they're built for.
+                        .requestMatchers(HttpMethod.POST, "/api/resellers/register", "/api/resellers/register-with-logo").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/resellers/promo/**").permitAll()
                         // Liste complète des partenaires : réservée à l'admin (utilisée par AdminPartnersPage)
                         .requestMatchers(HttpMethod.GET, "/api/partners").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/partners/*/approve", "/api/partners/*/reject").hasRole("ADMIN")
