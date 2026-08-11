@@ -569,7 +569,16 @@ public class TravelportClient implements TravelProviderClient {
      * {@link TravelportPriceRequest}'s Javadoc for the reference-payload shape this now sends.
      */
     private FlightPriceVerification callPriceApi(FlightOffer offer) {
-        String catalogOfferingsIdentifierValue = offer.context("catalogOfferingsIdentifier");
+        // Same fallback chain as addOffer's containerIdentifier: the CatalogProductOfferings
+        // container's own Identifier isn't always present in the search response (see
+        // TravelportSearchResponse.CatalogProductOfferings, where "id" and "Identifier" are
+        // independent fields) - falling back to the container "id", then the offering id, avoids
+        // sending a request with no container reference at all, which Travelport can't price.
+        String catalogOfferingsIdentifierValue = offer.context("catalogOfferingsIdentifier") != null
+                ? offer.context("catalogOfferingsIdentifier")
+                : offer.context("catalogOfferingsId") != null
+                        ? offer.context("catalogOfferingsId")
+                        : offer.providerOfferId();
 
         var catalogOfferingsIdentifier = new TravelportPriceRequest.OfferingsRef("cpo_1",
                 catalogOfferingsIdentifierValue != null
@@ -968,7 +977,9 @@ public class TravelportClient implements TravelProviderClient {
     /**
      * Issues tickets for an existing reservation: open a post-commit workbench on the PNR, then
      * commit with {@code Issuance=Ticket}. Per the Commit rule, a commit with payment present
-     * tickets the itinerary. All calls share one {@code travelportPlusSessionIdentifier}.
+     * tickets the itinerary. All calls share the workbench id {@link #postCommitWorkbench} returns,
+     * both as the {@code travelportPlusSessionIdentifier} header and as the URL path segment - same
+     * requirement as {@link #newWorkbench()}.
      *
      * <p>Our own PaymentGateway has already charged the customer (transaction
      * {@code payment.transactionReference()}), so a cash form of payment is added (the agency has
@@ -977,10 +988,8 @@ public class TravelportClient implements TravelProviderClient {
      * Retrieve), so the confirmation reports issuance success with an empty ticket list.
      */
     private FinalTicketConfirmation callTicketApi(String pnrCode, PaymentDetails payment) {
-        String session = UUID.randomUUID().toString();
-
         log.info("Ticketing Travelport PNR {} (already charged via txn {})", pnrCode, payment.transactionReference());
-        postCommitWorkbench(session, pnrCode);
+        String session = postCommitWorkbench(pnrCode);
         String fopRef = addFormOfPayment(session, payment);
         addPayment(session, payment, fopRef);
 
@@ -1061,19 +1070,38 @@ public class TravelportClient implements TravelProviderClient {
     /**
      * Post-Commit Workbench: initiates a session on an existing reservation for ticketing/updating,
      * {@code POST /air/book/session/reservationworkbench/buildfromlocator?Locator={pnr}} (no body).
+     * Same endpoint family and response shape as {@link #newWorkbench()} - Travelport creates the
+     * workbench id server-side and returns it as
+     * {@code ReservationResponse.Reservation.Identifier.value}. As with {@link #newWorkbench()},
+     * there is no session yet at this point (this call establishes one), so no
+     * {@code travelportPlusSessionIdentifier} header is sent here; the returned id is what every
+     * following call (Add Form of Payment, Add Payment, Commit) must address instead.
      */
-    private void postCommitWorkbench(String session, String locator) {
+    private String postCommitWorkbench(String locator) {
         String postCommitUrl = resolvedBaseUrl + WORKBENCH_BASE + "/buildfromlocator?Locator=" + locator;
+        TravelportNewWorkbenchResponse response;
         try {
-            withBookingRetry("post-commit workbench for locator " + locator, () -> bookingRestClient.post()
+            response = withBookingRetry("post-commit workbench for locator " + locator, () -> bookingRestClient.post()
                     .uri(postCommitUrl)
-                    .headers(h -> workbenchHeaders(h, session))
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenProvider.getAccessToken())
+                    .header(ACCESS_GROUP_HEADER, config.getAccessGroup())
+                    .header(PCC_HEADER, config.getPseudoCityCode())
+                    .header("TraceId", "PostCommit_" + UUID.randomUUID())
                     .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
-                    .toBodilessEntity());
+                    .body(TravelportNewWorkbenchResponse.class));
         } catch (RestClientException e) {
             throw new ProviderException("Travelport post-commit workbench failed for locator " + locator + ": " + e.getMessage());
         }
+
+        String session = response == null || response.ReservationResponse() == null
+                || response.ReservationResponse().Reservation() == null
+                || response.ReservationResponse().Reservation().Identifier() == null
+                ? null : response.ReservationResponse().Reservation().Identifier().value();
+        if (session == null || session.isBlank()) {
+            throw new ProviderException("Travelport post-commit workbench returned no session identifier for locator " + locator);
+        }
+        return session;
     }
 
     private static final String FORM_OF_PAYMENT_ID = "formOfPayment_1";
