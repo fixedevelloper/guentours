@@ -89,6 +89,7 @@ public class SecurityConfig {
     private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
     private final OAuth2LoginFailureHandler oAuth2LoginFailureHandler;
     private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepository;
+    private final JwtProperties jwtProperties;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
                           AppUserDetailsService userDetailsService,
@@ -96,7 +97,8 @@ public class SecurityConfig {
                           @Value("${app.cors.allowed-origins}") List<String> allowedOrigins,
                           OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler,
                           OAuth2LoginFailureHandler oAuth2LoginFailureHandler,
-                          ObjectProvider<ClientRegistrationRepository> clientRegistrationRepository) {
+                          ObjectProvider<ClientRegistrationRepository> clientRegistrationRepository,
+                          JwtProperties jwtProperties) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.userDetailsService = userDetailsService;
         this.passwordEncoder = passwordEncoder;
@@ -104,6 +106,7 @@ public class SecurityConfig {
         this.oAuth2LoginSuccessHandler = oAuth2LoginSuccessHandler;
         this.oAuth2LoginFailureHandler = oAuth2LoginFailureHandler;
         this.clientRegistrationRepository = clientRegistrationRepository;
+        this.jwtProperties = jwtProperties;
     }
 
     /**
@@ -144,7 +147,7 @@ public class SecurityConfig {
                 // default assumes a server-rendered form reading the token via a request
                 // attribute, which a same-page SPA client never does.
                 .csrf(csrf -> csrf
-                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        .csrfTokenRepository(csrfTokenRepository())
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                         .ignoringRequestMatchers(CSRF_IGNORED_ENDPOINTS))
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -225,6 +228,19 @@ public class SecurityConfig {
     @Bean
     public AuthenticationManager authenticationManager() {
         return new org.springframework.security.authentication.ProviderManager(authenticationProvider());
+    }
+
+    /**
+     * Same cross-site reasoning as {@link AuthCookieService}: the frontend and API are on
+     * different registrable domains in production, so the XSRF-TOKEN cookie must be
+     * SameSite=None (which requires Secure) to be attached to the frontend's cross-site mutating
+     * requests; locally both are "localhost" and cookie-secure is false, so it falls back to Lax.
+     */
+    private CookieCsrfTokenRepository csrfTokenRepository() {
+        CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        boolean secure = jwtProperties.isCookieSecure();
+        repository.setCookieCustomizer(cookie -> cookie.secure(secure).sameSite(secure ? "None" : "Lax"));
+        return repository;
     }
 
     @Bean

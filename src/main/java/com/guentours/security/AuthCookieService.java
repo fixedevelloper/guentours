@@ -29,10 +29,18 @@ public class AuthCookieService {
     }
 
     private ResponseCookie.ResponseCookieBuilder baseCookie(String value) {
+        // The frontend and API are on different registrable domains in production, so every call
+        // the frontend makes (fetch/XHR, e.g. GET /api/auth/me right after the OAuth2 redirect) is
+        // cross-site. A SameSite=Lax cookie is only attached to top-level navigations in that case,
+        // not to those follow-up requests, so the cookie must be SameSite=None there - which in turn
+        // requires Secure (browsers drop None cookies that aren't Secure). Locally, frontend and API
+        // share the "localhost" site and APP_COOKIE_SECURE is false (plain http), so this falls back
+        // to Lax, matching cookie-secure's existing prod/dev split.
+        boolean secure = properties.isCookieSecure();
         return ResponseCookie.from(properties.getCookieName(), value)
                 .httpOnly(true)
-                .secure(properties.isCookieSecure())
-                .sameSite("Lax")
+                .secure(secure)
+                .sameSite(secure ? "None" : "Lax")
                 .path("/");
     }
 }
