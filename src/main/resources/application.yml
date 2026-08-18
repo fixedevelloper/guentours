@@ -194,6 +194,7 @@ server:
         http-only: true
         same-site: lax
         secure: ${APP_COOKIE_SECURE:true}
+  forward-headers-strategy: framework
 
 management:
   endpoints:
