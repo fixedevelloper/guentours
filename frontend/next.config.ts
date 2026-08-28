@@ -36,6 +36,7 @@ const cspHeader = `
 `;
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   images: {
     // Our own MinIO bucket (reseller logos, property/vehicle/room cover images) - the only image
     // host under our control, so next/image's automatic resizing/lazy-loading/AVIF-WebP conversion

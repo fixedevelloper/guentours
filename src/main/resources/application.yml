@@ -149,6 +149,17 @@ app:
       guarantee-card-billing-postal-code: ${TRAVELPORT_GUARANTEE_CARD_BILLING_POSTAL_CODE:}
       guarantee-card-billing-phone: ${TRAVELPORT_GUARANTEE_CARD_BILLING_PHONE:}
       guarantee-card-billing-email: ${TRAVELPORT_GUARANTEE_CARD_BILLING_EMAIL:}
+    travelterminus:
+      enabled: ${TRAVELTERMINUS_ENABLED:true}
+      # No sandbox base URL/credentials are published in Travel Terminus's docs - they are only
+      # handed out during onboarding (see their Go-Live certification process) - so this stays in
+      # mock-mode until real ones are set.
+      mock-mode: ${TRAVELTERMINUS_MOCK_MODE:true}
+      base-url: ${TRAVELTERMINUS_BASE_URL:}
+      api-key: ${TRAVELTERMINUS_API_KEY:}
+      api-secret: ${TRAVELTERMINUS_API_SECRET:}
+      client-ip: ${TRAVELTERMINUS_CLIENT_IP:127.0.0.1}
+      booking-timeout-millis: ${TRAVELTERMINUS_BOOKING_TIMEOUT_MILLIS:60000}
 
   reference-data:
     # 30 days in milliseconds; initial delay of 0 populates airports/hotel_cities on first boot.

@@ -4,5 +4,6 @@ public enum ProviderType {
     TRAVELOPRO,
     SABRE,
     TRAVELPORT,
+    TRAVELTERMINUS,
     DIRECT
 }

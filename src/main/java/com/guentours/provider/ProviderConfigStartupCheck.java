@@ -32,6 +32,7 @@ class ProviderConfigStartupCheck {
         report("TRAVELOPRO", properties.getTravelopro(), requiredTravelopro(properties.getTravelopro()));
         report("SABRE", properties.getSabre(), requiredSabre(properties.getSabre()));
         report("TRAVELPORT", properties.getTravelport(), requiredTravelport(properties.getTravelport()));
+        report("TRAVELTERMINUS", properties.getTravelterminus(), requiredTravelTerminus(properties.getTravelterminus()));
     }
 
     private void report(String name, ProviderProperties.Vendor vendor, Map<String, String> requiredEnvVars) {
@@ -89,6 +90,17 @@ class ProviderConfigStartupCheck {
         required.put("TRAVELPORT_PASSWORD", v.getPassword());
         required.put("TRAVELPORT_ACCESS_GROUP", v.getAccessGroup());
         required.put("TRAVELPORT_PCC", v.getPseudoCityCode());
+        return required;
+    }
+
+    /** Unlike the other vendors, Travel Terminus has no sensible default base URL to fall back to
+     *  (its sandbox URL is only handed out during onboarding, not published in the public docs),
+     *  so the base URL itself is required here alongside the credentials. */
+    private Map<String, String> requiredTravelTerminus(ProviderProperties.Vendor v) {
+        Map<String, String> required = new LinkedHashMap<>();
+        required.put("TRAVELTERMINUS_API_KEY", v.getApiKey());
+        required.put("TRAVELTERMINUS_API_SECRET", v.getApiSecret());
+        required.put("TRAVELTERMINUS_BASE_URL", v.getBaseUrl());
         return required;
     }
 }

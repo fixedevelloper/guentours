@@ -8,6 +8,7 @@ public class ProviderProperties {
     private Vendor travelopro = new Vendor();
     private Vendor sabre = new Vendor();
     private Vendor travelport = new Vendor();
+    private Vendor travelterminus = new Vendor();
 
     public Vendor getTravelopro() {
         return travelopro;
@@ -31,6 +32,14 @@ public class ProviderProperties {
 
     public void setTravelport(Vendor travelport) {
         this.travelport = travelport;
+    }
+
+    public Vendor getTravelterminus() {
+        return travelterminus;
+    }
+
+    public void setTravelterminus(Vendor travelterminus) {
+        this.travelterminus = travelterminus;
     }
 
     public static class Vendor {

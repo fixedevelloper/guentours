@@ -20,6 +20,7 @@ import org.springframework.security.oauth2.client.registration.ClientRegistratio
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.authentication.session.NullAuthenticatedSessionStrategy;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
@@ -166,7 +167,20 @@ public class SecurityConfig {
                 // authorization request's "state" via HttpSessionOAuth2AuthorizationRequestRepository,
                 // which calls request.getSession(true) directly and unconditionally - independent
                 // of this policy, which only governs Spring Security's own automatic session use.
-                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // The default SessionAuthenticationStrategy composite (ChangeSessionIdAuthenticationStrategy +
+                // CsrfAuthenticationStrategy) is meant to fire ONCE per login, tracked via the HttpSession - but
+                // there is no session here (STATELESS), so SessionManagementFilter has no way to remember "already
+                // ran for this login" and re-fires it on every single authenticated request. CsrfAuthenticationStrategy
+                // reacts by deleting the XSRF-TOKEN cookie (CookieCsrfTokenRepository#saveToken(null, ...)) every
+                // time, which the browser honors immediately - so the very next mutating request after any
+                // authenticated request has no CSRF cookie left to echo back as X-XSRF-TOKEN and gets a 403
+                // (confirmed by reproducing locally: POST .../airports/sync succeeds, then POST .../cities/sync
+                // 403s in the same session because the first response already wiped the cookie). Neither
+                // sub-strategy is meaningful without a session to fixate in the first place, so swapping in a
+                // no-op strategy here removes the spurious rotation without weakening anything.
+                .sessionManagement(sm -> sm
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                        .sessionAuthenticationStrategy(new NullAuthenticatedSessionStrategy()))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/partners/register").permitAll()

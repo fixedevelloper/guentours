@@ -1,0 +1,14 @@
+services:
+  frontend:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: guentours-frontend:latest
+    container_name: guentours-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # Mettre à jour l'URL du backend selon l'environnement de déploiement
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+    restart: always

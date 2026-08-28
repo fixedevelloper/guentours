@@ -23,12 +23,12 @@ public class GeoAdminController {
 
     @PostMapping("/api/admin/geo/airports/sync")
     public Map<String, Integer> syncAirports() {
-        return Map.of("synced", syncService.syncAirports());
+        return Map.of("synced", syncService.forceSyncAirports());
     }
 
     @PostMapping("/api/admin/geo/cities/sync")
     public Map<String, Integer> syncCities() {
-        return Map.of("synced", syncService.syncHotelCities());
+        return Map.of("synced", syncService.forceSyncHotelCities());
     }
 
     @GetMapping("/api/admin/geo/cities")

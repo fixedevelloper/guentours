@@ -3,7 +3,8 @@ package com.guentours.geo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.text.Normalizer;
 import java.util.HashMap;
@@ -28,13 +29,16 @@ public class ReferenceDataSyncService {
     private final HotelCityDataSource hotelCityDataSource;
     private final AirportRepository airportRepository;
     private final HotelCityRepository hotelCityRepository;
+    private final TransactionTemplate transactionTemplate;
 
     public ReferenceDataSyncService(AirportDataSource airportDataSource, HotelCityDataSource hotelCityDataSource,
-                                    AirportRepository airportRepository, HotelCityRepository hotelCityRepository) {
+                                    AirportRepository airportRepository, HotelCityRepository hotelCityRepository,
+                                    PlatformTransactionManager transactionManager) {
         this.airportDataSource = airportDataSource;
         this.hotelCityDataSource = hotelCityDataSource;
         this.airportRepository = airportRepository;
         this.hotelCityRepository = hotelCityRepository;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     // =========================================================================
@@ -44,7 +48,6 @@ public class ReferenceDataSyncService {
     /**
      * Exécuté par le Scheduler au démarrage : vérifie la BDD avant d'importer.
      */
-    @Transactional
     public int syncAirports() {
         long existingCount = airportRepository.count();
         if (existingCount > 0) {
@@ -56,15 +59,18 @@ public class ReferenceDataSyncService {
 
     /**
      * Force la synchronisation des aéroports (appelé si la BDD est vide ou par l'AdminController).
+     * L'appel réseau se fait hors transaction : seule l'écriture en BDD est transactionnelle,
+     * pour ne pas garder une connexion/transaction ouverte pendant tout l'appel HTTP externe.
      */
-    @Transactional
     public int forceSyncAirports() {
         log.info("Démarrage du chargement des aéroports depuis la source...");
         List<AirportRecord> records = airportDataSource.fetchAll();
         List<Airport> airports = records.stream()
                 .map(r -> new Airport(r.airportCode(), r.airportName(), r.city(), r.country()))
                 .toList();
-        airportRepository.saveAll(airports);
+
+        transactionTemplate.executeWithoutResult(status -> airportRepository.saveAll(airports));
+
         log.info("Synced {} airports", airports.size());
         return airports.size();
     }
@@ -76,7 +82,6 @@ public class ReferenceDataSyncService {
     /**
      * Exécuté par le Scheduler au démarrage : vérifie la BDD avant d'importer.
      */
-    @Transactional
     public int syncHotelCities() {
         long existingCount = hotelCityRepository.count();
         if (existingCount > 0) {
@@ -88,8 +93,10 @@ public class ReferenceDataSyncService {
 
     /**
      * Force la synchronisation des villes d'hôtels (appelé si la BDD est vide ou par l'AdminController).
+     * L'appel réseau se fait hors transaction : seule la lecture/écriture en BDD est transactionnelle,
+     * pour ne pas garder une connexion/transaction ouverte pendant tout l'appel HTTP externe (potentiellement
+     * long avec la pagination multi-pages).
      */
-    @Transactional
     public int forceSyncHotelCities() {
         log.info("Démarrage du chargement des villes d'hôtels depuis la source...");
         List<HotelCityRecord> records = hotelCityDataSource.fetchAll();
@@ -101,49 +108,51 @@ public class ReferenceDataSyncService {
 
         Pattern diacriticsPattern = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
 
-        // 1. Charger les villes déjà existantes en BDD (évite l'erreur INSERT sur clé unique lors d'une re-synchro)
-        Map<String, HotelCity> existingDbCities = hotelCityRepository.findAll().stream()
-                .collect(Collectors.toMap(
-                        c -> buildNormalizedKey(c.getCityName(), c.getCountryName(), diacriticsPattern),
-                        c -> c,
-                        (existing, replacement) -> existing
-                ));
+        return transactionTemplate.execute(status -> {
+            // 1. Charger les villes déjà existantes en BDD (évite l'erreur INSERT sur clé unique lors d'une re-synchro)
+            Map<String, HotelCity> existingDbCities = hotelCityRepository.findAll().stream()
+                    .collect(Collectors.toMap(
+                            c -> buildNormalizedKey(c.getCityName(), c.getCountryName(), diacriticsPattern),
+                            c -> c,
+                            (existing, replacement) -> existing
+                    ));
 
-        // 2. Traiter le flux : dédoublonner en mémoire + fusionner avec les enregistrements BDD
-        Map<String, HotelCity> citiesToSave = new HashMap<>();
+            // 2. Traiter le flux : dédoublonner en mémoire + fusionner avec les enregistrements BDD
+            Map<String, HotelCity> citiesToSave = new HashMap<>();
 
-        for (HotelCityRecord r : records) {
-            if (r.cityName() == null || r.countryName() == null) continue;
+            for (HotelCityRecord r : records) {
+                if (r.cityName() == null || r.countryName() == null) continue;
 
-            String key = buildNormalizedKey(r.cityName(), r.countryName(), diacriticsPattern);
+                String key = buildNormalizedKey(r.cityName(), r.countryName(), diacriticsPattern);
 
-            // Vérifier si la ville existe déjà en BDD ou si elle a déjà été lue dans la boucle
-            HotelCity cityEntity = existingDbCities.get(key);
-            if (cityEntity == null) {
-                cityEntity = citiesToSave.get(key);
+                // Vérifier si la ville existe déjà en BDD ou si elle a déjà été lue dans la boucle
+                HotelCity cityEntity = existingDbCities.get(key);
+                if (cityEntity == null) {
+                    cityEntity = citiesToSave.get(key);
+                }
+
+                if (cityEntity == null) {
+                    // Nouvelle ville -> Nouvelle entité (INSERT)
+                    cityEntity = new HotelCity(
+                            r.cityName().trim(),
+                            r.countryName().trim(),
+                            r.latitude(),
+                            r.longitude()
+                    );
+                } else {
+                    // Ville existante -> On conserve l'ID JPA et on met à jour les coordonnées (UPDATE)
+                    cityEntity.setLatitude(r.latitude());
+                    cityEntity.setLongitude(r.longitude());
+                }
+
+                citiesToSave.put(key, cityEntity);
             }
 
-            if (cityEntity == null) {
-                // Nouvelle ville -> Nouvelle entité (INSERT)
-                cityEntity = new HotelCity(
-                        r.cityName().trim(),
-                        r.countryName().trim(),
-                        r.latitude(),
-                        r.longitude()
-                );
-            } else {
-                // Ville existante -> On conserve l'ID JPA et on met à jour les coordonnées (UPDATE)
-                cityEntity.setLatitude(r.latitude());
-                cityEntity.setLongitude(r.longitude());
-            }
+            List<HotelCity> saved = hotelCityRepository.saveAll(citiesToSave.values());
+            log.info("Synced {} hotel cities", saved.size());
 
-            citiesToSave.put(key, cityEntity);
-        }
-
-        List<HotelCity> saved = hotelCityRepository.saveAll(citiesToSave.values());
-        log.info("Synced {} hotel cities", saved.size());
-
-        return saved.size();
+            return saved.size();
+        });
     }
 
     /**
