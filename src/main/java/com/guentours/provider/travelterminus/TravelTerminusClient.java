@@ -79,7 +79,15 @@ public class TravelTerminusClient implements TravelProviderClient {
     // real gender/title field exists in the domain model.
     private static final String DEFAULT_GENDER = "M";
     private static final String DEFAULT_TITLE = "MR";
-    private static final DateTimeFormatter AIRPORT_TIME_FORMAT = DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH);
+    // Book rejects a booking with "passengers.0.City is required." (real Stage sandbox behavior -
+    // not flagged as mandatory in the docs' field table) and PassengerInfo carries no city either,
+    // same gap as gender/title above.
+    private static final String DEFAULT_CITY = "N/A";
+    // The docs' hand-written example shows a 12h clock with AM/PM ("3:55 PM"), but the real Stage
+    // sandbox returns a plain 24h clock ("03:00", "21:25") - yet another Travel Terminus doc/reality
+    // mismatch (see the search-stream fare field names for another one), so both are tried.
+    private static final DateTimeFormatter AIRPORT_TIME_FORMAT_24H = DateTimeFormatter.ofPattern("H:mm", Locale.ENGLISH);
+    private static final DateTimeFormatter AIRPORT_TIME_FORMAT_12H = DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH);
 
     private final ProviderProperties.Vendor config;
     /** Token generation + Streaming Search, using {@code timeoutMillis}. */
@@ -166,14 +174,19 @@ public class TravelTerminusClient implements TravelProviderClient {
         String paxJson = writeJson(paxes);
         String prefsJson = writeJson(prefs);
 
+        // The query param values are raw JSON (containing literal '{'/'}'). Passing them straight
+        // into queryParam(...).build() makes UriComponentsBuilder mistake those braces for its own
+        // URI template placeholder syntax ("Not enough variable values available to expand..."), so
+        // each value is instead passed as a placeholder + supplied through build(Object...), which
+        // substitutes and percent-encodes it as an opaque literal instead of re-parsing it.
         String body = withAuth(token -> restClient.get()
                 .uri(uriBuilder -> uriBuilder.path("/api/flights/search-stream")
-                        .queryParam("searchAirLegs", legsJson)
-                        .queryParam("paxes", paxJson)
-                        .queryParam("travelPreferences", prefsJson)
-                        .queryParam("endUserIP", config.getClientIp())
-                        .queryParam("endUserBrowserAgent", USER_AGENT)
-                        .build())
+                        .queryParam("searchAirLegs", "{searchAirLegs}")
+                        .queryParam("paxes", "{paxes}")
+                        .queryParam("travelPreferences", "{travelPreferences}")
+                        .queryParam("endUserIP", "{endUserIP}")
+                        .queryParam("endUserBrowserAgent", "{endUserBrowserAgent}")
+                        .build(legsJson, paxJson, prefsJson, config.getClientIp(), USER_AGENT))
                 .header("access-token", token)
                 .header("accept", "application/json")
                 .header("version", "1")
@@ -313,10 +326,22 @@ public class TravelTerminusClient implements TravelProviderClient {
         if (date == null || time == null) {
             return null;
         }
+        LocalTime parsedTime;
         try {
-            return LocalDate.parse(date).atTime(LocalTime.parse(time.toUpperCase(Locale.ENGLISH), AIRPORT_TIME_FORMAT));
+            parsedTime = LocalTime.parse(time.strip(), AIRPORT_TIME_FORMAT_24H);
+        } catch (DateTimeParseException e24) {
+            try {
+                parsedTime = LocalTime.parse(time.strip().toUpperCase(Locale.ENGLISH), AIRPORT_TIME_FORMAT_12H);
+            } catch (DateTimeParseException e12) {
+                log.warn("[TravelTerminus] Failed to parse airport time '{}' (tried 24h and 12h formats): {}",
+                        time, e12.getMessage());
+                return null;
+            }
+        }
+        try {
+            return LocalDate.parse(date).atTime(parsedTime);
         } catch (DateTimeParseException e) {
-            log.warn("[TravelTerminus] Failed to parse airport date/time '{} {}': {}", date, time, e.getMessage());
+            log.warn("[TravelTerminus] Failed to parse airport date '{}': {}", date, e.getMessage());
             return null;
         }
     }
@@ -458,7 +483,12 @@ public class TravelTerminusClient implements TravelProviderClient {
         if (revalidateResponse == null || !"success".equals(revalidateResponse.status()) || revalidateResponse.route() == null) {
             return RevalidateOutcome.invalid();
         }
-        return new RevalidateOutcome(true, revalidateResponse.route(), revalidateSearchReqId, revalidateHashReqKey);
+        // Book must be called with the searchReqId/hashReqKey *returned by Revalidate*, not the
+        // ones sent into it - the real Stage sandbox rejects Book with "Hash req key is mismatch"
+        // otherwise, even though those are also valid-looking UUID/hash strings.
+        String bookSearchReqId = revalidateResponse.searchReqId() != null ? revalidateResponse.searchReqId() : revalidateSearchReqId;
+        String bookHashReqKey = revalidateResponse.hashReqKey() != null ? revalidateResponse.hashReqKey() : revalidateHashReqKey;
+        return new RevalidateOutcome(true, revalidateResponse.route(), bookSearchReqId, bookHashReqKey);
     }
 
     /** See the "Preparing for Revalidate & Fare Rule" doc section: 0 entries for a Standard fare
@@ -609,7 +639,7 @@ public class TravelTerminusClient implements TravelProviderClient {
                 passenger.dateOfBirth() != null ? passenger.dateOfBirth().toString() : null,
                 passenger.nationality(),
                 passenger.nationality(),
-                null,
+                DEFAULT_CITY,
                 contactPhone,
                 null,
                 document

@@ -27,6 +27,8 @@ app:
       mock-mode: true
     travelport:
       mock-mode: true
+    travelterminus:
+      mock-mode: true
 
   reference-data:
     # Keep the recurring sync from firing mid-test and racing with tests that trigger it directly.

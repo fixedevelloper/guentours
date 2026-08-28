@@ -62,6 +62,32 @@ class TravelTerminusDtosTest {
     }
 
     @Test
+    void deserializesTheRealSandboxErrorEnvelopeShapeUsingErrorCodeInsteadOfCode() throws Exception {
+        // Real capture from the Stage sandbox (POST /api/auth/generate-token with bad credentials):
+        // uses "errorCode", not the "code" field name the docs example shows.
+        String json = """
+                {
+                  "success": false,
+                  "statusCode": 400,
+                  "errorCode": "BAD_REQUEST",
+                  "message": "Api key must be uuid.",
+                  "retryable": false,
+                  "errors": [
+                    { "field": "apiKey", "message": "Api key must be uuid.", "code": "BAD_REQUEST" },
+                    { "field": "secretKey", "message": "Secret key must be at least 8 characters.", "code": "BAD_REQUEST" }
+                  ],
+                  "timestamp": "2026-08-28T17:53:22.084Z"
+                }
+                """;
+
+        TravelTerminusErrorEnvelope envelope = mapper.readValue(json, TravelTerminusErrorEnvelope.class);
+
+        assertThat(envelope.code()).isEqualTo("BAD_REQUEST");
+        assertThat(envelope.statusCode()).isEqualTo(400);
+        assertThat(envelope.errors()).hasSize(2);
+    }
+
+    @Test
     void deserializesARouteUpdateSearchResponseWithAbbreviatedFareFieldNames() throws Exception {
         // Real capture from the Streaming Search Postman example (route_update event payload).
         String json = """
