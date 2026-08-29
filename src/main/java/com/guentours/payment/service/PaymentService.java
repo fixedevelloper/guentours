@@ -173,7 +173,30 @@ public class PaymentService {
         if (result.isSucceeded()) {
             payment.markSucceeded(result.gatewayReference());
             paymentRepository.save(payment);
-            applyConfirmedPayment(payment, booking);
+            // bookingService.markPaidAndConfirm/markDepositPaid are themselves @Transactional: if
+            // called and they throw (booking no longer payable), Spring marks the shared physical
+            // transaction rollback-only right there, at that inner boundary - catching the
+            // re-thrown exception here does NOT undo that, and the outer @Transactional method
+            // (confirmFromGatewayCallback) then fails to commit with UnexpectedRollbackException
+            // even though the exception was "handled". So this checks the booking's *current*
+            // status up front instead of ever calling them when it's already unpayable, which
+            // happens for real: the provider hold's ticketing deadline can lapse and the scheduled
+            // auto-cancel job cancels the booking while a Stripe payment is still in flight -
+            // Stripe's async confirmation (webhook, or StripePaymentCheck's polling fallback) can
+            // land well after checkout.
+            BookingStatus currentBookingStatus = bookingService.getById(booking.id()).getStatus();
+            boolean stillPayable = currentBookingStatus == BookingStatus.PENDING_PAYMENT
+                    || currentBookingStatus == BookingStatus.DEPOSIT_PAID;
+            if (stillPayable) {
+                applyConfirmedPayment(payment, booking);
+            } else {
+                // The charge genuinely succeeded (money was taken) - that's kept as-is (reversing
+                // it here would silently hide a charge that needs a human decision on whether/how
+                // to refund it), only logged loudly for manual follow-up.
+                log.error("Payment {} confirmé par le fournisseur ({}) mais le booking {} n'est plus "
+                                + "payable (statut actuel: {}), remboursement à vérifier manuellement.",
+                        payment.getId(), result.gatewayReference(), booking.id(), currentBookingStatus);
+            }
 
         } else if (result.isFailed()) {
             failPayment(payment, result.failureReason());
@@ -185,6 +208,7 @@ public class PaymentService {
                 case AVS -> PaymentAuthorizationType.AVS;
                 case REDIRECT -> PaymentAuthorizationType.REDIRECT;
                 case OTP -> PaymentAuthorizationType.OTP;
+                case CLIENT_ACTION -> PaymentAuthorizationType.CLIENT_ACTION;
             };
 
             if (authorizationType == PaymentAuthorizationType.AVS) {
@@ -206,7 +230,8 @@ public class PaymentService {
                 return;
             }
 
-            payment.markPendingAuthorization(result.gatewayReference(), authorizationType, challenge.redirectUrl());
+            payment.markPendingAuthorization(result.gatewayReference(), authorizationType,
+                    challenge.redirectUrl(), challenge.clientSecret());
             paymentRepository.save(payment);
             if (authorizationType == PaymentAuthorizationType.PIN && originalRequest != null) {
                 pendingCardAuthorizationCache.put(payment.getId(), originalRequest);
@@ -263,17 +288,26 @@ public class PaymentService {
     private void validatePaymentMethodFields(PaymentRequest request) {
         switch (request.paymentMethod()) {
             case CARD -> {
-                if (isBlank(request.cardNumber()) || !request.cardNumber().matches("\\d{12,19}")) {
-                    throw new BusinessException("cardNumber must be 12-19 digits");
-                }
-                if (isBlank(request.cardHolderName())) {
-                    throw new BusinessException("cardHolderName is required");
-                }
-                if (isBlank(request.expiry()) || !request.expiry().matches("(0[1-9]|1[0-2])/\\d{2}")) {
-                    throw new BusinessException("expiry must be MM/YY");
-                }
-                if (isBlank(request.cvv()) || !request.cvv().matches("\\d{3,4}")) {
-                    throw new BusinessException("cvv must be 3-4 digits");
+                // Stripe (the default CARD route since the Flutterwave -> Stripe switch) collects
+                // card details itself via its own Elements widget *after* this request creates the
+                // PaymentIntent - no card fields travel through this backend for that path. Only
+                // validate them if actually supplied, so an admin-configured Flutterwave-for-CARD
+                // route (which still needs raw card data upfront) keeps working unchanged.
+                boolean anyCardFieldSupplied = request.cardNumber() != null || request.cardHolderName() != null
+                        || request.expiry() != null || request.cvv() != null;
+                if (anyCardFieldSupplied) {
+                    if (isBlank(request.cardNumber()) || !request.cardNumber().matches("\\d{12,19}")) {
+                        throw new BusinessException("cardNumber must be 12-19 digits");
+                    }
+                    if (isBlank(request.cardHolderName())) {
+                        throw new BusinessException("cardHolderName is required");
+                    }
+                    if (isBlank(request.expiry()) || !request.expiry().matches("(0[1-9]|1[0-2])/\\d{2}")) {
+                        throw new BusinessException("expiry must be MM/YY");
+                    }
+                    if (isBlank(request.cvv()) || !request.cvv().matches("\\d{3,4}")) {
+                        throw new BusinessException("cvv must be 3-4 digits");
+                    }
                 }
             }
             case MOBILE_MONEY -> {

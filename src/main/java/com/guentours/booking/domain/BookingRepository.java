@@ -36,4 +36,15 @@ public interface BookingRepository extends JpaRepository<Booking, String> {
             List<BookingStatus> statuses,
             Instant expirationThreshold
     );
+
+    /** Confirmed flight bookings still missing e-ticket numbers - candidates for
+     *  {@code ETicketReconciliationJob} (some providers ticket asynchronously; see
+     *  TravelProviderClient#checkForIssuedTickets). */
+    @Query("""
+            select b from Booking b
+            where b.status = com.guentours.booking.domain.BookingStatus.CONFIRMED
+            and b.offerType = com.guentours.booking.domain.OfferType.FLIGHT
+            and b.eTicketNumbers is empty
+            """)
+    List<Booking> findConfirmedFlightsMissingETickets();
 }

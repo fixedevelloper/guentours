@@ -1,6 +1,7 @@
 package com.guentours.payment;
 
 import com.guentours.booking.BookingService;
+import com.guentours.booking.domain.Booking;
 import com.guentours.booking.domain.BookingStatus;
 import com.guentours.booking.domain.BookingSummary;
 import com.guentours.booking.domain.PaymentPlan;
@@ -77,6 +78,13 @@ class PaymentServiceTest {
         // sur le routage lui-même (voir PaymentProviderRoutingServiceTest) : par défaut on résout
         // toujours vers le même gateway mocké, quel que soit le pays/mode demandé.
         lenient().when(routingService.resolveGateway(any(), any())).thenReturn(paymentGateway);
+        // applyChargeResult re-checks the booking's *current* status via getById right before
+        // confirming it paid (see PaymentService) - defaults to still-payable so every existing
+        // success-path test keeps working without stubbing this individually; tests covering the
+        // "booking no longer payable" race override it.
+        Booking defaultBooking = mock(Booking.class);
+        lenient().when(defaultBooking.getStatus()).thenReturn(BookingStatus.PENDING_PAYMENT);
+        lenient().when(bookingService.getById(anyString())).thenReturn(defaultBooking);
     }
 
     /**
@@ -530,6 +538,31 @@ class PaymentServiceTest {
             ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
             verify(eventPublisher).publishEvent(eventCaptor.capture());
             assertThat(eventCaptor.getValue()).isInstanceOf(BookingFullyPaidEvent.class);
+        }
+
+        @Test
+        @DisplayName("laisse le paiement SUCCEEDED mais ne touche pas au booking si celui-ci n'est plus payable "
+                + "(ex: hold fournisseur expiré et annulé pendant que le paiement était en vol)")
+        void shouldNotConfirmBookingWhenNoLongerPayableEvenThoughChargeSucceeded() {
+            Payment pendingPayment = new Payment(BOOKING_ID, PRICE, PaymentMethod.CARD, "4242", false, "CM", "XAF");
+            pendingPayment.markPendingAuthorization("pi_123", PaymentAuthorizationType.CLIENT_ACTION, null, "secret_123");
+            when(paymentRepository.findById("payment-1")).thenReturn(Optional.of(pendingPayment));
+            when(bookingService.getSummary(BOOKING_ID)).thenReturn(fullPaymentBooking());
+            Booking cancelledBooking = mock(Booking.class);
+            when(cancelledBooking.getStatus()).thenReturn(BookingStatus.CANCELLED);
+            when(bookingService.getById(BOOKING_ID)).thenReturn(cancelledBooking);
+
+            ChargeResult confirmedResult = new ChargeResult(ChargeStatus.SUCCEEDED, "pi_123", null, null, null);
+
+            paymentService.confirmFromGatewayCallback("payment-1", confirmedResult);
+
+            // The charge is kept as SUCCEEDED (money genuinely moved) - only the booking-side
+            // confirmation (which would otherwise throw "not awaiting payment" from inside its own
+            // @Transactional method and poison the whole transaction, see PaymentService) is skipped.
+            assertThat(pendingPayment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+            verify(bookingService, never()).markPaidAndConfirm(any(), any(), any());
+            verify(bookingService, never()).markDepositPaid(any());
+            verify(eventPublisher, never()).publishEvent(any());
         }
 
         @Test

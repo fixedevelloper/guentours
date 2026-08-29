@@ -515,6 +515,127 @@ public class TravelTerminusClient implements TravelProviderClient {
     }
 
     // ==========================================
+    // Pre Ancillary (optional priced baggage/meal/seat extras before Book)
+    // ==========================================
+
+    @Override
+    public List<AncillaryOption> ancillaryOptions(FlightOffer offer, List<PassengerInfo> passengers) {
+        if (config.isMockMode() || !isEnabled()) {
+            return List.of();
+        }
+        RevalidateOutcome outcome = revalidate(offer);
+        if (!outcome.valid() || outcome.route() == null || outcome.route().flightObject() == null) {
+            log.warn("[TravelTerminus] Could not lock a price/flightObject for offer {} while fetching ancillary options",
+                    offer.providerOfferId());
+            return List.of();
+        }
+        // Passing an empty (rather than null) array when the caller has no passenger names yet
+        // would fail routes where seatAncillaryRequiresPassengers is true - omitting the field
+        // entirely lets Travel Terminus tell us via an error whether it was actually required.
+        List<TravelTerminusPreAncillaryRequest.Passenger> paxList = passengers.isEmpty() ? null
+                : passengers.stream().map(p -> {
+                    String[] nameParts = splitName(p.fullName());
+                    return new TravelTerminusPreAncillaryRequest.Passenger(
+                            mapPassengerType(p.type()), DEFAULT_TITLE, nameParts[0], nameParts[1]);
+                }).toList();
+
+        TravelTerminusPreAncillaryResponse response;
+        try {
+            TravelTerminusPreAncillaryRequest request = new TravelTerminusPreAncillaryRequest(
+                    outcome.searchReqId(), outcome.hashReqKey(), outcome.route().flightObject(),
+                    config.getClientIp(), USER_AGENT, paxList);
+            TravelTerminusEnvelope<TravelTerminusPreAncillaryResponse> envelope = withAuth(token -> bookingRestClient.post()
+                    .uri("/api/flights/pre-ancillary")
+                    .header("access-token", token)
+                    .header("accept", "*/*")
+                    .header("language", "en")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<TravelTerminusEnvelope<TravelTerminusPreAncillaryResponse>>() {
+                    }));
+            response = envelope != null ? envelope.data() : null;
+        } catch (RuntimeException e) {
+            log.warn("[TravelTerminus] Pre-ancillary lookup failed for offer {}: {}", offer.providerOfferId(), e.getMessage());
+            return List.of();
+        }
+        return response == null ? List.of() : mapAncillaryOptions(response);
+    }
+
+    private List<AncillaryOption> mapAncillaryOptions(TravelTerminusPreAncillaryResponse response) {
+        List<AncillaryOption> options = new ArrayList<>();
+        if (response.baggages() != null) {
+            for (TravelTerminusPreAncillaryResponse.BaggageGroup group : response.baggages()) {
+                if (group.bagsData() == null) {
+                    continue;
+                }
+                for (TravelTerminusPreAncillaryResponse.BagOption bag : group.bagsData()) {
+                    addPaxOptions(options, AncillaryType.BAGGAGE, group.segmentId(), bag.baggageWeight(),
+                            bag.baggageWeight(), bag.passengers(), null);
+                }
+            }
+        }
+        if (response.meals() != null) {
+            for (TravelTerminusPreAncillaryResponse.MealGroup group : response.meals()) {
+                if (group.mealsData() == null) {
+                    continue;
+                }
+                for (TravelTerminusPreAncillaryResponse.MealOption meal : group.mealsData()) {
+                    addPaxOptions(options, AncillaryType.MEAL, group.segmentId(), meal.code(), meal.description(),
+                            meal.passengers(), null);
+                }
+            }
+        }
+        if (response.seats() != null) {
+            for (TravelTerminusPreAncillaryResponse.SeatGroup group : response.seats()) {
+                if (group.seatData() == null) {
+                    continue;
+                }
+                for (TravelTerminusPreAncillaryResponse.SeatOption seat : group.seatData()) {
+                    if (!"Available".equalsIgnoreCase(seat.status())) {
+                        continue;
+                    }
+                    String seatCode = (seat.row() == null ? "" : seat.row()) + (seat.column() == null ? "" : seat.column());
+                    SeatLayout seatLayout = new SeatLayout(seat.row(), seat.column(), seat.status(),
+                            Boolean.TRUE.equals(seat.exitRow()), Boolean.TRUE.equals(seat.accessible()),
+                            Boolean.TRUE.equals(seat.bassinet()), Boolean.TRUE.equals(seat.toilet()),
+                            Boolean.TRUE.equals(seat.galley()),
+                            group.totalRows() != null ? group.totalRows() : 0,
+                            group.totalColumns() != null ? group.totalColumns() : 0,
+                            group.seatGroups() != null ? group.seatGroups() : List.of(),
+                            group.cabinClass());
+                    addPaxOptions(options, AncillaryType.SEAT, group.segmentId(), seatCode, "Seat " + seatCode,
+                            seat.passengers(), seatLayout);
+                }
+            }
+        }
+        return options;
+    }
+
+    /** One {@link AncillaryOption} per eligible passenger entry - each carries its own price and
+     *  opaque {@code flightObject} token, serialized as-is into {@link AncillaryOption#providerToken()}
+     *  so {@link #toBookPassenger} can echo it back unmodified at Book time. */
+    private void addPaxOptions(List<AncillaryOption> options, AncillaryType type, String segmentId, String code,
+                                String label, List<TravelTerminusPreAncillaryResponse.PaxPrice> paxPrices,
+                                SeatLayout seatLayout) {
+        if (paxPrices == null) {
+            return;
+        }
+        for (TravelTerminusPreAncillaryResponse.PaxPrice paxPrice : paxPrices) {
+            if (paxPrice.price() == null || paxPrice.currency() == null || paxPrice.flightObject() == null) {
+                continue;
+            }
+            String providerToken = writeJson(paxPrice.flightObject());
+            if (providerToken == null) {
+                continue;
+            }
+            String paxRef = paxPrice.flightObject().path("paxRef").asText(null);
+            options.add(new AncillaryOption(type, segmentId, code, label,
+                    new Money(paxPrice.price(), paxPrice.currency()), paxRef, providerToken, seatLayout));
+        }
+    }
+
+    // ==========================================
     // Booking (deferred Book: lock now, book+ticket at payment capture)
     // ==========================================
 
@@ -554,16 +675,21 @@ public class TravelTerminusClient implements TravelProviderClient {
         if (config.isMockMode()) {
             return ProviderMockSupport.issueFlightTicket(getType(), pnrCode, 1);
         }
+        log.info("[TravelTerminus] issueFlightTicket: starting ticket issuance for pending booking {}", pnrCode);
         PendingBooking pending = pendingBookings.remove(pnrCode);
         if (pending == null) {
-            log.error("[TravelTerminus] No pending booking context for {} (app restart, or the {}-minute price "
-                    + "lock expired before payment was captured)", pnrCode, PENDING_BOOKING_TTL_MINUTES);
-            return new FinalTicketConfirmation(getType(), pnrCode, List.of(), false);
+            String reason = "No pending booking context for " + pnrCode + " (app restart, or the "
+                    + PENDING_BOOKING_TTL_MINUTES + "-minute price lock expired before payment was captured)";
+            log.error("[TravelTerminus] {}", reason);
+            return new FinalTicketConfirmation(getType(), pnrCode, List.of(), false, reason);
         }
         if (pending.expiresAt().isBefore(LocalDateTime.now())) {
-            log.warn("[TravelTerminus] Pending booking {} expired before payment capture", pnrCode);
-            return new FinalTicketConfirmation(getType(), pnrCode, List.of(), false);
+            String reason = "Pending booking " + pnrCode + " expired before payment capture";
+            log.warn("[TravelTerminus] {}", reason);
+            return new FinalTicketConfirmation(getType(), pnrCode, List.of(), false, reason);
         }
+        log.info("[TravelTerminus] issueFlightTicket: pending booking {} found, expires at {}, calling /api/flights/book",
+                pnrCode, pending.expiresAt());
 
         TravelTerminusBookResponse response;
         try {
@@ -580,9 +706,12 @@ public class TravelTerminusClient implements TravelProviderClient {
                     }));
             response = envelope != null ? envelope.data() : null;
         } catch (RuntimeException e) {
+            String reason = "Book call failed: " + e.getMessage();
             log.error("[TravelTerminus] Book failed for pending booking {}: {}", pnrCode, e.getMessage());
-            return new FinalTicketConfirmation(getType(), pnrCode, List.of(), false);
+            return new FinalTicketConfirmation(getType(), pnrCode, List.of(), false, reason);
         }
+        log.info("[TravelTerminus] issueFlightTicket: /api/flights/book responded for {} (error={}, bookingRefId={})",
+                pnrCode, response != null ? response.error() : null, response != null ? response.bookingRefId() : null);
 
         // Book returns HTTP 200 even for a business failure (no availability / session timeout) -
         // data.error/data.status must be checked explicitly.
@@ -590,18 +719,83 @@ public class TravelTerminusClient implements TravelProviderClient {
             String reason = response != null && response.orderDetails() != null && !response.orderDetails().isEmpty()
                     ? response.orderDetails().get(0).message() : "no booking reference returned";
             log.error("[TravelTerminus] Book was rejected for pending booking {}: {}", pnrCode, reason);
-            return new FinalTicketConfirmation(getType(), pnrCode, List.of(), false);
+            return new FinalTicketConfirmation(getType(), pnrCode, List.of(), false, reason);
         }
 
         String bookingRefId = response.bookingRefId();
         String pnr = response.orderDetails() != null && !response.orderDetails().isEmpty()
                 ? response.orderDetails().get(0).pnr() : bookingRefId;
+        log.info("[TravelTerminus] issueFlightTicket: booking {} confirmed, fetching ticket numbers for bookingRefId={}",
+                pnrCode, bookingRefId);
         List<String> tickets = fetchTicketNumbers(bookingRefId);
 
         log.info("[TravelTerminus] Booked {} -> bookingRefId={}, pnr={}, tickets={}", pnrCode, bookingRefId, pnr, tickets);
         // bookingRefId (not the synthetic pnrCode) is what BookingService will remember going
         // forward and later pass back into cancelFlightBooking - see its cancellation branch below.
         return new FinalTicketConfirmation(getType(), bookingRefId, tickets, true);
+    }
+
+    /** {@code providerConfirmationNumber} here is the {@code bookingRefId} issueFlightTicket
+     *  returned (see the comment on that method) - not the original synthetic pnrCode. */
+    @Override
+    public List<String> checkForIssuedTickets(String providerConfirmationNumber) {
+        if (config.isMockMode()) {
+            return List.of();
+        }
+        TravelTerminusOrderDetailsResponse details = fetchOrderDetails(providerConfirmationNumber);
+        if (details != null && details.flightTicketNo() != null && !details.flightTicketNo().isBlank()) {
+            log.info("[TravelTerminus] checkForIssuedTickets: {} now has ticket(s) {}",
+                    providerConfirmationNumber, details.flightTicketNo());
+            return splitPipeList(details.flightTicketNo());
+        }
+        log.info("[TravelTerminus] checkForIssuedTickets: {} still has no ticket numbers (bookingStatus={})",
+                providerConfirmationNumber, details != null ? details.bookingStatus() : null);
+        return List.of();
+    }
+
+    @Override
+    public FlightOrderDetail getFlightOrderDetail(String providerConfirmationNumber) {
+        if (config.isMockMode()) {
+            return null;
+        }
+        TravelTerminusOrderDetailsResponse details = fetchOrderDetails(providerConfirmationNumber);
+        if (details == null) {
+            return null;
+        }
+        List<FlightOrderDetail.Traveler> travelers = details.bookingTravelers() == null ? List.of()
+                : details.bookingTravelers().stream().map(this::toTraveler).toList();
+        List<FlightOrderDetail.CancellationRule> cancellationRules =
+                details.fareRules() == null || details.fareRules().cancellation() == null ? List.of()
+                        : details.fareRules().cancellation().stream()
+                        .map(rule -> new FlightOrderDetail.CancellationRule(
+                                rule.adultCharges() != null ? rule.adultCharges().toPlainString() : null,
+                                rule.currency(),
+                                Boolean.TRUE.equals(rule.refundable())))
+                        .toList();
+        return new FlightOrderDetail(details.bookingStatus(), travelers, cancellationRules);
+    }
+
+    private FlightOrderDetail.Traveler toTraveler(TravelTerminusOrderDetailsResponse.BookingTraveler traveler) {
+        List<FlightOrderDetail.Baggage> baggages = traveler.baggages() == null ? List.of()
+                : traveler.baggages().stream()
+                .flatMap(group -> (group.bagsData() == null ? List.<TravelTerminusOrderDetailsResponse.BagData>of() : group.bagsData()).stream()
+                        .map(bag -> new FlightOrderDetail.Baggage(group.segmentId(), group.departure(), group.arrival(),
+                                bag.baggageWeight(), bag.price() != null ? bag.price().toPlainString() : null, bag.currency())))
+                .toList();
+        List<FlightOrderDetail.Meal> meals = traveler.meals() == null ? List.of()
+                : traveler.meals().stream()
+                .flatMap(group -> (group.mealsData() == null ? List.<TravelTerminusOrderDetailsResponse.MealData>of() : group.mealsData()).stream()
+                        .map(meal -> new FlightOrderDetail.Meal(group.segmentId(), group.departure(), group.arrival(),
+                                meal.description(), meal.price() != null ? meal.price().toPlainString() : null, meal.currency())))
+                .toList();
+        List<FlightOrderDetail.Seat> seats = traveler.seats() == null ? List.of()
+                : traveler.seats().stream()
+                .flatMap(group -> (group.seatData() == null ? List.<TravelTerminusOrderDetailsResponse.SeatData>of() : group.seatData()).stream()
+                        .map(seat -> new FlightOrderDetail.Seat(group.segmentId(), group.departure(), group.arrival(),
+                                seat.row(), seat.column(), seat.price() != null ? seat.price().toPlainString() : null, seat.currency())))
+                .toList();
+        return new FlightOrderDetail.Traveler(traveler.firstName(), traveler.lastName(), traveler.paxType(),
+                baggages, meals, seats);
     }
 
     private TravelTerminusBookRequest toBookRequest(PendingBooking pending) {
@@ -620,18 +814,28 @@ public class TravelTerminusClient implements TravelProviderClient {
 
     private TravelTerminusBookRequest.Passenger toBookPassenger(PassengerInfo passenger, String contactPhone) {
         String[] nameParts = splitName(passenger.fullName());
-        String passengerType = switch (passenger.type()) {
-            case ADULT -> "ADT";
-            case CHILD -> "CHD";
-            case INFANT -> "INF";
-        };
         TravelTerminusBookRequest.Document document = passenger.passportNumber() != null
                 ? new TravelTerminusBookRequest.Document("P", passenger.passportNumber(), null,
                         passenger.passportExpiryDate() != null ? passenger.passportExpiryDate().toString() : null,
                         passenger.passportIssueCountry())
                 : null;
+        List<TravelTerminusBookRequest.AncillaryRef> baggages = new ArrayList<>();
+        List<TravelTerminusBookRequest.AncillaryRef> meals = new ArrayList<>();
+        List<TravelTerminusBookRequest.AncillaryRef> seats = new ArrayList<>();
+        for (SelectedAncillary selected : passenger.selectedAncillaries()) {
+            TravelTerminusBookRequest.AncillaryRef ref = toAncillaryRef(selected.providerToken());
+            if (ref == null) {
+                continue;
+            }
+            switch (selected.type()) {
+                case BAGGAGE -> baggages.add(ref);
+                case MEAL -> meals.add(ref);
+                case SEAT -> seats.add(ref);
+                case INSURANCE -> { /* GuenTours-only line, never sent to the provider */ }
+            }
+        }
         return new TravelTerminusBookRequest.Passenger(
-                passengerType,
+                mapPassengerType(passenger.type()),
                 DEFAULT_GENDER,
                 DEFAULT_TITLE,
                 nameParts[0],
@@ -642,8 +846,38 @@ public class TravelTerminusClient implements TravelProviderClient {
                 DEFAULT_CITY,
                 contactPhone,
                 null,
-                document
+                document,
+                baggages.isEmpty() ? null : baggages,
+                meals.isEmpty() ? null : meals,
+                seats.isEmpty() ? null : seats
         );
+    }
+
+    /** Reconstructs the ancillary reference from a {@link SelectedAncillary#providerToken()} - the
+     *  exact JSON this adapter serialized from a Pre Ancillary passenger entry's {@code
+     *  flightObject} in {@link #addPaxOptions} - so it can be echoed back into Book's {@code
+     *  baggages[]}/{@code meals[]}/{@code seats[]} per the "Connecting to the Book API" doc section. */
+    private TravelTerminusBookRequest.AncillaryRef toAncillaryRef(String providerToken) {
+        if (providerToken == null) {
+            return null;
+        }
+        try {
+            JsonNode node = objectMapper.readTree(providerToken);
+            String offerId = node.path("offerId").asText(null);
+            String paxRef = node.path("paxRef").asText(null);
+            return offerId == null ? null : new TravelTerminusBookRequest.AncillaryRef(offerId, paxRef);
+        } catch (IOException e) {
+            log.warn("[TravelTerminus] Corrupt ancillary provider token, skipping: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private static String mapPassengerType(PassengerType type) {
+        return switch (type) {
+            case ADULT -> "ADT";
+            case CHILD -> "CHD";
+            case INFANT -> "INF";
+        };
     }
 
     /** Same heuristic as {@code TravelportClient.splitName}: everything before the last space is

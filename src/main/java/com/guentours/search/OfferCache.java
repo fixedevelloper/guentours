@@ -1,5 +1,6 @@
 package com.guentours.search;
 
+import com.guentours.provider.AncillaryOption;
 import com.guentours.provider.FlightOffer;
 import com.guentours.provider.HotelOffer;
 import com.guentours.provider.HotelSearchCriteria;
@@ -117,6 +118,29 @@ public class OfferCache {
         return Optional.of(entry.value());
     }
 
+    /**
+     * One priced ancillary (baggage/meal/seat/insurance) quoted by {@code GET/POST
+     * /api/bookings/ancillary-options}, cached under an opaque id so checkout resolves its price
+     * (and, for provider-sourced extras, the opaque token needed to apply it at hold time) from
+     * this cache instead of trusting whatever the client sends back - same reasoning as every
+     * other offer cached here.
+     */
+    private final Map<String, Entry<AncillaryOption>> ancillaryOptions = new ConcurrentHashMap<>();
+
+    public String cacheAncillaryOption(AncillaryOption option) {
+        String id = UUID.randomUUID().toString();
+        ancillaryOptions.put(id, new Entry<>(option, Instant.now().toEpochMilli() + TTL_MILLIS));
+        return id;
+    }
+
+    public Optional<AncillaryOption> getAncillaryOption(String id) {
+        Entry<AncillaryOption> entry = ancillaryOptions.get(id);
+        if (entry == null || entry.isExpired()) {
+            return Optional.empty();
+        }
+        return Optional.of(entry.value());
+    }
+
     @Scheduled(fixedRate = 5 * 60 * 1000)
     void evictExpired() {
         flightOffers.values().removeIf(Entry::isExpired);
@@ -124,5 +148,6 @@ public class OfferCache {
         vehicleOffers.values().removeIf(Entry::isExpired);
         propertyOffers.values().removeIf(Entry::isExpired);
         hotelSearchSessions.values().removeIf(Entry::isExpired);
+        ancillaryOptions.values().removeIf(Entry::isExpired);
     }
 }

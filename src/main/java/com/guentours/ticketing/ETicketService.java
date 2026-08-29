@@ -32,14 +32,37 @@ public class ETicketService {
 
     @ApplicationModuleListener
     void on(BookingConfirmedEvent event) {
-        Booking booking = bookingService.getById(event.bookingId());
-        for (String ticketNumber : booking.getETicketNumbers()) {
+        generateTicketsFor(bookingService.getById(event.bookingId()));
+    }
+
+    /**
+     * Creates an {@link ETicket} row (document + PDF) for every number currently on {@code
+     * booking.getETicketNumbers()} that doesn't already have one - safe to call more than once for
+     * the same booking, which {@link com.guentours.ticketing.ETicketReconciliationJob} relies on
+     * (numbers discovered later, after the initial confirmation had none yet, get their tickets
+     * created without duplicating any that were already generated).
+     */
+    public void generateTicketsFor(Booking booking) {
+        List<String> ticketNumbers = booking.getETicketNumbers();
+        if (ticketNumbers.isEmpty()) {
+            log.info("Generated 0 e-ticket(s) for booking {}", booking.getId());
+            return;
+        }
+        List<String> existing = eTicketRepository.findByBookingId(booking.getId()).stream()
+                .map(ETicket::getTicketNumber)
+                .toList();
+        int created = 0;
+        for (String ticketNumber : ticketNumbers) {
+            if (existing.contains(ticketNumber)) {
+                continue;
+            }
             String document = renderDocument(booking, ticketNumber);
             ETicket ticket = new ETicket(booking.getId(), ticketNumber, booking.getProviderConfirmationNumber(), document);
             ticket.setPdfUrl(renderAndUploadPdf(booking, ticketNumber));
             eTicketRepository.save(ticket);
+            created++;
         }
-        log.info("Generated {} e-ticket(s) for booking {}", booking.getETicketNumbers().size(), booking.getId());
+        log.info("Generated {} e-ticket(s) for booking {}", created, booking.getId());
     }
 
     /**

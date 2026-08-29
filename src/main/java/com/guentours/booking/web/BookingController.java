@@ -2,6 +2,7 @@ package com.guentours.booking.web;
 
 import com.guentours.booking.BookingService;
 import com.guentours.booking.domain.Booking;
+import com.guentours.provider.FlightOrderDetail;
 import com.guentours.security.SecurityUtils;
 import com.guentours.shared.exception.NotFoundException;
 import com.guentours.user.service.UserService;
@@ -60,6 +61,16 @@ public class BookingController {
     }
 
     /**
+     * Quotes priced extras (baggage/meal/seat/insurance) for the "additional options" checkout
+     * step, ahead of the final {@code /checkout} submission. Returns an empty list for offer types
+     * other than FLIGHT, or when the provider exposes no ancillaries for this offer.
+     */
+    @PostMapping("/ancillary-options")
+    public ResponseEntity<List<AncillaryOptionResponse>> ancillaryOptions(@Valid @RequestBody AncillaryOptionsRequest request) {
+        return ResponseEntity.ok(bookingService.ancillaryOptions(request));
+    }
+
+    /**
      * {@code email} is required for anonymous/guest access (must match the booking's contact
      * email) - not needed when authenticated as the owning account or as an admin.
      */
@@ -88,6 +99,21 @@ public class BookingController {
                                                   @RequestParam(required = false) String email) {
         bookingService.verifyGuestAccess(bookingService.getById(id), email);
         return ResponseEntity.ok(BookingResponse.from(bookingService.cancel(id)));
+    }
+
+    /**
+     * Live baggage/meals/seats/cancellation-policy detail for a confirmed flight booking, fetched
+     * fresh from the provider (see {@link BookingService#getFlightOrderDetail}) - powers the flight
+     * detail page. Body is {@code null} when unavailable (not a flight, not yet provider-confirmed,
+     * or the provider doesn't support this) - the frontend falls back to what's already in the
+     * booking response itself.
+     */
+    @GetMapping("/{id}/flight-order-detail")
+    public ResponseEntity<FlightOrderDetail> flightOrderDetail(@PathVariable String id,
+                                                                @RequestParam(required = false) String email) {
+        Booking booking = bookingService.getById(id);
+        bookingService.verifyGuestAccess(booking, email);
+        return ResponseEntity.ok(bookingService.getFlightOrderDetail(booking));
     }
 
     /** Server-Sent Events stream of status transitions: PENDING_PAYMENT -> PAID -> CONFIRMING -> CONFIRMED/FAILED. */

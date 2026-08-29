@@ -17,6 +17,17 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# NEXT_PUBLIC_* variables are inlined into the client JS bundle by `next build` itself - setting
+# them as a *runtime* container env var (e.g. in a docker-compose `environment:` block) has no
+# effect, the bundle is already frozen by then. They must be passed as build args here instead,
+# by whatever builds this image (see .github/workflows/docker-build-push.yml).
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_APP_URL
+ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+
 # Next.js collects completely anonymous telemetry data about general usage.
 # Learn more here: https://nextjs.org/telemetry
 # Uncomment the following line in case you want to disable telemetry during the build.

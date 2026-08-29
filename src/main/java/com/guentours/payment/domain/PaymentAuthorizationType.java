@@ -9,5 +9,6 @@ public enum PaymentAuthorizationType {
     PIN,
     AVS,
     REDIRECT,
-    OTP
+    OTP,
+    CLIENT_ACTION
 }

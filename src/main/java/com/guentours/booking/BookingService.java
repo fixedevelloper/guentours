@@ -3,6 +3,8 @@ package com.guentours.booking;
 import com.guentours.booking.domain.*;
 import com.guentours.booking.event.*;
 import com.guentours.booking.service.FlightPricingCalculator;
+import com.guentours.booking.web.AncillaryOptionResponse;
+import com.guentours.booking.web.AncillaryOptionsRequest;
 import com.guentours.booking.web.CheckoutRequest;
 import com.guentours.booking.web.MultiCityCheckoutRequest;
 import com.guentours.booking.web.TravelerRequest;
@@ -31,11 +33,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -52,6 +56,9 @@ public class BookingService {
     private final ApplicationEventPublisher events;
     private final CommissionPolicy commissionPolicy;
     private final BigDecimal reservationFeeAmount;
+    /** Flat price of the GuenTours travel-insurance ancillary line - never provider-sourced,
+     *  always the same amount regardless of offer (see {@link #ancillaryOptions}). */
+    private final BigDecimal insuranceFeeAmount;
     /** Self-reference through the Spring proxy, needed so the @Async/@Transactional hold-completion
      *  methods below actually go through AOP when called from within this same class - a direct
      *  `this.foo()` call would bypass both aspects entirely. */
@@ -61,6 +68,7 @@ public class BookingService {
                           List<TravelProviderClient> providerClients, BookingTrackingService trackingService,
                           ApplicationEventPublisher events, CommissionPolicy commissionPolicy,
                           @Value("${app.payment.reservation-fee:5000}") BigDecimal reservationFeeAmount,
+                          @Value("${app.insurance.flat-fee:2500}") BigDecimal insuranceFeeAmount,
                           @Lazy BookingService self) {
         this.bookingRepository = bookingRepository;
         this.userService = userService;
@@ -71,7 +79,36 @@ public class BookingService {
         this.events = events;
         this.commissionPolicy = commissionPolicy;
         this.reservationFeeAmount = reservationFeeAmount;
+        this.insuranceFeeAmount = insuranceFeeAmount;
         this.self = self;
+    }
+
+    /**
+     * Quotes priced extras for the "additional options" checkout step: whatever the offer's own
+     * provider exposes (baggage/meal/seat - empty for most adapters today, see
+     * {@link TravelProviderClient#ancillaryOptions}) plus GuenTours' own flat travel-insurance
+     * line, which is never provider-sourced. FLIGHT only; every other offer type returns an empty
+     * list. Each option is cached under an opaque id (see {@link OfferCache#cacheAncillaryOption})
+     * that the frontend echoes back in {@link TravelerRequest#selectedAncillaryIds} at checkout.
+     */
+    public List<AncillaryOptionResponse> ancillaryOptions(AncillaryOptionsRequest request) {
+        if (request.offerType() != OfferType.FLIGHT) {
+            return List.of();
+        }
+        FlightOffer offer = offerCache.getFlightOffer(request.offerId())
+                .orElseThrow(() -> new BusinessException("This flight offer has expired, please search again"));
+        TravelProviderClient client = clientFor(offer.providerType());
+        List<PassengerInfo> passengers = request.travelers() == null ? List.of() : request.travelers().stream()
+                .map(t -> new PassengerInfo(t.fullName(), null, null, t.type(), null, null, null, List.of()))
+                .toList();
+
+        List<AncillaryOption> options = new ArrayList<>(client.ancillaryOptions(offer, passengers));
+        options.add(new AncillaryOption(AncillaryType.INSURANCE, null, "INSURANCE", "Travel insurance",
+                new Money(insuranceFeeAmount, offer.price().currency()), null, null, null));
+
+        return options.stream()
+                .map(option -> AncillaryOptionResponse.from(offerCache.cacheAncillaryOption(option), option))
+                .toList();
     }
 
     /**
@@ -128,6 +165,12 @@ public class BookingService {
             }
             bookingRepository.save(booking);
             events.publishEvent(new BookingCreatedEvent(booking.getId()));
+        } catch (OfferExpiredException ex) {
+            // Retrying would just resend the exact same now-dead offer id and fail identically -
+            // see Booking#canRetryHold - the payer needs to search again, not hit "Retry".
+            log.warn("Provider hold failed for booking {} (offer expired, not retryable)", bookingId, ex);
+            booking.markFailed(sanitizeFailureReason(ex), false);
+            bookingRepository.save(booking);
         } catch (RuntimeException ex) {
             log.warn("Provider hold failed for booking {}", bookingId, ex);
             booking.markFailed(sanitizeFailureReason(ex));
@@ -147,13 +190,15 @@ public class BookingService {
         User user = userService.findOrCreateForCheckout(request.contactEmail(), request.contactFullName(),
                 request.contactPhone());
         List<BookedTraveler> travelers = toBookedTravelers(request.travelers());
-        validateFlightTravelers(travelers);
         PaymentPlan plan = request.paymentPlan() == null ? PaymentPlan.PAY_NOW : request.paymentPlan();
 
         List<FlightOffer> offers = request.legOfferIds().stream()
                 .map(id -> offerCache.getFlightOffer(id)
                         .orElseThrow(() -> new BusinessException("This flight offer has expired, please search again")))
                 .toList();
+        // Passports must cover the whole itinerary, so check against the last leg's arrival -
+        // not just the first leg's departure - see validateFlightTravelers.
+        validateFlightTravelers(travelers, offers.getLast().arrivalTime().toLocalDate());
         ProviderType providerType = offers.get(0).providerType();
 
         List<BookingFlightLeg> itineraryLegs = new ArrayList<>();
@@ -179,9 +224,11 @@ public class BookingService {
     public void completeMultiCityHold(String bookingId) {
         Booking booking = getById(bookingId);
         try {
+            // OfferExpiredException, not BusinessException: this runs on retry too (see
+            // completeFlightHold's comment above for why the exception type matters here).
             List<FlightOffer> offers = legOfferIds(booking).stream()
                     .map(id -> offerCache.getFlightOffer(id)
-                            .orElseThrow(() -> new BusinessException("This flight offer has expired, please search again")))
+                            .orElseThrow(() -> new OfferExpiredException("This flight offer has expired, please search again")))
                     .toList();
             ProviderType providerType = offers.getFirst().providerType();
             TravelProviderClient client = clientFor(providerType);
@@ -218,6 +265,10 @@ public class BookingService {
             booking.markOnHoldMultiLeg(pnrCodes, earliestDeadline);
             bookingRepository.save(booking);
             events.publishEvent(new BookingCreatedEvent(booking.getId()));
+        } catch (OfferExpiredException ex) {
+            log.warn("Provider hold failed for multi-city booking {} (offer expired, not retryable)", bookingId, ex);
+            booking.markFailed(sanitizeFailureReason(ex), false);
+            bookingRepository.save(booking);
         } catch (RuntimeException ex) {
             log.warn("Provider hold failed for multi-city booking {}", bookingId, ex);
             booking.markFailed(sanitizeFailureReason(ex));
@@ -275,16 +326,51 @@ public class BookingService {
     // --- Fast path: builds a PENDING_HOLD Booking from the cached offer, no provider call ---
 
     private Booking buildPendingFlightBooking(CheckoutRequest request, User user, List<BookedTraveler> travelers, PaymentPlan plan) {
-        validateFlightTravelers(travelers);
         FlightOffer offer = offerCache.getFlightOffer(request.offerId())
                 .orElseThrow(() -> new BusinessException("This flight offer has expired, please search again"));
+        validateFlightTravelers(travelers, offer.departureTime().toLocalDate());
         Money totalOfferPrice = FlightPricingCalculator.multiplyByPayingTravelers(offer.price(), travelers);
-        Money priceWithFee = commissionPolicy.addFlightFee(totalOfferPrice);
+        List<BookingExtra> extras = resolveSelectedExtras(request.travelers(), offer.price().currency());
+        Money extrasTotal = extras.stream().map(BookingExtra::getPrice)
+                .reduce(Money.zero(offer.price().currency()), Money::add);
+        Money priceWithFee = commissionPolicy.addFlightFee(totalOfferPrice).add(extrasTotal);
         Booking booking = Booking.forFlight(user.getId(), user.getEmail(), offer.providerType(), offer.providerOfferId(),
                 offer.airline(), offer.flightNumber(), offer.origin(), offer.destination(),
                 offer.departureTime(), offer.arrivalTime(), offer.cabinClass(), priceWithFee, travelers);
+        booking.attachExtras(extras);
         booking.applyPaymentPlan(plan, plan == PaymentPlan.PAY_LATER ? reservationFee(priceWithFee.currency()) : null);
         return booking;
+    }
+
+    /**
+     * Resolves each traveler's picked ancillary-option ids (see
+     * {@link TravelerRequest#selectedAncillaryIds}) against the {@link OfferCache} quote they came
+     * from, trusting only the cached price/provider-token - never whatever the client sends.
+     * Silently skips an id that's missing/expired (the quote's TTL passed) or priced in a
+     * different currency than the booking ({@link Money#add} refuses to mix currencies) rather
+     * than failing checkout outright over one stale/inconsistent extra.
+     */
+    private List<BookingExtra> resolveSelectedExtras(List<TravelerRequest> travelerRequests, String bookingCurrency) {
+        List<BookingExtra> extras = new ArrayList<>();
+        for (int i = 0; i < travelerRequests.size(); i++) {
+            List<String> ids = travelerRequests.get(i).selectedAncillaryIds();
+            if (ids == null) {
+                continue;
+            }
+            int travelerIndex = i;
+            for (String id : ids) {
+                offerCache.getAncillaryOption(id).ifPresentOrElse(option -> {
+                    if (!option.price().currency().equals(bookingCurrency)) {
+                        log.warn("Skipping ancillary option {} priced in {} for a {} booking (currency mismatch)",
+                                id, option.price().currency(), bookingCurrency);
+                        return;
+                    }
+                    extras.add(new BookingExtra(option.type(), travelerIndex, option.segmentId(), option.code(),
+                            option.label(), option.price(), option.providerToken()));
+                }, () -> log.warn("Selected ancillary option {} not found or expired, skipping", id));
+            }
+        }
+        return extras;
     }
 
     private Booking buildPendingHotelBooking(CheckoutRequest request, User user, List<BookedTraveler> travelers, PaymentPlan plan) {
@@ -325,8 +411,13 @@ public class BookingService {
     // --- Async completion: the actual provider round trip, one per offer type ---
 
     private void completeFlightHold(Booking booking) {
+        // OfferExpiredException, not BusinessException: this runs on both the initial hold and a
+        // retried one (see completeHold's Javadoc), and BookingService.completeHold specifically
+        // catches OfferExpiredException to mark the booking non-retryable - a plain BusinessException
+        // here fell through to the generic catch (retryable=true), sending the payer into a "Retry"
+        // loop that fails identically every time the offer cache has already evicted this offer.
         FlightOffer offer = offerCache.getFlightOffer(booking.getSearchOfferId())
-                .orElseThrow(() -> new BusinessException("This flight offer has expired, please search again"));
+                .orElseThrow(() -> new OfferExpiredException("This flight offer has expired, please search again"));
         TravelProviderClient client = clientFor(offer.providerType());
 
         FlightPriceVerification verification = client.verifyFlightPrice(offer);
@@ -334,7 +425,7 @@ public class BookingService {
             throw new OfferExpiredException("This flight offer is no longer available at the quoted price, please search again");
         }
 
-        List<PassengerInfo> passengers = toPassengers(booking.getTravelers());
+        List<PassengerInfo> passengers = toPassengers(booking.getTravelers(), booking.getExtras());
         ProviderBookingConfirmation hold = client.createFlightHold(
                 new FlightBookingRequest(offer, passengers, booking.getContactEmail(), booking.getContactPhone()));
         if (!hold.confirmed()) {
@@ -345,7 +436,7 @@ public class BookingService {
 
     private void completeHotelHold(Booking booking) {
         HotelOffer offer = offerCache.getHotelOffer(booking.getSearchOfferId())
-                .orElseThrow(() -> new BusinessException("This hotel offer has expired, please search again"));
+                .orElseThrow(() -> new OfferExpiredException("This hotel offer has expired, please search again"));
         TravelProviderClient client = clientFor(offer.providerType());
 
         HotelPriceVerification verification = client.verifyHotelPrice(offer, booking.getRoomQuantity());
@@ -369,7 +460,7 @@ public class BookingService {
 
     private void completeVehicleHold(Booking booking) {
         VehicleOffer offer = offerCache.getVehicleOffer(booking.getSearchOfferId())
-                .orElseThrow(() -> new BusinessException("This vehicle offer has expired, please search again"));
+                .orElseThrow(() -> new OfferExpiredException("This vehicle offer has expired, please search again"));
         TravelProviderClient client = clientFor(offer.providerType());
 
         VehiclePriceVerification verification = client.verifyVehiclePrice(offer);
@@ -388,7 +479,7 @@ public class BookingService {
 
     private void completePropertyHold(Booking booking) {
         PropertyOffer offer = offerCache.getPropertyOffer(booking.getSearchOfferId())
-                .orElseThrow(() -> new BusinessException("This property offer has expired, please search again"));
+                .orElseThrow(() -> new OfferExpiredException("This property offer has expired, please search again"));
         TravelProviderClient client = clientFor(offer.providerType());
 
         PropertyPriceVerification verification = client.verifyPropertyPrice(offer);
@@ -412,6 +503,112 @@ public class BookingService {
     public Booking getById(String bookingId) {
         return bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new NotFoundException("Booking not found: " + bookingId));
+    }
+
+    /**
+     * Live baggage/meals/seats/cancellation-policy detail for a confirmed flight booking, straight
+     * from the provider (see {@link TravelProviderClient#getFlightOrderDetail}) - not persisted, so
+     * this always reflects the provider's current state. Null when the booking isn't a
+     * provider-confirmed flight, or when the provider doesn't support this (most adapters - only
+     * Travel Terminus does today); callers must fall back to what's already on the Booking itself.
+     */
+    public FlightOrderDetail getFlightOrderDetail(Booking booking) {
+        if (booking.getOfferType() != OfferType.FLIGHT || booking.getProviderConfirmationNumber() == null) {
+            return null;
+        }
+        TravelProviderClient client = clientFor(booking.getProviderType());
+        // Multi-city bookings hold one PNR per leg (see Booking#pnrCodes) - query every leg and
+        // merge, rather than just the first (booking.getProviderConfirmationNumber()), so a
+        // multi-city trip doesn't silently lose the 2nd/3rd leg's baggage/meals/seats here.
+        List<FlightOrderDetail> perLeg = booking.pnrCodes().stream()
+                .map(client::getFlightOrderDetail)
+                .filter(Objects::nonNull)
+                .toList();
+        if (perLeg.isEmpty()) {
+            return null;
+        }
+        return mergeFlightOrderDetails(perLeg);
+    }
+
+    /** Combines one {@link FlightOrderDetail} per leg into one view - same traveler order in every
+     *  leg's response (all legs were booked for the same passenger list), so travelers are merged
+     *  positionally, concatenating each one's baggage/meals/seats across legs. */
+    private FlightOrderDetail mergeFlightOrderDetails(List<FlightOrderDetail> perLeg) {
+        if (perLeg.size() == 1) {
+            return perLeg.get(0);
+        }
+        // Distinct statuses across legs joined rather than just taking the first - a multi-city
+        // trip where only one leg's ticket is still pending shouldn't quietly report "Confirmed".
+        String bookingStatus = perLeg.stream()
+                .map(FlightOrderDetail::bookingStatus)
+                .filter(Objects::nonNull)
+                .distinct()
+                .reduce((a, b) -> a + " / " + b)
+                .orElse(null);
+        int travelerCount = perLeg.stream().mapToInt(d -> d.travelers().size()).max().orElse(0);
+        List<FlightOrderDetail.Traveler> mergedTravelers = new ArrayList<>();
+        for (int i = 0; i < travelerCount; i++) {
+            List<FlightOrderDetail.Baggage> baggages = new ArrayList<>();
+            List<FlightOrderDetail.Meal> meals = new ArrayList<>();
+            List<FlightOrderDetail.Seat> seats = new ArrayList<>();
+            String firstName = null;
+            String lastName = null;
+            String paxType = null;
+            for (FlightOrderDetail leg : perLeg) {
+                if (i >= leg.travelers().size()) {
+                    continue;
+                }
+                FlightOrderDetail.Traveler traveler = leg.travelers().get(i);
+                firstName = traveler.firstName() != null ? traveler.firstName() : firstName;
+                lastName = traveler.lastName() != null ? traveler.lastName() : lastName;
+                paxType = traveler.paxType() != null ? traveler.paxType() : paxType;
+                baggages.addAll(traveler.baggages());
+                meals.addAll(traveler.meals());
+                seats.addAll(traveler.seats());
+            }
+            mergedTravelers.add(new FlightOrderDetail.Traveler(firstName, lastName, paxType, baggages, meals, seats));
+        }
+        List<FlightOrderDetail.CancellationRule> mergedRules = perLeg.stream()
+                .flatMap(d -> d.cancellationRules().stream())
+                .toList();
+        return new FlightOrderDetail(bookingStatus, mergedTravelers, mergedRules);
+    }
+
+    /**
+     * Re-checks confirmed flight bookings still missing e-ticket numbers against their provider
+     * (see {@link TravelProviderClient#checkForIssuedTickets}) and backfills whichever ones now
+     * have them. Lives here rather than in the {@code ticketing} module because talking to a {@link
+     * TravelProviderClient} is a booking-module concern (see {@link #clientFor}) - {@code ticketing}
+     * isn't allowed to depend on {@code provider} directly (see ModularityTests). Called by {@code
+     * ETicketReconciliationJob}, which generates the actual ETicket rows for whatever this returns.
+     */
+    public List<Booking> reconcileMissingETicketNumbers() {
+        List<Booking> pending = bookingRepository.findConfirmedFlightsMissingETickets();
+        List<Booking> updated = new ArrayList<>();
+        for (Booking booking : pending) {
+            if (booking.getProviderConfirmationNumber() == null) {
+                continue;
+            }
+            try {
+                TravelProviderClient client = clientFor(booking.getProviderType());
+                // Multi-city holds one PNR per leg (see Booking#pnrCodes) - check every leg and
+                // aggregate, matching how confirmWithProvider originally collected allTickets
+                // across legs, so a multi-city trip isn't only ever reconciled for its first leg.
+                List<String> tickets = booking.pnrCodes().stream()
+                        .flatMap(pnr -> client.checkForIssuedTickets(pnr).stream())
+                        .toList();
+                if (!tickets.isEmpty()) {
+                    booking.recordETicketNumbers(tickets);
+                    bookingRepository.save(booking);
+                    updated.add(booking);
+                }
+            } catch (Exception ex) {
+                // One booking's provider hiccup shouldn't stop the rest of the batch - it'll be
+                // retried next cycle since it's still CONFIRMED with an empty ticket list.
+                log.warn("reconcileMissingETicketNumbers: failed to check booking {}: {}", booking.getId(), ex.getMessage());
+            }
+        }
+        return updated;
     }
 
     /**
@@ -489,16 +686,22 @@ public class BookingService {
     @Transactional
     public void confirmWithProvider(String bookingId, String paymentTransactionReference, String payerReferenceLast4) {
         Booking booking = getById(bookingId);
+        log.info("confirmWithProvider: starting for booking {} (offerType={}, providerType={})",
+                bookingId, booking.getOfferType(), booking.getProviderType());
         booking.markConfirming();
         bookingRepository.save(booking);
         trackingService.publish(bookingId, BookingStatus.CONFIRMING);
+        log.info("confirmWithProvider: booking {} marked CONFIRMING, proceeding to provider ticket issuance", bookingId);
 
         try {
             if (booking.getOfferType() == OfferType.CAR_RENTAL || booking.getOfferType() == OfferType.FURNISHED_RENTAL) {
+                log.info("confirmWithProvider: booking {} is {} - no separate provider confirmation step, "
+                        + "the hold IS the confirmation", bookingId, booking.getOfferType());
                 booking.markConfirmed(booking.getProviderConfirmationNumber(), new ArrayList<>());
                 bookingRepository.save(booking);
                 trackingService.publish(bookingId, BookingStatus.CONFIRMED);
                 events.publishEvent(new BookingConfirmedEvent(booking.getId()));
+                log.info("confirmWithProvider: booking {} marked CONFIRMED", bookingId);
                 return;
             }
 
@@ -508,10 +711,20 @@ public class BookingService {
             if (booking.getOfferType() == OfferType.FLIGHT) {
                 String primaryConfirmation = null;
                 List<String> allTickets = new ArrayList<>();
-                for (String pnr : booking.pnrCodes()) {
+                List<String> pnrCodes = booking.pnrCodes();
+                log.info("confirmWithProvider: booking {} has {} PNR(s) to ticket: {}", bookingId, pnrCodes.size(), pnrCodes);
+                for (String pnr : pnrCodes) {
+                    log.info("confirmWithProvider: booking {} calling {}.issueFlightTicket for PNR {}",
+                            bookingId, booking.getProviderType(), pnr);
                     FinalTicketConfirmation confirmation = client.issueFlightTicket(pnr, payment);
+                    log.info("confirmWithProvider: booking {} issueFlightTicket({}) returned issued={}, reason={}",
+                            bookingId, pnr, confirmation.issued(), confirmation.reason());
                     if (!confirmation.issued()) {
-                        throw new ProviderException("Provider declined to issue e-tickets for booking " + bookingId);
+                        String reason = confirmation.reason() != null
+                                ? confirmation.reason()
+                                : "provider declined to issue e-tickets";
+                        throw new ProviderException(
+                                "Provider declined to issue e-tickets for booking " + bookingId + ": " + reason);
                     }
                     if (primaryConfirmation == null) {
                         primaryConfirmation = confirmation.pnrCode();
@@ -519,8 +732,14 @@ public class BookingService {
                     allTickets.addAll(confirmation.eTicketNumbers());
                 }
                 booking.markConfirmed(primaryConfirmation, allTickets);
+                log.info("confirmWithProvider: booking {} all PNR(s) ticketed, primaryConfirmation={}, tickets={}",
+                        bookingId, primaryConfirmation, allTickets);
             } else {
+                log.info("confirmWithProvider: booking {} calling {}.confirmHotelBooking for providerConfirmationNumber={}",
+                        bookingId, booking.getProviderType(), booking.getProviderConfirmationNumber());
                 FinalHotelConfirmation confirmation = client.confirmHotelBooking(booking.getProviderConfirmationNumber(), payment);
+                log.info("confirmWithProvider: booking {} confirmHotelBooking returned confirmed={}",
+                        bookingId, confirmation.confirmed());
                 if (!confirmation.confirmed()) {
                     throw new ProviderException("Provider declined to finalize hotel booking " + bookingId);
                 }
@@ -531,9 +750,16 @@ public class BookingService {
             trackingService.publish(bookingId, BookingStatus.CONFIRMED);
 
             events.publishEvent(new BookingConfirmedEvent(booking.getId()));
+            log.info("confirmWithProvider: booking {} marked CONFIRMED", bookingId);
         } catch (Exception ex) {
-            log.error("Provider confirmation failed for booking {}", bookingId, ex);
-            booking.markFailed(sanitizeFailureReason(ex));
+            // Not retryable: unlike a hold failure, payment has already been captured here (this
+            // runs after markPaidAndConfirm - see BookingConfirmationListener). "Réessayer" would
+            // re-run the HOLD flow via markRetrying/completeHold, which doesn't even touch ticket
+            // issuance and would risk creating a second provider hold against an already-paid
+            // booking. Recovery from a failure at this stage needs manual/ops handling, not a
+            // same-flow retry.
+            log.error("Provider confirmation failed for booking {} (already paid)", bookingId, ex);
+            booking.markFailed(sanitizeFailureReason(ex), false);
             bookingRepository.save(booking);
             trackingService.publish(bookingId, BookingStatus.FAILED);
             events.publishEvent(new BookingFailedEvent(booking.getId()));
@@ -606,10 +832,31 @@ public class BookingService {
     }
 
     private List<PassengerInfo> toPassengers(List<BookedTraveler> travelers) {
-        return travelers.stream()
-                .map(t -> new PassengerInfo(t.getFullName(), t.getDateOfBirth(), t.getPassportNumber(), t.getType(),
-                        t.getNationality(), t.getPassportIssueCountry(), t.getPassportExpiryDate()))
-                .toList();
+        return toPassengers(travelers, List.of());
+    }
+
+    /**
+     * Same as {@link #toPassengers(List)}, additionally threading each traveler's selected
+     * extras (matched by {@link BookingExtra#getTravelerIndex()}, that traveler's position in
+     * {@code travelers}) into {@link PassengerInfo#selectedAncillaries()} so the provider adapter
+     * can apply them at hold time (see {@code TravelTerminusClient#toBookPassenger}). Only
+     * extras with a non-null {@link BookingExtra#getProviderToken()} are provider-bound - a
+     * booking-level line like INSURANCE never has one and is simply skipped here.
+     */
+    private List<PassengerInfo> toPassengers(List<BookedTraveler> travelers, List<BookingExtra> extras) {
+        List<PassengerInfo> passengers = new ArrayList<>();
+        for (int i = 0; i < travelers.size(); i++) {
+            BookedTraveler t = travelers.get(i);
+            int travelerIndex = i;
+            List<SelectedAncillary> selected = extras.stream()
+                    .filter(e -> e.getProviderToken() != null && e.getTravelerIndex() != null
+                            && e.getTravelerIndex() == travelerIndex)
+                    .map(e -> new SelectedAncillary(e.getType(), e.getProviderToken()))
+                    .toList();
+            passengers.add(new PassengerInfo(t.getFullName(), t.getDateOfBirth(), t.getPassportNumber(), t.getType(),
+                    t.getNationality(), t.getPassportIssueCountry(), t.getPassportExpiryDate(), selected));
+        }
+        return passengers;
     }
 
     /**
@@ -619,12 +866,25 @@ public class BookingService {
      * with "PassengerNationality details is required for this airline"). Checked here, before any
      * provider call, so an incomplete submission fails fast with a clear, actionable message instead
      * of a confusing provider-side rejection deep in the booking flow.
+     *
+     * <p>Passport expiry is still optional (not every route needs a passport at all), but when a
+     * traveler did supply one it must cover {@code travelDate} - confirmed by a real Travel Terminus
+     * Book rejection ("Passport for passenger1 will be expired before travel date") that otherwise
+     * only surfaces at ticket issuance ({@link #confirmWithProvider}), i.e. after payment was already
+     * captured. This only catches an outright-expired passport; it doesn't enforce the "valid 6
+     * months past travel" rule some destination countries require, since that depends on the
+     * destination and isn't modeled here.
      */
-    private void validateFlightTravelers(List<BookedTraveler> travelers) {
+    private void validateFlightTravelers(List<BookedTraveler> travelers, LocalDate travelDate) {
         boolean incomplete = travelers.stream()
                 .anyMatch(t -> t.getDateOfBirth() == null || t.getNationality() == null || t.getNationality().isBlank());
         if (incomplete) {
             throw new BusinessException("Date of birth and nationality are required for every traveler on a flight booking");
+        }
+        boolean expiredPassport = travelers.stream()
+                .anyMatch(t -> t.getPassportExpiryDate() != null && t.getPassportExpiryDate().isBefore(travelDate));
+        if (expiredPassport) {
+            throw new BusinessException("One or more travelers' passport will be expired before the travel date - please provide a valid passport expiry date");
         }
     }
 }

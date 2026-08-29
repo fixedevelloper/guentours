@@ -70,7 +70,10 @@ public class ExpiredBookingService {
 
             // 2. Mettre à jour l'état dans le domaine
             booking.markCancelled();
-            booking.markFailed("Réservation PAY_LATER expirée (délai de 2h dépassé sans paiement complet).");
+            // Retry is pointless here too: the provider's price/availability guarantee lapsed hours
+            // ago along with the hold itself. (markFailed after markCancelled also overwrites the
+            // status back to FAILED - a separate, pre-existing quirk left untouched here.)
+            booking.markFailed("Réservation PAY_LATER expirée (délai de 2h dépassé sans paiement complet).", false);
 
             bookingRepository.save(booking);
 

@@ -24,8 +24,12 @@ import java.util.Set;
 @Service
 public class PaymentProviderRoutingService {
 
-    /** Used whenever no admin-configured route matches, so behavior is unchanged until one is added. */
-    public static final String DEFAULT_PROVIDER = "FLUTTERWAVE";
+    /**
+     * Used whenever no admin-configured route matches. Stripe doesn't process African mobile
+     * money, so an admin route for MOBILE_MONEY -> FLUTTERWAVE must exist (or be added) alongside
+     * this default; see PaymentProviderRouteController.
+     */
+    public static final String DEFAULT_PROVIDER = "STRIPE";
 
     private final PaymentProviderRouteRepository routeRepository;
     private final Map<String, PaymentGateway> gatewaysByProvider;

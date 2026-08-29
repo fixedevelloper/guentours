@@ -194,6 +194,14 @@ app:
     default-country: CM
     redirect-url: ${REDIRECT_URL:https://www.guenstravel.com/payments/redirect}
 
+  # CARD/GOOGLE_PAY/APPLE_PAY/PAYPAL default provider (see PaymentProviderRoutingService.DEFAULT_PROVIDER).
+  # Left blank until real keys are set - StripePaymentGateway then just fails each charge with a
+  # clear "declined" reason (Stripe's own auth error) rather than the app refusing to start.
+  stripe:
+    secret-key: ${STRIPE_SECRET_KEY:}
+    publishable-key: ${STRIPE_PUBLISHABLE_KEY:}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
 server:
   port: ${SERVER_PORT:8080}
   servlet:

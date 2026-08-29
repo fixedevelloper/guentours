@@ -59,6 +59,11 @@ public class Payment {
     @Column(name = "authorization_redirect_url")
     private String authorizationRedirectUrl;
 
+    /** Set only when {@link #authorizationType} is {@code CLIENT_ACTION} - the Stripe PaymentIntent
+     *  client secret the frontend needs to call {@code stripe.confirmPayment} itself. */
+    @Column(name = "authorization_client_secret")
+    private String authorizationClientSecret;
+
     @Column(name = "failure_reason")
     private String failureReason;
 
@@ -125,6 +130,11 @@ public class Payment {
      */
     public void markPendingAuthorization(String gatewayReference, PaymentAuthorizationType authorizationType,
                                          String redirectUrl) {
+        markPendingAuthorization(gatewayReference, authorizationType, redirectUrl, null);
+    }
+
+    public void markPendingAuthorization(String gatewayReference, PaymentAuthorizationType authorizationType,
+                                         String redirectUrl, String clientSecret) {
         if (this.status != PaymentStatus.PENDING && this.status != PaymentStatus.PENDING_AUTHORIZATION) {
             throw new IllegalStateException(
                     "Impossible de passer en PENDING_AUTHORIZATION un paiement déjà dans l'état " + this.status);
@@ -133,6 +143,7 @@ public class Payment {
         this.gatewayReference = gatewayReference;
         this.authorizationType = authorizationType;
         this.authorizationRedirectUrl = redirectUrl;
+        this.authorizationClientSecret = clientSecret;
         this.updatedAt = Instant.now();
     }
 
@@ -195,6 +206,10 @@ public class Payment {
 
     public String getAuthorizationRedirectUrl() {
         return authorizationRedirectUrl;
+    }
+
+    public String getAuthorizationClientSecret() {
+        return authorizationClientSecret;
     }
 
     public String getFailureReason() {

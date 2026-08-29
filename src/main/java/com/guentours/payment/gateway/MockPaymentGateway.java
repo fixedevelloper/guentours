@@ -1,24 +1,18 @@
 package com.guentours.payment.gateway;
 
 import com.guentours.payment.domain.PaymentMethod;
-import com.guentours.payment.service.PaymentService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.annotation.Primary;
-import org.springframework.context.annotation.Profile;
-import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Stands in for the real Flutterwave gateway in the test profile, so integration tests never hit a
- * live provider. Named "FLUTTERWAVE" (matching the real gateway's bean name) so
- * PaymentProviderRoutingService's default provider resolution works the same way in every profile.
+ * Stands in for the real Stripe/Flutterwave gateways in the test profile, so integration tests
+ * never hit a live provider. Registered under both bean names ("STRIPE" - the default provider -
+ * and "FLUTTERWAVE" - still routed to for MOBILE_MONEY) by {@link PaymentGatewayTestConfig}, so
+ * PaymentProviderRoutingService's provider resolution works the same way in every profile.
  */
-@Component("FLUTTERWAVE")
-@Profile("test")
-@Primary
 public class MockPaymentGateway implements PaymentGateway {
 
     private static final Logger log = LoggerFactory.getLogger(MockPaymentGateway.class);

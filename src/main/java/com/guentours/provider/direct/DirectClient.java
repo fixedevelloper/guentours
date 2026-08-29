@@ -469,14 +469,26 @@ public class DirectClient implements TravelProviderClient {
     public HotelDetail getDetailHotel(HotelOffer offer) { return null; }
     @Override
     public List<RoomOffer> getRoomOffers(HotelOffer offer) { return List.of(); }
+    // DIRECT is search-only (aggregates other providers' offers at search time, see the rest of this
+    // class) - it was never wired for the write side of a booking. These used to silently return
+    // null, which meant a booking that somehow reached this provider at hold/ticketing time crashed
+    // with an unhelpful NPE deep in BookingService instead of a clear cause.
     @Override
-    public ProviderBookingConfirmation createFlightHold(FlightBookingRequest request) { return null; }
+    public ProviderBookingConfirmation createFlightHold(FlightBookingRequest request) {
+        throw new UnsupportedOperationException("DIRECT provider does not support flight booking (search-only)");
+    }
     @Override
-    public ProviderBookingConfirmation createHotelHold(HotelBookingRequest request) { return null; }
+    public ProviderBookingConfirmation createHotelHold(HotelBookingRequest request) {
+        throw new UnsupportedOperationException("DIRECT provider does not support hotel booking (search-only)");
+    }
     @Override
-    public FinalTicketConfirmation issueFlightTicket(String pnrCode, PaymentDetails payment) { return null; }
+    public FinalTicketConfirmation issueFlightTicket(String pnrCode, PaymentDetails payment) {
+        throw new UnsupportedOperationException("DIRECT provider does not support flight ticket issuance (search-only)");
+    }
     @Override
-    public FinalHotelConfirmation confirmHotelBooking(String hotelBookingRef, PaymentDetails payment) { return null; }
+    public FinalHotelConfirmation confirmHotelBooking(String hotelBookingRef, PaymentDetails payment) {
+        throw new UnsupportedOperationException("DIRECT provider does not support hotel booking confirmation (search-only)");
+    }
     @Override
     public void cancelFlightBooking(String pnrCode) {}
     @Override

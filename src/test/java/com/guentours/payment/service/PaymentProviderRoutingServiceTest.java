@@ -28,6 +28,8 @@ class PaymentProviderRoutingServiceTest {
     @Mock
     private PaymentGateway flutterwaveGateway;
     @Mock
+    private PaymentGateway stripeGateway;
+    @Mock
     private PaymentGateway genericGateway;
 
     private PaymentProviderRoutingService routingService;
@@ -35,15 +37,27 @@ class PaymentProviderRoutingServiceTest {
     @BeforeEach
     void setUp() {
         routingService = new PaymentProviderRoutingService(routeRepository,
-                Map.of("FLUTTERWAVE", flutterwaveGateway, "GENERIC", genericGateway));
+                Map.of("FLUTTERWAVE", flutterwaveGateway, "STRIPE", stripeGateway, "GENERIC", genericGateway));
     }
 
     @Test
-    void fallsBackToFlutterwaveWhenNoRouteIsConfigured() {
+    void fallsBackToStripeWhenNoRouteIsConfigured() {
         when(routeRepository.findByCountryCodeAndPaymentMethod("CM", PaymentMethod.CARD)).thenReturn(Optional.empty());
         when(routeRepository.findByCountryCodeIsNullAndPaymentMethod(PaymentMethod.CARD)).thenReturn(Optional.empty());
 
-        assertThat(routingService.resolveGateway("CM", PaymentMethod.CARD)).isSameAs(flutterwaveGateway);
+        assertThat(routingService.resolveGateway("CM", PaymentMethod.CARD)).isSameAs(stripeGateway);
+    }
+
+    /** Stripe doesn't process African mobile money - MOBILE_MONEY must keep resolving to Flutterwave
+     *  via an explicit global route rather than falling through to the STRIPE default (see V38). */
+    @Test
+    void mobileMoneyStillFallsBackToFlutterwaveViaAnExplicitGlobalRoute() {
+        when(routeRepository.findByCountryCodeAndPaymentMethod("CM", PaymentMethod.MOBILE_MONEY)).thenReturn(Optional.empty());
+        var globalRoute = new PaymentProviderRoute(null, PaymentMethod.MOBILE_MONEY, "FLUTTERWAVE");
+        when(routeRepository.findByCountryCodeIsNullAndPaymentMethod(PaymentMethod.MOBILE_MONEY))
+                .thenReturn(Optional.of(globalRoute));
+
+        assertThat(routingService.resolveGateway("CM", PaymentMethod.MOBILE_MONEY)).isSameAs(flutterwaveGateway);
     }
 
     @Test
@@ -102,7 +116,7 @@ class PaymentProviderRoutingServiceTest {
 
     @Test
     void availableProviderNamesReflectsTheDeployedGateways() {
-        assertThat(routingService.availableProviderNames()).containsExactlyInAnyOrder("FLUTTERWAVE", "GENERIC");
+        assertThat(routingService.availableProviderNames()).containsExactlyInAnyOrder("FLUTTERWAVE", "STRIPE", "GENERIC");
     }
 
     @Test
@@ -140,7 +154,7 @@ class PaymentProviderRoutingServiceTest {
     void resolvedGatewayCanActuallyBeInvoked() {
         when(routeRepository.findByCountryCodeAndPaymentMethod("CM", PaymentMethod.CARD)).thenReturn(Optional.empty());
         when(routeRepository.findByCountryCodeIsNullAndPaymentMethod(PaymentMethod.CARD)).thenReturn(Optional.empty());
-        when(flutterwaveGateway.charge(org.mockito.ArgumentMatchers.any(ChargeRequest.class)))
+        when(stripeGateway.charge(org.mockito.ArgumentMatchers.any(ChargeRequest.class)))
                 .thenReturn(ChargeResult.success("ref-1"));
 
         var gateway = routingService.resolveGateway("CM", PaymentMethod.CARD);

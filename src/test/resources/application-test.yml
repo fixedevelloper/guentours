@@ -21,13 +21,23 @@ spring:
 
 app:
   providers:
+    # `enabled` must be pinned here too, not just `mock-mode` - application.yml's own defaults
+    # (${TRAVELOPRO_ENABLED:true} etc.) only apply when nothing else sets the property, and
+    # spring-dotenv loads the repo-root .env as a real PropertySource regardless of active
+    # profile. A developer's local .env disabling a provider for their own manual testing (e.g.
+    # TRAVELOPRO_ENABLED=false) would otherwise silently disable it here too, making hotel/flight
+    # search tests pass or fail depending on whose machine they run on instead of what's tested.
     travelopro:
+      enabled: true
       mock-mode: true
     sabre:
+      enabled: true
       mock-mode: true
     travelport:
+      enabled: true
       mock-mode: true
     travelterminus:
+      enabled: true
       mock-mode: true
 
   reference-data:

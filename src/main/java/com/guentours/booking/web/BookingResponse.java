@@ -30,7 +30,9 @@ public record BookingResponse(
         List<BookingFlightLegResponse> itineraryLegs,
         String failureReason,
         boolean retryable,
+        boolean paymentCaptured,
         List<BookingTravelerResponse> travelers,
+        List<BookingExtraResponse> extras,
         String airline,
         String flightNumber,
         String origin,
@@ -70,10 +72,14 @@ public record BookingResponse(
         List<BookingTravelerResponse> travelers = booking.getTravelers().stream()
                 .map(BookingTravelerResponse::from)
                 .toList();
+        List<BookingExtraResponse> extras = booking.getExtras().stream()
+                .map(BookingExtraResponse::from)
+                .toList();
         return new BookingResponse(booking.getId(), booking.getStatus(), booking.getOfferType(),
                 booking.getProviderType(), booking.getContactEmail(), booking.getPrice(), booking.getPaymentPlan(), booking.getReservationFee(),
                 booking.amountDue(), booking.getTicketingDeadline(), booking.getProviderConfirmationNumber(),
-                booking.getETicketNumbers(), legs, booking.getFailureReason(), booking.canRetryHold(), travelers,
+                booking.getETicketNumbers(), legs, booking.getFailureReason(), booking.canRetryHold(),
+                booking.isPaymentCaptured(), travelers, extras,
                 booking.getAirline(), booking.getFlightNumber(), booking.getOrigin(), booking.getDestination(),
                 booking.getDepartureTime(), booking.getArrivalTime(), booking.getHotelName(), booking.getCityCode(),
                 booking.getCheckIn(), booking.getCheckOut(), booking.getFareClass(), booking.getRoomQuantity(),

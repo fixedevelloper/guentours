@@ -1,0 +1,160 @@
+# Reference copy of the VPS's real compose file (lives at /opt/apps/docker-compose.yml on the
+# server, not deployed from here). Kept in version control so infra changes are reviewable/
+# trackable instead of living only as ad-hoc edits on the server - copy this file's content to
+# /opt/apps/docker-compose.yml on the VPS by hand when it changes, this repo does not push it
+# automatically.
+#
+# Deploy automation: .github/workflows/deploy.yml (API) and
+# frontend/.github/workflows/docker-build-push.yml (frontend) each build+push a GHCR image, then
+# SSH in and run `docker compose pull <service> && docker compose up -d <service>` against this
+# file's live copy on the server.
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-guentours}
+      MYSQL_USER: ${MYSQL_USER:-guentours}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-guentours}
+    volumes:
+      - /opt/mysql_data:/var/lib/mysql
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root_password}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: minio
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
+    ports:
+      - "127.0.0.1:9000:9000" # API S3 MinIO
+      - "127.0.0.1:9001:9001" # Interface Web MinIO
+    volumes:
+      - /opt/minio_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: guestravel-phpmyadmin
+    restart: always
+    ports:
+      - "127.0.0.1:9080:80" # Sécurisé : accessible uniquement via le Nginx du VPS / tunnel SSH
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      UPLOAD_LIMIT: 64M
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - backend
+
+  api:
+    image: ghcr.io/fixedevelloper/guestravel-api:latest
+    container_name: guestravel-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-guentours}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-guentours}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-guentours}
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    image: ghcr.io/fixedevelloper/guestravel-frontend:latest
+    container_name: guestravel-frontend
+    restart: unless-stopped
+    # Pas de NEXT_PUBLIC_* ici : ces valeurs sont figées dans le bundle JS au moment du build de
+    # l'image (voir frontend/Dockerfile + frontend/.github/workflows/docker-build-push.yml), les
+    # redéfinir au runtime n'aurait aucun effet.
+    ports:
+      # Port hôte 3000 déjà pris par un autre service du VPS -> 3002 côté hôte. Le port 3000 à
+      # droite reste celui du conteneur (Next.js standalone écoute sur PORT=3000, voir
+      # frontend/Dockerfile) ; pointe Nginx vers 127.0.0.1:3002.
+      - "127.0.0.1:3002:3000" # Accessible uniquement via le Nginx du VPS, comme l'API
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus_admin.txt:/etc/prometheus/prometheus_admin.txt:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      api:
+        condition: service_healthy # Attend que Spring Boot réponde sur /actuator/health
+    networks:
+      - backend
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:

@@ -32,8 +32,22 @@ public record TravelTerminusBookRequest(
             String city,
             String mobile,
             String panCardNumber,
-            Document document
+            Document document,
+            /** From Pre Ancillary's baggages[].bagsData[].passengers[].flightObject, passed through
+             *  unmodified - see the "Connecting to the Book API" doc section. Omitted (not an empty
+             *  array) when no baggage was picked - the docs' own example always includes the key,
+             *  but NON_NULL keeps this consistent with every other optional field on this record. */
+            List<AncillaryRef> baggages,
+            List<AncillaryRef> meals,
+            List<AncillaryRef> seats
     ) {
+    }
+
+    /** One selected ancillary, echoed back exactly as received in a Pre Ancillary passenger
+     *  entry's {@code flightObject} ({@code offerId}+{@code paxRef}) - see
+     *  TravelTerminusPreAncillaryResponse.PaxPrice. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record AncillaryRef(String offerId, String paxRef) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

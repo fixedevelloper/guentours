@@ -72,6 +72,18 @@ public interface TravelProviderClient {
         return null;
     }
 
+    /**
+     * Priced extras (baggage, meals, paid seats) available for {@code offer}, if this provider
+     * exposes any before booking. {@code passengers} carries only basic demographics (name, type)
+     * - some providers require them to price ancillaries at all (e.g. Travel Terminus's Pre
+     * Ancillary sequence lock). Default returns an empty list: providers without a pre-booking
+     * ancillary API don't need to override this. Must never throw for a plain "unavailable" case
+     * - return an empty list instead.
+     */
+    default List<AncillaryOption> ancillaryOptions(FlightOffer offer, List<PassengerInfo> passengers) {
+        return List.of();
+    }
+
     // ==========================================
     // 2. VALIDATION & TARIFICATION REEL (Price & Rule Check)
     // ==========================================
@@ -172,6 +184,34 @@ public interface TravelProviderClient {
      * Finalizes the hotel booking, capturing the room permanently.
      */
     FinalHotelConfirmation confirmHotelBooking(String hotelBookingRef, PaymentDetails payment);
+
+    /**
+     * Re-checks whether e-tickets have since been issued for an already-CONFIRMED flight booking
+     * whose {@link #issueFlightTicket} call returned {@code issued=true} but no ticket numbers yet
+     * - Travel Terminus can ticket asynchronously on its own ~10-minute reconciliation cadence, well
+     * past issueFlightTicket's short poll window. Called periodically by
+     * {@code ETicketReconciliationJob}, never during checkout itself. Returns an empty list if
+     * still not available.
+     *
+     * <p>Default: providers that always ticket synchronously in issueFlightTicket never leave
+     * anything to reconcile, so there's nothing to check here.
+     */
+    default List<String> checkForIssuedTickets(String providerConfirmationNumber) {
+        return List.of();
+    }
+
+    /**
+     * Live supplementary flight order details (baggage/meals/seats per traveler, cancellation
+     * policy, current provider-side booking status) beyond what's already stored on the {@code
+     * Booking} itself - powers the flight booking detail page. Not persisted: fetched on demand
+     * since it reflects the provider's current state, not a point-in-time snapshot.
+     *
+     * <p>Default: providers without a richer order-details API return {@code null}; callers must
+     * treat that as "extra detail unavailable" and fall back to what's already on the Booking.
+     */
+    default FlightOrderDetail getFlightOrderDetail(String providerConfirmationNumber) {
+        return null;
+    }
 
     // ==========================================
     // 5. APRÈS-VENTE (Void / Cancel)

@@ -181,6 +181,11 @@ public class Booking {
     @CollectionTable(name = "booking_travelers", joinColumns = @JoinColumn(name = "booking_id"))
     private List<BookedTraveler> travelers = new ArrayList<>();
 
+    /** Extras (baggage/meal/seat/insurance) picked at checkout - FLIGHT only today. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "booking_extras", joinColumns = @JoinColumn(name = "booking_id"))
+    private List<BookingExtra> extras = new ArrayList<>();
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private BookingStatus status = BookingStatus.PENDING_HOLD;
@@ -203,6 +208,19 @@ public class Booking {
 
     @Column(name = "failure_reason")
     private String failureReason;
+
+    /** Whether a FAILED hold is worth resubmitting. false for failures that will never succeed on
+     *  retry (the offer itself expired at the provider - see OfferExpiredException) - retrying
+     *  those would just resend the same now-dead offer id and fail again identically. */
+    @Column(nullable = false)
+    private boolean retryable = true;
+
+    /** True once a payment has actually been captured for this booking (set in {@link #markPaid()}
+     *  and never unset) - a booking can still fail afterwards (see confirmWithProvider), so this is
+     *  the only reliable way to tell "never paid, safe to send back to search" apart from "already
+     *  charged, needs support/refund handling" once status is FAILED. */
+    @Column(name = "payment_captured", nullable = false)
+    private boolean paymentCaptured = false;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
@@ -363,6 +381,10 @@ public class Booking {
         this.reservationFee = reservationFee;
     }
 
+    public void attachExtras(List<BookingExtra> extras) {
+        this.extras = new ArrayList<>(extras);
+    }
+
     /** Records what's needed to retry the provider hold later without re-asking the guest. */
     public void assignRetryContext(String searchOfferId, String contactPhone) {
         this.searchOfferId = searchOfferId;
@@ -411,6 +433,7 @@ public class Booking {
 
     public void markPaid() {
         this.status = BookingStatus.PAID;
+        this.paymentCaptured = true;
     }
 
     public void markConfirming() {
@@ -423,22 +446,37 @@ public class Booking {
         this.eTicketNumbers = eTicketNumbers;
     }
 
+    /** Backfills e-ticket numbers discovered after the fact (see ETicketReconciliationJob) - some
+     *  providers (Travel Terminus) ticket asynchronously and issueFlightTicket can return
+     *  issued=true with no numbers yet. Only ever called on an already-CONFIRMED booking whose
+     *  numbers were still missing, so it doesn't touch status/providerConfirmationNumber. */
+    public void recordETicketNumbers(List<String> eTicketNumbers) {
+        this.eTicketNumbers = eTicketNumbers;
+    }
+
     public void markFailed(String reason) {
+        markFailed(reason, true);
+    }
+
+    public void markFailed(String reason, boolean retryable) {
         this.status = BookingStatus.FAILED;
         this.failureReason = reason;
+        this.retryable = retryable;
     }
 
     public void markCancelled() {
         this.status = BookingStatus.CANCELLED;
     }
 
-    /** A failed hold, never confirmed with the provider, can be resubmitted from scratch. */
+    /** A failed hold, never confirmed with the provider, can be resubmitted from scratch - unless
+     *  the failure itself means retrying can't help (see {@link #retryable}). */
     public boolean canRetryHold() {
-        return status == BookingStatus.FAILED && providerConfirmationNumber == null;
+        return status == BookingStatus.FAILED && providerConfirmationNumber == null && retryable;
     }
 
     public void markRetrying() {
         this.status = BookingStatus.PENDING_HOLD;
         this.failureReason = null;
+        this.retryable = true;
     }
 }
