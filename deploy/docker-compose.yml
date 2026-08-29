@@ -4,10 +4,9 @@
 # /opt/apps/docker-compose.yml on the VPS by hand when it changes, this repo does not push it
 # automatically.
 #
-# Deploy automation: .github/workflows/deploy.yml (API) and
-# frontend/.github/workflows/docker-build-push.yml (frontend) each build+push a GHCR image, then
-# SSH in and run `docker compose pull <service> && docker compose up -d <service>` against this
-# file's live copy on the server.
+# Deploy automation: .github/workflows/deploy.yml builds+pushes both the API and frontend GHCR
+# images, then SSHes in and runs `docker compose pull && docker compose up -d` (every service,
+# no filtering) against this file's live copy on the server.
 version: '3.8'
 
 services:
@@ -100,8 +99,8 @@ services:
     container_name: guestravel-frontend
     restart: unless-stopped
     # Pas de NEXT_PUBLIC_* ici : ces valeurs sont figées dans le bundle JS au moment du build de
-    # l'image (voir frontend/Dockerfile + frontend/.github/workflows/docker-build-push.yml), les
-    # redéfinir au runtime n'aurait aucun effet.
+    # l'image (voir frontend/Dockerfile + .github/workflows/deploy.yml), les redéfinir au runtime
+    # n'aurait aucun effet.
     ports:
       # Port hôte 3000 déjà pris par un autre service du VPS -> 3002 côté hôte. Le port 3000 à
       # droite reste celui du conteneur (Next.js standalone écoute sur PORT=3000, voir
