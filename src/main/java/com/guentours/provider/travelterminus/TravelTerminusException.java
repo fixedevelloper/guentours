@@ -20,6 +20,7 @@ public class TravelTerminusException extends ProviderException {
         this.code = code;
     }
 
+    @Override
     public String code() {
         return code;
     }

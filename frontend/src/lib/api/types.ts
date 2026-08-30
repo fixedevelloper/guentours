@@ -321,11 +321,16 @@ export interface BookingResponse {
   eTicketNumbers: string[];
   itineraryLegs: BookingFlightLeg[];
   failureReason: string | null;
+  /** Admin-only diagnostic detail (e.g. Travel Terminus's insufficient_funds/unauthorized/
+   *  provider_down/invalid_request) - only the admin booking detail page renders this. */
+  providerErrorCode: string | null;
   /** True only when FAILED and the provider hold never got a confirmation number - safe to retry. */
   retryable: boolean;
   /** True once a payment was actually captured for this booking, even if it later failed anyway
    *  (see confirmWithProvider) - sending the payer back to search would risk a second charge. */
   paymentCaptured: boolean;
+  /** True once an admin has refunded the captured payment (see the admin booking detail page). */
+  paymentRefunded: boolean;
   travelers: BookingTravelerResponse[];
   extras: BookingExtraResponse[];
   airline: string | null;

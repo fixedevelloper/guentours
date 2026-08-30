@@ -19,6 +19,20 @@ export function useAdminBookingsQuery() {
   });
 }
 
+/** Refunds the captured payment for a booking stuck FAILED-after-charge. The endpoint returns the
+ *  raw Payment, not a BookingResponse, so this refetches ["booking", id] (via useBookingQuery)
+ *  instead of writing the response straight into the cache. */
+export function useRefundBookingMutation(bookingId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => adminApi.refundBooking(bookingId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["booking", bookingId] });
+      queryClient.invalidateQueries({ queryKey: ["admin-bookings"] });
+    },
+  });
+}
+
 export function useAdminUsersQuery() {
   return useQuery({
     queryKey: ["admin-users"],

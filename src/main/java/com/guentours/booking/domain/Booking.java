@@ -209,6 +209,13 @@ public class Booking {
     @Column(name = "failure_reason")
     private String failureReason;
 
+    /** Machine-readable provider error code (see {@link com.guentours.shared.exception.ProviderException#code()}),
+     *  admin-only diagnostic detail never shown to the customer - {@link #failureReason} stays the
+     *  sanitized, customer-safe message. Null when the failure wasn't a provider error with a known
+     *  code (a {@code BusinessException}, or a provider that doesn't return one). */
+    @Column(name = "provider_error_code")
+    private String providerErrorCode;
+
     /** Whether a FAILED hold is worth resubmitting. false for failures that will never succeed on
      *  retry (the offer itself expired at the provider - see OfferExpiredException) - retrying
      *  those would just resend the same now-dead offer id and fail again identically. */
@@ -221,6 +228,12 @@ public class Booking {
      *  charged, needs support/refund handling" once status is FAILED. */
     @Column(name = "payment_captured", nullable = false)
     private boolean paymentCaptured = false;
+
+    /** True once an admin has refunded the captured payment for this booking (see
+     *  PaymentService#refundForBooking) - {@link #paymentCaptured} stays true even after this, since
+     *  it records history ("money was taken at some point"), not the current outstanding state. */
+    @Column(name = "payment_refunded", nullable = false)
+    private boolean paymentRefunded = false;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
@@ -436,6 +449,14 @@ public class Booking {
         this.paymentCaptured = true;
     }
 
+    /** Called once an admin has refunded the captured payment - see PaymentService#refundForBooking. */
+    public void markPaymentRefunded() {
+        if (!this.paymentCaptured) {
+            throw new IllegalStateException("Impossible de marquer un remboursement, aucun paiement n'a été capturé");
+        }
+        this.paymentRefunded = true;
+    }
+
     public void markConfirming() {
         this.status = BookingStatus.CONFIRMING;
     }
@@ -455,13 +476,18 @@ public class Booking {
     }
 
     public void markFailed(String reason) {
-        markFailed(reason, true);
+        markFailed(reason, true, null);
     }
 
     public void markFailed(String reason, boolean retryable) {
+        markFailed(reason, retryable, null);
+    }
+
+    public void markFailed(String reason, boolean retryable, String providerErrorCode) {
         this.status = BookingStatus.FAILED;
         this.failureReason = reason;
         this.retryable = retryable;
+        this.providerErrorCode = providerErrorCode;
     }
 
     public void markCancelled() {

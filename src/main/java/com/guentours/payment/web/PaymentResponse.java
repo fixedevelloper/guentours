@@ -17,8 +17,8 @@ public record PaymentResponse(
         PaymentAuthorizationType authorizationType,
         /** Set only when {@code authorizationType == REDIRECT} - where to send the payer (3DS). */
         String authorizationRedirectUrl,
-        /** Set only when {@code authorizationType == CLIENT_ACTION} - the Stripe PaymentIntent client
-         *  secret the frontend needs to call {@code stripe.confirmPayment} itself. */
+        /** Set only when {@code authorizationType == CLIENT_ACTION} - the Stripe Checkout Session
+         *  client secret the frontend needs to mount its own Embedded Checkout with. */
         String authorizationClientSecret
 ) {
     public static PaymentResponse from(Payment payment) {

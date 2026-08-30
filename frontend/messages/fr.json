@@ -372,7 +372,8 @@
     "failureReason": "Motif : {reason}",
     "retryAction": "Réessayer",
     "searchAgainAction": "Recommencer la recherche",
-    "paymentCapturedNotice": "Votre paiement a bien été débité. Notre support va vous contacter pour régulariser cette réservation - inutile de repayer ou de refaire une recherche."
+    "paymentCapturedNotice": "Votre paiement a bien été débité. Notre support va vous contacter pour régulariser cette réservation - inutile de repayer ou de refaire une recherche.",
+    "paymentRefundedNotice": "Votre paiement a été remboursé suite à cet échec. Vous pouvez refaire une recherche en toute sécurité."
   },
   "Tickets": {
     "title": "Vos billets électroniques",

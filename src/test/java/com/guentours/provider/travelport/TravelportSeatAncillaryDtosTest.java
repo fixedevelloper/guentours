@@ -21,6 +21,7 @@ class TravelportSeatAncillaryDtosTest {
                 "CatalogOfferingsQuerySeatAvailability",
                 new TravelportSeatAvailabilityRequest.SeatAvailabilityOfferings(
                         "SeatAvailabilityOfferings",
+                        null, null, null,
                         List.of(new TravelportSeatAvailabilityRequest.CustomerLoyalty(
                                 "132456", "Loyalty_1", "HY", "UA", "Silver", "John Smith"))));
 

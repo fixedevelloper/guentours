@@ -279,6 +279,39 @@ public class PaymentService {
                 .orElseThrow(() -> new NotFoundException("Payment not found: " + paymentId));
     }
 
+    /**
+     * Admin-only: refunds the captured payment for a booking whose provider declined final
+     * confirmation after the charge already went through (see {@code BookingService#confirmWithProvider}'s
+     * catch block and the {@code paymentCapturedNotice} banner it drives on the frontend). Not
+     * called from any customer-facing flow.
+     */
+    @Transactional
+    public Payment refundForBooking(String bookingId) {
+        Payment payment = paymentRepository.findByBookingIdAndStatus(bookingId, PaymentStatus.SUCCEEDED)
+                .orElseThrow(() -> new BusinessException(
+                        "Aucun paiement à l'état SUCCEEDED trouvé pour le booking " + bookingId));
+
+        PaymentGateway gateway = routingService.resolveGateway(payment.getCountryCode(), payment.getPaymentMethod());
+        try {
+            gateway.refund(payment);
+        } catch (UnsupportedOperationException ex) {
+            throw new BusinessException(
+                    "Le remboursement automatique n'est pas encore supporté pour ce moyen de paiement - "
+                            + "à faire manuellement depuis le dashboard du fournisseur.");
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.error("Erreur lors du remboursement du payment {} (booking {})", payment.getId(), bookingId, ex);
+            throw new BusinessException("Erreur lors du remboursement : " + ex.getMessage());
+        }
+
+        payment.markRefunded();
+        paymentRepository.save(payment);
+        bookingService.markPaymentRefunded(bookingId);
+        log.info("Payment {} remboursé avec succès pour le booking {}", payment.getId(), bookingId);
+        return payment;
+    }
+
     private String payerReferenceLast4(PaymentRequest request) {
         return request.paymentMethod() == PaymentMethod.CARD && request.cardNumber() != null
                 ? request.cardNumber().substring(Math.max(0, request.cardNumber().length() - 4))

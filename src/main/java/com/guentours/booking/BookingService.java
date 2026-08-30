@@ -169,11 +169,11 @@ public class BookingService {
             // Retrying would just resend the exact same now-dead offer id and fail identically -
             // see Booking#canRetryHold - the payer needs to search again, not hit "Retry".
             log.warn("Provider hold failed for booking {} (offer expired, not retryable)", bookingId, ex);
-            booking.markFailed(sanitizeFailureReason(ex), false);
+            booking.markFailed(sanitizeFailureReason(ex), false, providerErrorCode(ex));
             bookingRepository.save(booking);
         } catch (RuntimeException ex) {
             log.warn("Provider hold failed for booking {}", bookingId, ex);
-            booking.markFailed(sanitizeFailureReason(ex));
+            booking.markFailed(sanitizeFailureReason(ex), true, providerErrorCode(ex));
             bookingRepository.save(booking);
         }
         trackingService.publish(bookingId, booking.getStatus());
@@ -267,11 +267,11 @@ public class BookingService {
             events.publishEvent(new BookingCreatedEvent(booking.getId()));
         } catch (OfferExpiredException ex) {
             log.warn("Provider hold failed for multi-city booking {} (offer expired, not retryable)", bookingId, ex);
-            booking.markFailed(sanitizeFailureReason(ex), false);
+            booking.markFailed(sanitizeFailureReason(ex), false, providerErrorCode(ex));
             bookingRepository.save(booking);
         } catch (RuntimeException ex) {
             log.warn("Provider hold failed for multi-city booking {}", bookingId, ex);
-            booking.markFailed(sanitizeFailureReason(ex));
+            booking.markFailed(sanitizeFailureReason(ex), true, providerErrorCode(ex));
             bookingRepository.save(booking);
         }
         trackingService.publish(bookingId, booking.getStatus());
@@ -293,6 +293,13 @@ public class BookingService {
             return ex.getMessage();
         }
         return "Le fournisseur n'a pas pu confirmer cette réservation pour le moment. Vous pouvez réessayer ou recommencer la recherche.";
+    }
+
+    /** Admin-only companion to {@link #sanitizeFailureReason} - extracts the provider's own
+     *  machine-readable error code (if any) so it can be stored in {@link Booking#markFailed}'s
+     *  {@code providerErrorCode} param, separately from the customer-safe sanitized message. */
+    private String providerErrorCode(Exception ex) {
+        return ex instanceof ProviderException pe ? pe.code() : null;
     }
 
     /**
@@ -675,6 +682,15 @@ public class BookingService {
         events.publishEvent(new BookingPaidEvent(bookingId, paymentTransactionReference, payerReferenceLast4));
     }
 
+    /** Flags a booking's captured payment as refunded (see PaymentService#refundForBooking) - purely
+     *  a status/history update, no provider call: the gateway refund itself already happened. */
+    @Transactional
+    public void markPaymentRefunded(String bookingId) {
+        Booking booking = getById(bookingId);
+        booking.markPaymentRefunded();
+        bookingRepository.save(booking);
+    }
+
     /**
      * ⚠️ CAR_RENTAL/FURNISHED_RENTAL n'ont pas de cycle hold→confirmation finale distinct chez DIRECT
      * (le hold EST la confirmation, cf. DirectClient.createVehicleHold/createPropertyHold) — pas de
@@ -759,7 +775,7 @@ public class BookingService {
             // booking. Recovery from a failure at this stage needs manual/ops handling, not a
             // same-flow retry.
             log.error("Provider confirmation failed for booking {} (already paid)", bookingId, ex);
-            booking.markFailed(sanitizeFailureReason(ex), false);
+            booking.markFailed(sanitizeFailureReason(ex), false, providerErrorCode(ex));
             bookingRepository.save(booking);
             trackingService.publish(bookingId, BookingStatus.FAILED);
             events.publishEvent(new BookingFailedEvent(booking.getId()));

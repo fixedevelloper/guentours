@@ -13,9 +13,13 @@ import java.util.List;
  * {@code travelportPlusSessionIdentifier} header) and references a flight/offer/product already
  * searched, priced or booked - so paid seats require a workbench to have been created first.
  *
- * <p>The verified sample only populated {@code CustomerLoyalty}; the offering/product/flight
- * reference identifiers that scope the seat map to a specific itinerary are documented but were
- * not shown, so those still need confirming against a real request.
+ * <p>The verified sample only populated {@code CustomerLoyalty}; {@code CatalogOfferingsIdentifier}/
+ * {@code CatalogOfferingIdentifier}/{@code ProductIdentifier} below are this adapter's own addition,
+ * modeled on the same {@code Ref}/{@code Identifier} shape {@link TravelportAncillaryOfferRequest}'s
+ * verified Build Ancillary Offers request already uses to reference a catalog offering. Whether
+ * they're the right shape is currently unconfirmed either way - live testing (2026-08-29) got a
+ * generic account-entitlement 500 regardless of body content (see {@code TravelportClient
+ * #querySeatAvailability}'s Javadoc), so this couldn't be validated against a real response.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 record TravelportSeatAvailabilityRequest(
@@ -26,6 +30,9 @@ record TravelportSeatAvailabilityRequest(
     @JsonInclude(JsonInclude.Include.NON_NULL)
     record SeatAvailabilityOfferings(
             @JsonProperty("@type") String type,
+            TravelportAncillaryOfferRequest.Ref CatalogOfferingsIdentifier,
+            TravelportAncillaryOfferRequest.Ref CatalogOfferingIdentifier,
+            TravelportAncillaryOfferRequest.Ref ProductIdentifier,
             List<CustomerLoyalty> CustomerLoyalty
     ) {
     }

@@ -29,8 +29,12 @@ public record BookingResponse(
         List<String> eTicketNumbers,
         List<BookingFlightLegResponse> itineraryLegs,
         String failureReason,
+        /** Admin-only diagnostic detail (see Booking#providerErrorCode) - the frontend's public
+         *  booking page never renders this, only the admin one does. */
+        String providerErrorCode,
         boolean retryable,
         boolean paymentCaptured,
+        boolean paymentRefunded,
         List<BookingTravelerResponse> travelers,
         List<BookingExtraResponse> extras,
         String airline,
@@ -78,8 +82,8 @@ public record BookingResponse(
         return new BookingResponse(booking.getId(), booking.getStatus(), booking.getOfferType(),
                 booking.getProviderType(), booking.getContactEmail(), booking.getPrice(), booking.getPaymentPlan(), booking.getReservationFee(),
                 booking.amountDue(), booking.getTicketingDeadline(), booking.getProviderConfirmationNumber(),
-                booking.getETicketNumbers(), legs, booking.getFailureReason(), booking.canRetryHold(),
-                booking.isPaymentCaptured(), travelers, extras,
+                booking.getETicketNumbers(), legs, booking.getFailureReason(), booking.getProviderErrorCode(),
+                booking.canRetryHold(), booking.isPaymentCaptured(), booking.isPaymentRefunded(), travelers, extras,
                 booking.getAirline(), booking.getFlightNumber(), booking.getOrigin(), booking.getDestination(),
                 booking.getDepartureTime(), booking.getArrivalTime(), booking.getHotelName(), booking.getCityCode(),
                 booking.getCheckIn(), booking.getCheckOut(), booking.getFareClass(), booking.getRoomQuantity(),

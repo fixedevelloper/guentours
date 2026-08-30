@@ -28,6 +28,14 @@ export async function getAdminBookings() {
   return data;
 }
 
+/** Refunds the captured payment for a booking that failed after the charge already went through
+ *  (paymentCaptured && status === "FAILED") - the only way to resolve that state today. Returns
+ *  the raw Payment entity, not a BookingResponse - callers should refetch the booking instead of
+ *  reading the response body. */
+export async function refundBooking(bookingId: string) {
+  await apiClient.post(`/api/admin/bookings/${bookingId}/refund`);
+}
+
 export async function getAdminUsers() {
   const { data } = await apiClient.get<AdminUserResponse[]>("/api/admin/users");
   return data;

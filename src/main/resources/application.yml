@@ -201,6 +201,9 @@ app:
     secret-key: ${STRIPE_SECRET_KEY:}
     publishable-key: ${STRIPE_PUBLISHABLE_KEY:}
     webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+    # Same landing page Flutterwave's redirect-url (above) sends the payer back to - it's
+    # provider-agnostic (reads ?tx_ref=<paymentId>, looks the payment up, forwards to the booking).
+    redirect-url: ${REDIRECT_URL:https://www.guenstravel.com/payments/redirect}
 
 server:
   port: ${SERVER_PORT:8080}

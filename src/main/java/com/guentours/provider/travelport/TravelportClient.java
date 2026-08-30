@@ -256,6 +256,28 @@ public class TravelportClient implements TravelProviderClient {
         return callTicketApi(pnrCode, payment);
     }
 
+    /**
+     * Opens a workbench, adds the offer (a seat-availability query requires one, per {@link
+     * TravelportSeatAvailabilityRequest}'s Javadoc), then queries the Seat Map endpoint. Returns an
+     * empty list for now - see {@link #querySeatAvailability}'s Javadoc for why this is currently
+     * blocked account-side (a Travelport entitlement gap, not a code issue) rather than mapped to
+     * real {@link AncillaryOption}s.
+     */
+    @Override
+    public List<AncillaryOption> ancillaryOptions(FlightOffer offer, List<PassengerInfo> passengers) {
+        if (config.isMockMode() || !isEnabled()) {
+            return List.of();
+        }
+        try {
+            String session = newWorkbench();
+            addOffer(session, offer);
+            return querySeatAvailability(session, offer);
+        } catch (Exception e) {
+            log.warn("[Travelport] ancillary options lookup failed for offer {}: {}", offer.providerOfferId(), e.getMessage());
+            return List.of();
+        }
+    }
+
     @Override
     public FinalHotelConfirmation confirmHotelBooking(String hotelBookingRef, PaymentDetails payment) {
         if (config.isMockMode()) {
@@ -952,6 +974,71 @@ public class TravelportClient implements TravelProviderClient {
         if (!added) {
             throw new ProviderException("Travelport Add Offer returned no offer for " + offeringId);
         }
+    }
+
+    /**
+     * Seat Map query ({@code POST /air/search/seat/catalogofferingsancillaries/seatavailabilities}),
+     * matching {@link TravelportSeatAvailabilityRequest}'s verified {@code @type}; the reference
+     * identifiers (container id/Identifier, offering Identifier, priced product's productRef)
+     * follow the exact same fallback pattern {@link #addOffer} already uses successfully.
+     *
+     * <p><b>Currently blocked account-side, confirmed by live testing (2026-08-29) against the
+     * real pre-production sandbox</b>: this call returns a generic servlet-container 500 (not a
+     * Travelport-formatted business error, unlike every other endpoint in this class) regardless
+     * of request body - even a request with every reference identifier stripped out gets the exact
+     * same 500. Every other step this depends on (new workbench, add offer) succeeds normally in
+     * the same run. This is the same failure signature as the Payment/Ticketing entitlement gap
+     * already reported to Travelport support (see {@code travelport-support-pcc-issue.txt}): a
+     * request reaching Travelport's gateway for a product/API family this PCC isn't provisioned
+     * for, rather than a malformed request our code is sending. Nothing here can fix that from our
+     * side - once Travelport support confirms this PCC has Seat Map / Ancillary Services
+     * entitlement, re-test and fill in {@link TravelportAncillaryListResponse} with the real
+     * response shape (still unknown - the sample this DTO was built from never got that far
+     * either), then map it to {@link AncillaryOption}/{@link SeatLayout} here instead of returning
+     * an empty list.
+     */
+    private List<AncillaryOption> querySeatAvailability(String session, FlightOffer offer) {
+        String offeringId = offer.providerOfferId();
+        String containerId = offer.context("catalogOfferingsId") != null
+                ? offer.context("catalogOfferingsId") : offeringId;
+        String catalogOfferingsIdentifierValue = offer.context("catalogOfferingsIdentifier") != null
+                ? offer.context("catalogOfferingsIdentifier") : containerId;
+        var catalogOfferingsIdentifier = new TravelportAncillaryOfferRequest.Ref(null,
+                new TravelportAncillaryOfferRequest.Identifier(catalogOfferingsIdentifierValue, TVPT_AUTHORITY));
+
+        String offeringIdentifierValue = offer.context("offeringIdentifier") != null
+                ? offer.context("offeringIdentifier") : offeringId;
+        var catalogOfferingIdentifier = new TravelportAncillaryOfferRequest.Ref(null,
+                new TravelportAncillaryOfferRequest.Identifier(offeringIdentifierValue, TVPT_AUTHORITY));
+
+        String productRef = offer.context("productRef");
+        var productIdentifier = productRef != null
+                ? new TravelportAncillaryOfferRequest.Ref(null,
+                        new TravelportAncillaryOfferRequest.Identifier(productRef, TVPT_AUTHORITY))
+                : null;
+
+        var request = new TravelportSeatAvailabilityRequest("CatalogOfferingsQuerySeatAvailability",
+                new TravelportSeatAvailabilityRequest.SeatAvailabilityOfferings(
+                        "SeatAvailabilityOfferings", catalogOfferingsIdentifier, catalogOfferingIdentifier,
+                        productIdentifier, null));
+        log.debug("[Travelport] seat availability request for offer {}: {}", offeringId, writeAsJson(request));
+
+        String raw;
+        try {
+            raw = bookingRestClient.post()
+                    .uri("/air/search/seat/catalogofferingsancillaries/seatavailabilities")
+                    .headers(h -> workbenchHeaders(h, session))
+                    .header("TraceId", "SeatAvailability_" + session)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .exchange((req, resp) -> new String(resp.getBody().readAllBytes(), StandardCharsets.UTF_8));
+        } catch (RestClientException e) {
+            log.warn("[Travelport] seat availability call failed for offer {}: {}", offeringId, e.getMessage());
+            return List.of();
+        }
+        log.info("[Travelport] seat availability raw response for offer {}: {}", offeringId, raw);
+        return List.of();
     }
 
     /**

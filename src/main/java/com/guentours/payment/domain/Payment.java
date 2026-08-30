@@ -59,9 +59,9 @@ public class Payment {
     @Column(name = "authorization_redirect_url")
     private String authorizationRedirectUrl;
 
-    /** Set only when {@link #authorizationType} is {@code CLIENT_ACTION} - the Stripe PaymentIntent
-     *  client secret the frontend needs to call {@code stripe.confirmPayment} itself. */
-    @Column(name = "authorization_client_secret")
+    /** Set only when {@link #authorizationType} is {@code CLIENT_ACTION} - the Stripe Checkout
+     *  Session client secret the frontend needs to mount its own Embedded Checkout with. */
+    @Column(name = "authorization_client_secret", length = 512)
     private String authorizationClientSecret;
 
     @Column(name = "failure_reason")
@@ -165,6 +165,15 @@ public class Payment {
         }
         this.status = PaymentStatus.FAILED;
         this.failureReason = reason;
+        this.updatedAt = Instant.now();
+    }
+
+    /** Only a genuinely captured payment can be refunded - see PaymentService#refundForBooking. */
+    public void markRefunded() {
+        if (this.status != PaymentStatus.SUCCEEDED) {
+            throw new IllegalStateException("Impossible de rembourser un paiement dans l'état " + this.status);
+        }
+        this.status = PaymentStatus.REFUNDED;
         this.updatedAt = Instant.now();
     }
 

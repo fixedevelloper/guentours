@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record StripeProperties(
         String secretKey,
         String publishableKey,
-        String webhookSecret
+        String webhookSecret,
+        String redirectUrl
 ) {
 }

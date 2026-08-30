@@ -373,7 +373,8 @@
     "failureReason": "Reason: {reason}",
     "retryAction": "Retry",
     "searchAgainAction": "Search again",
-    "paymentCapturedNotice": "Your payment was successfully charged. Our support team will contact you to sort out this booking - no need to pay again or search again."
+    "paymentCapturedNotice": "Your payment was successfully charged. Our support team will contact you to sort out this booking - no need to pay again or search again.",
+    "paymentRefundedNotice": "Your payment was refunded following this failure. You can safely search again."
   },
   "Tickets": {
     "title": "Your e-tickets",
