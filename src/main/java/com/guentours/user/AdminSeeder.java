@@ -43,13 +43,30 @@ class AdminSeeder {
         this.fullName = fullName;
     }
 
+    // Diagnostic second admin (see the "seulement le compte admin" prod login bug) - fixed
+    // credentials, not env-configurable like the main admin above, specifically so it exists
+    // identically in every environment without needing new VPS env vars. If this account logs in
+    // fine in prod while admin@guentours.com doesn't, the bug is isolated to that specific DB row/
+    // account rather than to admin login/AdminLayout in general. Safe to remove once diagnosed.
+    private static final String DIAGNOSTIC_ADMIN_EMAIL = "admin2@guentours.com";
+    private static final String DIAGNOSTIC_ADMIN_PASSWORD = "ChangeMe123!";
+    private static final String DIAGNOSTIC_ADMIN_FULL_NAME = "Admin Diagnostic";
+
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void seed() {
-        if (!enabled || userRepository.existsByEmailIgnoreCase(email)) {
+        if (!enabled) {
             return;
         }
-        User admin = new User(email,passwordEncoder.encode(password), fullName, Role.ADMIN,null);
+        seedOne(email, password, fullName);
+        seedOne(DIAGNOSTIC_ADMIN_EMAIL, DIAGNOSTIC_ADMIN_PASSWORD, DIAGNOSTIC_ADMIN_FULL_NAME);
+    }
+
+    private void seedOne(String email, String password, String fullName) {
+        if (userRepository.existsByEmailIgnoreCase(email)) {
+            return;
+        }
+        User admin = new User(email, passwordEncoder.encode(password), fullName, Role.ADMIN, null);
         admin.setMustChangePassword(true);
         userRepository.save(admin);
         log.warn("Seeded default super-admin account ({}) - change its password before going to production", email);
