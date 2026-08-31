@@ -35,21 +35,22 @@ public class FlightHarmonizer {
 
         List<HarmonizedFlightOffer> result = new ArrayList<>();
         for (List<FlightOffer> group : grouped.values()) {
-            List<ProviderQuote> quotes = new ArrayList<>();
+            List<FlightProviderQuote> quotes = new ArrayList<>();
             FlightOffer cheapest = group.get(0);
             for (FlightOffer offer : group) {
                 String offerId = offerCache.cacheFlightOffer(offer);
-                quotes.add(new ProviderQuote(offerId, offer.providerType(), commissionPolicy.addFlightFee(offer.price())));
+                quotes.add(new FlightProviderQuote(offerId, offer.providerType(),
+                        commissionPolicy.addFlightFee(offer.price()), offer.detail()));
                 if (PriceOrdering.isCheaper(offer.price(), cheapest.price())) {
                     cheapest = offer;
                 }
             }
-            quotes.sort(Comparator.comparing(ProviderQuote::price, PriceOrdering.CHEAPEST_FIRST));
+            quotes.sort(Comparator.comparing(FlightProviderQuote::price, PriceOrdering.CHEAPEST_FIRST));
             String cheapestOfferId = quotes.get(0).offerId();
 
             result.add(new HarmonizedFlightOffer(
-                    cheapest.airline(), cheapest.flightNumber(), cheapest.origin(), cheapest.destination(),
-                    cheapest.departureTime(), cheapest.arrivalTime(), cheapest.cabinClass(),
+                    cheapest.airline(), cheapest.airlineName(), cheapest.flightNumber(), cheapest.origin(),
+                    cheapest.destination(), cheapest.departureTime(), cheapest.arrivalTime(), cheapest.cabinClass(),
                     group.stream().mapToInt(FlightOffer::seatsAvailable).max().orElse(0),
                     cheapestOfferId, quotes));
         }

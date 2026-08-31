@@ -23,6 +23,7 @@ public record TravelTerminusFare(
         Double totalTax,
         Double totalFare,
         String branchCurrency,
+        String currencySymbol,
         Double walletPoints
 ) {
 }

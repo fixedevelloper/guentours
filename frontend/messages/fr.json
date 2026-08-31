@@ -150,7 +150,12 @@
     "baggageLabel": "Bagages",
     "carryOnIncluded": "1 bagage à main incl.",
     "availableSeatsLabel": "Places disponibles",
-    "seatsRemaining": "{count, plural, =1 {1 siège restant} other {# sièges restants}}"
+    "seatsRemaining": "{count, plural, =1 {1 siège restant} other {# sièges restants}}",
+    "stopsCount": "{count, plural, =1 {1 escale} other {# escales}}",
+    "layoverAt": "Escale à {city} ({duration})",
+    "holdAvailableBadge": "Prix bloqué possible avant paiement",
+    "cabinBaggageLabel": "Bagage cabine",
+    "checkedBaggageLabel": "Bagage en soute"
   },
   "Filters": {
     "title": "Filtres",

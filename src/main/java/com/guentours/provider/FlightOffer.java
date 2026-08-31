@@ -19,6 +19,7 @@ public record FlightOffer(
         ProviderType providerType,
         String providerOfferId,
         String airline,
+        String airlineName,
         String flightNumber,
         String origin,
         String destination,
@@ -27,15 +28,25 @@ public record FlightOffer(
         String cabinClass,
         Money price,
         int seatsAvailable,
-        Map<String, String> providerContext
+        Map<String, String> providerContext,
+        FlightOfferDetail detail
 ) {
 
-    /** Convenience constructor for offers without any provider-specific booking context. */
+    /** Convenience constructor for offers without any provider-specific booking context, airline
+     *  name, or rich detail (stops/baggage/hold). */
     public FlightOffer(ProviderType providerType, String providerOfferId, String airline, String flightNumber,
                        String origin, String destination, LocalDateTime departureTime, LocalDateTime arrivalTime,
                        String cabinClass, Money price, int seatsAvailable) {
-        this(providerType, providerOfferId, airline, flightNumber, origin, destination, departureTime, arrivalTime,
-                cabinClass, price, seatsAvailable, Map.of());
+        this(providerType, providerOfferId, airline, null, flightNumber, origin, destination, departureTime,
+                arrivalTime, cabinClass, price, seatsAvailable, Map.of(), null);
+    }
+
+    /** Convenience constructor for offers with booking context but no airline name or rich detail. */
+    public FlightOffer(ProviderType providerType, String providerOfferId, String airline, String flightNumber,
+                       String origin, String destination, LocalDateTime departureTime, LocalDateTime arrivalTime,
+                       String cabinClass, Money price, int seatsAvailable, Map<String, String> providerContext) {
+        this(providerType, providerOfferId, airline, null, flightNumber, origin, destination, departureTime,
+                arrivalTime, cabinClass, price, seatsAvailable, providerContext, null);
     }
 
     public FlightOffer {

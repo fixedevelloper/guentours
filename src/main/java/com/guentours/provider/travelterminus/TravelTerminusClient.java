@@ -151,9 +151,13 @@ public class TravelTerminusClient implements TravelProviderClient {
         if (!isEnabled()) {
             return List.of();
         }
+        log.info("[TravelTerminus] searchFlights: {}", criteria);
         try {
-            return config.isMockMode() ? ProviderMockSupport.flights(getType(), criteria, AIRLINES, 1.0)
+            List<FlightOffer> offers = config.isMockMode() ? ProviderMockSupport.flights(getType(), criteria, AIRLINES, 1.0)
                     : callSearchStream(criteria);
+            log.info("[TravelTerminus] searchFlights: returning {} offer(s) for {} -> {} on {}",
+                    offers.size(), criteria.origin(), criteria.destination(), criteria.departureDate());
+            return offers;
         } catch (Exception ex) {
             log.warn("Travel Terminus flight search failed, skipping this provider: {}", ex.getMessage());
             return List.of();
@@ -173,6 +177,9 @@ public class TravelTerminusClient implements TravelProviderClient {
         String legsJson = writeJson(legs);
         String paxJson = writeJson(paxes);
         String prefsJson = writeJson(prefs);
+
+        log.info("[TravelTerminus] search-stream request: searchAirLegs={}, paxes={}, travelPreferences={}, currency={}",
+                legsJson, paxJson, prefsJson, currency);
 
         // The query param values are raw JSON (containing literal '{'/'}'). Passing them straight
         // into queryParam(...).build() makes UriComponentsBuilder mistake those braces for its own
@@ -195,11 +202,15 @@ public class TravelTerminusClient implements TravelProviderClient {
                 .retrieve()
                 .body(String.class));
 
+        log.info("[TravelTerminus] search-stream raw response ({} chars): {}",
+                body == null ? 0 : body.length(), body);
+
         return parseSearchStream(body, criteria);
     }
 
     private List<FlightOffer> parseSearchStream(String body, FlightSearchCriteria criteria) {
         if (body == null || body.isBlank()) {
+            log.info("[TravelTerminus] search-stream returned an empty body, no offers to parse");
             return List.of();
         }
         List<FlightOffer> offers = new ArrayList<>();
@@ -252,6 +263,7 @@ public class TravelTerminusClient implements TravelProviderClient {
                 }
             }
         }
+        log.info("[TravelTerminus] search-stream parsed {} offer(s) (searchReqId={})", offers.size(), searchReqId);
         return offers;
     }
 
@@ -306,10 +318,17 @@ public class TravelTerminusClient implements TravelProviderClient {
         context.put("hashReqKey", hashReqKey);
         context.put("flightObject", flightObjectJson);
 
+        FlightOfferDetail detail = new FlightOfferDetail(
+                route.isHoldAvailable(),
+                firstOrNull(route.totalDuration()),
+                firstOrNull(route.totalInterval()),
+                toSegmentDetails(outbound));
+
         return new FlightOffer(
                 getType(),
                 "TT-" + routeId,
                 firstSegment.airlineCode(),
+                firstSegment.airlineName(),
                 firstSegment.airlineCode() + firstSegment.flightNumber(),
                 departurePoint.code(),
                 arrivalPoint.code(),
@@ -318,8 +337,54 @@ public class TravelTerminusClient implements TravelProviderClient {
                 firstSegment.cabinClass() != null ? firstSegment.cabinClass() : criteria.cabinClass(),
                 price,
                 DEFAULT_SEATS_AVAILABLE,
-                context
+                context,
+                detail
         );
+    }
+
+    /** One entry per physical flight segment of the leg - two or more means a stopover (see
+     *  {@link FlightSegmentDetail#layoverAfter()}, sourced from {@code segmentInterval}). */
+    private List<FlightSegmentDetail> toSegmentDetails(List<TravelTerminusSegment> segments) {
+        List<FlightSegmentDetail> details = new ArrayList<>();
+        for (TravelTerminusSegment segment : segments) {
+            if (segment.departure() == null || segment.departure().isEmpty()
+                    || segment.arrival() == null || segment.arrival().isEmpty()) {
+                continue;
+            }
+            var departurePoint = segment.departure().get(0);
+            var arrivalPoint = segment.arrival().get(0);
+            details.add(new FlightSegmentDetail(
+                    segment.airlineCode(),
+                    segment.airlineName(),
+                    segment.flightNumber(),
+                    segment.cabinClass(),
+                    toAirportInfo(departurePoint),
+                    toAirportInfo(arrivalPoint),
+                    parseAirportDateTime(departurePoint.date(), departurePoint.time()),
+                    parseAirportDateTime(arrivalPoint.date(), arrivalPoint.time()),
+                    segment.segmentDuration(),
+                    segment.segmentInterval(),
+                    toBaggageRules(segment.cabinBaggages()),
+                    toBaggageRules(segment.checkInBaggages())));
+        }
+        return details;
+    }
+
+    private AirportInfo toAirportInfo(TravelTerminusSegment.AirportPoint point) {
+        return new AirportInfo(point.code(), point.name(), point.city(), point.terminal());
+    }
+
+    private List<BaggageRule> toBaggageRules(List<TravelTerminusSegment.BaggageAllowance> allowances) {
+        if (allowances == null) {
+            return List.of();
+        }
+        return allowances.stream()
+                .map(a -> new BaggageRule(a.paxType(), a.rule(), a.quantity(), a.size()))
+                .toList();
+    }
+
+    private static String firstOrNull(List<String> values) {
+        return values == null || values.isEmpty() ? null : values.get(0);
     }
 
     private LocalDateTime parseAirportDateTime(String date, String time) {

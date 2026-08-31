@@ -150,7 +150,12 @@
     "baggageLabel": "Baggage",
     "carryOnIncluded": "1 carry-on included",
     "availableSeatsLabel": "Available seats",
-    "seatsRemaining": "{count, plural, =1 {1 seat remaining} other {# seats remaining}}"
+    "seatsRemaining": "{count, plural, =1 {1 seat remaining} other {# seats remaining}}",
+    "stopsCount": "{count, plural, =1 {1 stop} other {# stops}}",
+    "layoverAt": "Layover in {city} ({duration})",
+    "holdAvailableBadge": "Price hold available before payment",
+    "cabinBaggageLabel": "Cabin baggage",
+    "checkedBaggageLabel": "Checked baggage"
   },
   "Filters": {
     "title": "Filters",

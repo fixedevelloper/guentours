@@ -9,6 +9,7 @@ import java.util.List;
  */
 public record HarmonizedFlightOffer(
         String airline,
+        String airlineName,
         String flightNumber,
         String origin,
         String destination,
@@ -17,6 +18,6 @@ public record HarmonizedFlightOffer(
         String cabinClass,
         int seatsAvailable,
         String bestOfferId,
-        List<ProviderQuote> quotes
+        List<FlightProviderQuote> quotes
 ) {
 }

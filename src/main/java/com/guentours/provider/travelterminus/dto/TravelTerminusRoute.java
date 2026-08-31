@@ -19,6 +19,7 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record TravelTerminusRoute(
         JsonNode isRefundable,
+        Boolean isHoldAvailable,
         Boolean isLcc,
         String airlineType,
         List<String> totalDuration,

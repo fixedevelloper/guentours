@@ -108,8 +108,9 @@ public class FlightSearchService {
             for (int i = 0; i < legs.size(); i++) {
                 FlightOffer offer = cheapestPerProviderByLeg.get(i).get(provider);
                 String offerId = offerCache.cacheFlightOffer(offer);
-                itineraryLegs.add(new MultiCityItineraryLeg(i, offer.airline(), offer.flightNumber(), offer.origin(),
-                        offer.destination(), offer.departureTime(), offer.arrivalTime(), offer.cabinClass(), offerId));
+                itineraryLegs.add(new MultiCityItineraryLeg(i, offer.airline(), offer.airlineName(), offer.flightNumber(),
+                        offer.origin(), offer.destination(), offer.departureTime(), offer.arrivalTime(),
+                        offer.cabinClass(), offerId, offer.detail()));
                 Money legPriceWithFee = commissionPolicy.addFlightFee(offer.price());
                 total = total == null ? legPriceWithFee : total.add(legPriceWithFee);
             }

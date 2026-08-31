@@ -19,7 +19,9 @@ public record TravelTerminusSegment(
         List<AirportPoint> departure,
         List<AirportPoint> arrival,
         String segmentInterval,
-        Integer noOfSeatAvailable
+        Integer noOfSeatAvailable,
+        List<BaggageAllowance> cabinBaggages,
+        List<BaggageAllowance> checkInBaggages
 ) {
     /** {@code date} is {@code YYYY-MM-DD}; {@code time} is 12h clock with AM/PM (e.g. {@code "3:55 PM"}),
      *  both local to this airport. */
@@ -34,6 +36,18 @@ public record TravelTerminusSegment(
             String date,
             String time,
             String terminal
+    ) {
+    }
+
+    /** One passenger type's allowance from {@code cabinBaggages}/{@code checkInBaggages}. {@code rule}
+     *  is a vendor free-text allowance (e.g. {@code "23 Kgs"}) - kept as-is rather than parsed into a
+     *  structured weight, since the format isn't guaranteed consistent across routes/fares. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record BaggageAllowance(
+            String paxType,
+            String rule,
+            Integer quantity,
+            String size
     ) {
     }
 }

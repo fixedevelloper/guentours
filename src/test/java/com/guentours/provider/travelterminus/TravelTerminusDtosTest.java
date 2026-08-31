@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guentours.provider.travelterminus.dto.*;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -147,6 +149,71 @@ class TravelTerminusDtosTest {
         assertThat(route.fare().get(0).perAdtBaseFare()).isEqualTo(218.12);
         assertThat(route.fare().get(0).totalFare()).isEqualTo(947.27);
         assertThat(route.flightObject().get("routeId").asText()).isEqualTo("0bc2a726e14043901e802b45c80d01fc");
+    }
+
+    @Test
+    void deserializesARouteWithAStopoverHoldAvailabilityAndBaggageAllowances() throws Exception {
+        // Real capture from the Stage sandbox search-stream (DLA -> CDG via CMN, one stopover).
+        String json = """
+                {
+                  "isRefundable": false,
+                  "isHoldAvailable": true,
+                  "airlineType": "Non-LCC",
+                  "totalDuration": ["11h 0m"],
+                  "totalInterval": ["2h 45m"],
+                  "flightSegments": [[
+                    {
+                      "airlineCode": "AT",
+                      "airlineName": "Royal Air Maroc",
+                      "cabinClass": "Economy",
+                      "flightNumber": "280",
+                      "segmentDuration": "5h 20m",
+                      "segmentInterval": "0h 0m",
+                      "departure": [ { "code": "DLA", "city": "Douala", "date": "2026-09-02", "time": "05:20", "terminal": "" } ],
+                      "arrival": [ { "code": "CMN", "city": "Casablanca", "date": "2026-09-02", "time": "10:40", "terminal": "2" } ],
+                      "cabinBaggages": [ { "paxType": "Adult", "rule": "7 Kgs", "quantity": null, "size": "" } ],
+                      "checkInBaggages": [ { "paxType": "Adult", "rule": "23 Kgs", "quantity": null, "size": "" } ]
+                    },
+                    {
+                      "airlineCode": "AT",
+                      "airlineName": "Royal Air Maroc",
+                      "cabinClass": "Economy",
+                      "flightNumber": "788",
+                      "segmentDuration": "2h 55m",
+                      "segmentInterval": "2h 45m",
+                      "departure": [ { "code": "CMN", "city": "Casablanca", "date": "2026-09-02", "time": "13:25", "terminal": "1" } ],
+                      "arrival": [ { "code": "CDG", "city": "Paris", "date": "2026-09-02", "time": "17:20", "terminal": "2B" } ],
+                      "cabinBaggages": [ { "paxType": "Adult", "rule": "7 Kgs", "quantity": null, "size": "" } ],
+                      "checkInBaggages": [ { "paxType": "Adult", "rule": "23 Kgs", "quantity": null, "size": "" } ]
+                    }
+                  ]],
+                  "fare": [
+                    {
+                      "fareType": "Publish",
+                      "perAdultBaseFare": 257393.21,
+                      "perAdultTax": 219735.80,
+                      "totalFare": 477129.01,
+                      "branchCurrency": "XAF",
+                      "currencySymbol": "FCFA",
+                      "walletPoints": 838.73
+                    }
+                  ],
+                  "flightObject": { "routeId": "RT-STOPOVER" }
+                }
+                """;
+
+        TravelTerminusRoute route = mapper.readValue(json, TravelTerminusRoute.class);
+
+        assertThat(route.isHoldAvailable()).isTrue();
+        assertThat(route.flightSegments()).hasSize(1);
+        List<TravelTerminusSegment> outbound = route.flightSegments().get(0);
+        assertThat(outbound).hasSize(2);
+        assertThat(outbound.get(0).arrival().get(0).code()).isEqualTo("CMN");
+        assertThat(outbound.get(1).departure().get(0).code()).isEqualTo("CMN");
+        assertThat(outbound.get(1).segmentInterval()).isEqualTo("2h 45m");
+        assertThat(outbound.get(0).cabinBaggages().get(0).rule()).isEqualTo("7 Kgs");
+        assertThat(outbound.get(0).checkInBaggages().get(0).rule()).isEqualTo("23 Kgs");
+        assertThat(route.fare().get(0).currencySymbol()).isEqualTo("FCFA");
     }
 
     @Test
