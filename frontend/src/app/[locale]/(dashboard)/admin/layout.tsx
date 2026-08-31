@@ -16,6 +16,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (isHydrated && !(isAuthenticated && isAdmin)) {
+      // TEMPORARY diagnostic (prod login bug: /admin bounces to /login despite the header
+      // showing isAdmin=true) - remove once root-caused. Shows the exact state this effect saw.
+      console.warn("[AdminLayout] redirecting to /login", { isHydrated, isAuthenticated, isAdmin });
       router.replace("/login");
     }
   }, [isHydrated, isAuthenticated, isAdmin, router]);
