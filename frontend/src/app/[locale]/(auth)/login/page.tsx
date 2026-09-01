@@ -62,7 +62,7 @@ export default function LoginPage() {
             const profile = await login(values);
 
             if (profile.role === "ADMIN") {
-                router.push("/admin");
+                router.push("/workspace");
             } else if (
                 PARTNER_ROLES.includes(profile.role as (typeof PARTNER_ROLES)[number])
             ) {

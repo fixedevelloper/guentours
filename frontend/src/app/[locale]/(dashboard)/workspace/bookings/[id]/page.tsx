@@ -91,7 +91,7 @@ export default function AdminBookingDetailPage({ params }: AdminBookingDetailPag
                     Impossible de charger les détails de cette réservation (ID: {id}).
                 </p>
                 <Button asChild variant="outline" size="sm" className="rounded-xl">
-                    <Link href="/admin/bookings">
+                    <Link href="/workspace/bookings">
                         <ArrowLeft className="size-4 mr-2" />
                         Retour à la liste
                     </Link>
@@ -136,7 +136,7 @@ export default function AdminBookingDetailPage({ params }: AdminBookingDetailPag
                             size="icon"
                             className="size-8 rounded-xl shrink-0"
                         >
-                            <Link href="/admin/bookings" aria-label="Retour">
+                            <Link href="/workspace/bookings" aria-label="Retour">
                                 <ArrowLeft className="size-4" />
                             </Link>
                         </Button>

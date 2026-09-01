@@ -140,7 +140,7 @@ export default function AdminOverviewPage() {
           </div>
           
           <Button asChild variant="ghost" size="sm" className="rounded-xl font-bold text-xs gap-1">
-            <Link href="/admin/bookings">
+            <Link href="/workspace/bookings">
               {t("viewAll") ?? "Tout voir"}
               <ArrowUpRight className="size-3.5" />
             </Link>

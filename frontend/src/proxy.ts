@@ -8,7 +8,7 @@ const intlMiddleware = createIntlMiddleware(routing);
 
 // Kept in sync with app.jwt.cookie-name (default) in application.yml / JwtProperties.
 const AUTH_COOKIE_NAME = "gt_auth";
-const PROTECTED_PATH = /^\/(?:(?:en|fr)\/)?(admin|partner)(?:\/|$)/;
+const PROTECTED_PATH = /^\/(?:(?:en|fr)\/)?(workspace|partner)(?:\/|$)/;
 
 function loginPathFor(pathname: string): string {
   const match = pathname.match(/^\/(en|fr)(?:\/|$)/);
@@ -19,8 +19,8 @@ function loginPathFor(pathname: string): string {
 }
 
 /**
- * Runs the existing next-intl locale routing first, then - for the admin/partner dashboards only
- * - checks for the HttpOnly gt_auth cookie before letting the request through. This is only a UX
+ * Runs the existing next-intl locale routing first, then - for the workspace/partner dashboards
+ * only - checks for the HttpOnly gt_auth cookie before letting the request through. This is only a UX
  * shortcut (skip serving/hydrating a dashboard shell that the client-side (dashboard) layouts
  * would immediately redirect away from anyway); it is NOT the source of truth for authorization -
  * the Spring API re-validates the cookie's JWT on every single request regardless. A Proxy can

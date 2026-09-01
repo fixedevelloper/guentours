@@ -1,4 +1,4 @@
-// app/[locale]/admin/users/page.tsx (ou le chemin correspondant à ta structure)
+// app/[locale]/workspace/users/page.tsx (ou le chemin correspondant à ta structure)
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
