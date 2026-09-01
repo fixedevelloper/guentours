@@ -8,7 +8,7 @@ const intlMiddleware = createIntlMiddleware(routing);
 
 // Kept in sync with app.jwt.cookie-name (default) in application.yml / JwtProperties.
 const AUTH_COOKIE_NAME = "gt_auth";
-const PROTECTED_PATH = /^\/(?:(?:en|fr)\/)?(workspace|partner)(?:\/|$)/;
+//const PROTECTED_PATH = /^\/(?:(?:en|fr)\/)?(workspace|partner)(?:\/|$)/;
 
 function loginPathFor(pathname: string): string {
   const match = pathname.match(/^\/(en|fr)(?:\/|$)/);
