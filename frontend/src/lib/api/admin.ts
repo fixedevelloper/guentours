@@ -36,6 +36,21 @@ export async function refundBooking(bookingId: string) {
   await apiClient.post(`/api/admin/bookings/${bookingId}/refund`);
 }
 
+/** Generates a fresh receipt PDF for the booking (not persisted server-side - each call re-renders
+ *  it) and returns the raw bytes for the caller to save/print. */
+export async function downloadBookingReceipt(bookingId: string): Promise<Blob> {
+  const { data } = await apiClient.post(`/api/admin/bookings/${bookingId}/receipt`, null, {
+    responseType: "blob",
+  });
+  return data as Blob;
+}
+
+/** Resends the booking-confirmed email (same content as the automatic one) to the booking's
+ *  contact address. The backend rejects with 409 if the booking isn't CONFIRMED. */
+export async function resendBookingConfirmation(bookingId: string) {
+  await apiClient.post(`/api/admin/bookings/${bookingId}/resend-confirmation`);
+}
+
 export async function getAdminUsers() {
   const { data } = await apiClient.get<AdminUserResponse[]>("/api/admin/users");
   return data;

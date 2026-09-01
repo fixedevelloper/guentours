@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8" />
+  <title th:text="'Reçu ' + ${bookingReference}">Reçu</title>
+  <style>
+    @page { size: A4; margin: 28mm 20mm; }
+    /* openhtmltopdf only supports CSS 2.1 layout (no flexbox/grid) - same table-based header as
+       the ticket PDF template, for the same reason. */
+    body { font-family: Arial, Helvetica, sans-serif; color: #111827; margin: 0; }
+    table.header { width: 100%; border-collapse: collapse; border-bottom: 3px solid #0f172a;
+                    margin-bottom: 24px; }
+    table.header td { padding-bottom: 16px; vertical-align: middle; }
+    .header img.company-logo { height: 42px; }
+    .title { font-size: 22px; font-weight: bold; color: #0f172a; margin: 0 0 4px; }
+    .subtitle { font-size: 12px; color: #6b7280; margin: 0 0 24px; }
+    table.details { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    table.details td { padding: 12px 16px; border: 1px solid #e5e7eb; vertical-align: top; }
+    table.details td.label { width: 40%; background-color: #f9fafb; font-size: 11px;
+                              color: #6b7280; text-transform: uppercase; letter-spacing: 0.03em; }
+    table.details td.value { font-size: 14px; color: #111827; font-weight: 600; font-family: monospace; }
+    .footer { margin-top: 32px; font-size: 10px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+  </style>
+</head>
+<body>
+  <table class="header">
+    <tr>
+      <td><img class="company-logo" th:src="${logoBase64}" alt="Guen Tours" /></td>
+    </tr>
+  </table>
+
+  <p class="title">Reçu de réservation</p>
+  <p class="subtitle" th:text="${offerType}">FLIGHT</p>
+
+  <table class="details">
+    <tr>
+      <td class="label">Référence réservation</td>
+      <td class="value" th:text="${bookingReference}">booking-id</td>
+    </tr>
+    <tr>
+      <td class="label">Statut</td>
+      <td class="value" th:text="${status}">CONFIRMED</td>
+    </tr>
+    <tr th:if="${providerConfirmationNumber != null}">
+      <td class="label">Code de confirmation</td>
+      <td class="value" th:text="${providerConfirmationNumber}">ABC123</td>
+    </tr>
+    <tr>
+      <td class="label">Client</td>
+      <td class="value" th:text="${customerName}">Jean Dupont</td>
+    </tr>
+    <tr>
+      <td class="label">Email de contact</td>
+      <td class="value" th:text="${contactEmail}">jean@example.com</td>
+    </tr>
+
+    <tr th:if="${isFlight}">
+      <td class="label">Vol</td>
+      <td class="value">
+        <span th:text="${origin} + ' → ' + ${destination}">CDG → JFK</span>
+        <span th:if="${airline != null}" th:text="' (' + ${airline} + ' ' + ${flightNumber} + ')'"> (AF 123)</span>
+      </td>
+    </tr>
+    <tr th:if="${isFlight and departureTime != null}">
+      <td class="label">Départ</td>
+      <td class="value" th:text="${departureTime}">01/01/2026 12:00</td>
+    </tr>
+
+    <tr th:if="${isHotel}">
+      <td class="label">Hôtel</td>
+      <td class="value" th:text="${hotelName} + (${cityCode} != null ? ' (' + ${cityCode} + ')' : '')">Hôtel Exemple</td>
+    </tr>
+    <tr th:if="${isHotel}">
+      <td class="label">Séjour</td>
+      <td class="value" th:text="${checkIn} + ' → ' + ${checkOut}">01/01/2026 → 05/01/2026</td>
+    </tr>
+
+    <tr th:if="${isCarRental}">
+      <td class="label">Véhicule</td>
+      <td class="value" th:text="${vehicleBrand} + ' ' + ${vehicleModel}">Toyota Corolla</td>
+    </tr>
+    <tr th:if="${isCarRental}">
+      <td class="label">Prise en charge / Retour</td>
+      <td class="value" th:text="${pickupCity} + ' (' + ${rentalStart} + ') → ' + ${dropoffCity} + ' (' + ${rentalEnd} + ')'">
+        Douala (01/01/2026) → Douala (05/01/2026)
+      </td>
+    </tr>
+
+    <tr th:if="${isFurnishedRental}">
+      <td class="label">Logement</td>
+      <td class="value" th:text="${propertyTitle} + (${country} != null ? ' (' + ${country} + ')' : '')">Villa Exemple</td>
+    </tr>
+
+    <tr>
+      <td class="label">Montant total</td>
+      <td class="value" th:text="${price}">0.00 XAF</td>
+    </tr>
+    <tr>
+      <td class="label">Solde dû</td>
+      <td class="value" th:text="${amountDue}">0.00 XAF</td>
+    </tr>
+    <tr>
+      <td class="label">Paiement encaissé</td>
+      <td class="value" th:text="${paymentCaptured} ? 'Oui' : 'Non'">Oui</td>
+    </tr>
+    <tr>
+      <td class="label">Émis le</td>
+      <td class="value" th:text="${issuedAt}">01/01/2026 12:00</td>
+    </tr>
+  </table>
+
+  <p class="footer">
+    Ce document est un reçu de réservation émis par Guen Tours. Il ne constitue pas une facture fiscale.
+  </p>
+</body>
+</html>

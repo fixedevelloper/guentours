@@ -36,7 +36,11 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate, formatMoney, providerLabel } from "@/lib/format";
 import { useBookingQuery, useCancelBookingMutation } from "@/hooks/use-booking";
-import { useRefundBookingMutation } from "@/hooks/use-admin";
+import {
+    useDownloadBookingReceiptMutation,
+    useRefundBookingMutation,
+    useResendBookingConfirmationMutation,
+} from "@/hooks/use-admin";
 import { normalizeApiError } from "@/lib/api/client";
 
 interface AdminBookingDetailPageProps {
@@ -75,6 +79,8 @@ export default function AdminBookingDetailPage({ params }: AdminBookingDetailPag
     const { data: booking, isLoading, isError, refetch } = useBookingQuery(id);
     const cancelMutation = useCancelBookingMutation(id);
     const refundMutation = useRefundBookingMutation(id);
+    const receiptMutation = useDownloadBookingReceiptMutation(id);
+    const resendConfirmationMutation = useResendBookingConfirmationMutation(id);
     // Real money moves on this action - require an explicit second click before firing it.
     const [confirmingRefund, setConfirmingRefund] = useState(false);
 
@@ -121,6 +127,26 @@ export default function AdminBookingDetailPage({ params }: AdminBookingDetailPag
         cancelMutation.mutate(undefined, {
             onSuccess: () => toast.success("Réservation annulée."),
             onError: () => toast.error("Erreur lors de l'annulation de la réservation."),
+        });
+    };
+
+    const handleDownloadReceipt = () => {
+        receiptMutation.mutate(undefined, {
+            onSuccess: (pdfBlob) => {
+                // Opened in a new tab (not a forced <a download>) so the browser's own PDF viewer
+                // handles both "print" and "save" from the same click.
+                const url = URL.createObjectURL(pdfBlob);
+                window.open(url, "_blank");
+                setTimeout(() => URL.revokeObjectURL(url), 60_000);
+            },
+            onError: (error) => toast.error(normalizeApiError(error).message),
+        });
+    };
+
+    const handleResendConfirmation = () => {
+        resendConfirmationMutation.mutate(undefined, {
+            onSuccess: () => toast.success("Confirmation envoyée par email au client."),
+            onError: (error) => toast.error(normalizeApiError(error).message),
         });
     };
 
@@ -178,19 +204,22 @@ export default function AdminBookingDetailPage({ params }: AdminBookingDetailPag
                         variant="outline"
                         size="sm"
                         className="rounded-xl gap-2 text-xs font-semibold"
-                        onClick={() => toast.info("Billet/Confirmation envoyé au client")}
+                        onClick={handleResendConfirmation}
+                        disabled={resendConfirmationMutation.isPending || booking.status !== "CONFIRMED"}
+                        title={booking.status !== "CONFIRMED" ? "Disponible uniquement pour une réservation confirmée" : undefined}
                     >
                         <Send className="size-3.5" />
-                        Envoyer Email
+                        {resendConfirmationMutation.isPending ? "Envoi…" : "Envoyer Email"}
                     </Button>
                     <Button
                         variant="outline"
                         size="sm"
                         className="rounded-xl gap-2 text-xs font-semibold"
-                        onClick={() => toast.info("Génération du reçu PDF...")}
+                        onClick={handleDownloadReceipt}
+                        disabled={receiptMutation.isPending}
                     >
                         <Download className="size-3.5" />
-                        Reçu PDF
+                        {receiptMutation.isPending ? "Génération…" : "Reçu PDF"}
                     </Button>
                 </div>
             </div>

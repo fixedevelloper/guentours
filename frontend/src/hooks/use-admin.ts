@@ -33,6 +33,19 @@ export function useRefundBookingMutation(bookingId: string) {
   });
 }
 
+/** Downloads the booking's receipt PDF - nothing to invalidate, this doesn't change any state. */
+export function useDownloadBookingReceiptMutation(bookingId: string) {
+  return useMutation({
+    mutationFn: () => adminApi.downloadBookingReceipt(bookingId),
+  });
+}
+
+export function useResendBookingConfirmationMutation(bookingId: string) {
+  return useMutation({
+    mutationFn: () => adminApi.resendBookingConfirmation(bookingId),
+  });
+}
+
 export function useAdminUsersQuery() {
   return useQuery({
     queryKey: ["admin-users"],
