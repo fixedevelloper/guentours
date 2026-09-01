@@ -7,6 +7,13 @@ spring:
     username: ${DB_USERNAME:guentours}
     password: ${DB_PASSWORD:guentours}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # Left at Spring Boot's default (10) before this - a request thread that also does
+      # non-DB work while holding a connection (e.g. an external provider call inside the same
+      # transaction) can exhaust that quickly under concurrent load. Sized up with headroom;
+      # tune against real connection-wait metrics rather than raising further blindly.
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT_MS:10000}
 
   jpa:
     hibernate:
@@ -17,6 +24,12 @@ spring:
     properties:
       hibernate:
         format_sql: false
+        # Hotel/RoomType/Vehicle/Property have EAGER @OneToMany image/amenity collections (made
+        # EAGER specifically to survive open-in-view: false without LazyInitializationException -
+        # see the comments on those fields). Without a batch size, Hibernate fetches each of those
+        # collections with its own SELECT, so listing N rows costs N extra queries (classic N+1) -
+        # this makes it fetch them in batches instead, without touching the entity mappings.
+        default_batch_fetch_size: 25
 
   flyway:
     locations: classpath:db/migration

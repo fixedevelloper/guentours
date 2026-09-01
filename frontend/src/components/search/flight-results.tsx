@@ -22,6 +22,7 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { airlineLabel, formatDuration, formatMoney, formatTime } from "@/lib/format";
 import { offerStopCount } from "@/lib/filters";
+import { useRenderCap } from "@/hooks/use-render-cap";
 import { useFlightStore } from "@/store/useFlightStore";
 import type { HarmonizedFlightOffer } from "@/lib/api/types";
 import { checkoutUrlForFlight, resellerCheckoutUrlForFlight } from "@/lib/checkout-url";
@@ -35,6 +36,7 @@ export function FlightResultsList({
 }) {
   const t = useTranslations("Filters");
   const locale = useLocale();
+  const { visible, hasMore, showMore } = useRenderCap(offers);
 
   if (offers.length === 0) {
     return (
@@ -48,7 +50,7 @@ export function FlightResultsList({
 
   return (
       <div className="grid gap-4">
-        {offers.map((offer, index) => (
+        {visible.map((offer, index) => (
             <FlightOfferCard
                 key={`${offer.airline}-${offer.flightNumber}-${index}`}
                 offer={offer}
@@ -56,6 +58,11 @@ export function FlightResultsList({
                 isReseller={isReseller}
             />
         ))}
+        {hasMore && (
+            <Button variant="outline" onClick={showMore} className="mx-auto rounded-full px-6">
+              {t("showMoreResults")}
+            </Button>
+        )}
       </div>
   );
 }

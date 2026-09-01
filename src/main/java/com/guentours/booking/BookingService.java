@@ -40,6 +40,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -591,28 +594,47 @@ public class BookingService {
      */
     public List<Booking> reconcileMissingETicketNumbers() {
         List<Booking> pending = bookingRepository.findConfirmedFlightsMissingETickets();
+        // The provider lookup (network I/O, one call per PNR/leg) is what makes this slow, not the
+        // DB writes - run those lookups concurrently on virtual threads, then apply/save results
+        // back sequentially so entity mutation and bookingRepository.save (each its own implicit
+        // transaction) stay single-threaded. A local executor is enough: this runs once per
+        // ETicketReconciliationJob cycle (every 10 minutes), not per request.
+        List<CompletableFuture<Map.Entry<Booking, List<String>>>> futures;
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            futures = pending.stream()
+                    .filter(booking -> booking.getProviderConfirmationNumber() != null)
+                    .map(booking -> CompletableFuture.supplyAsync(() -> {
+                        try {
+                            TravelProviderClient client = clientFor(booking.getProviderType());
+                            // Multi-city holds one PNR per leg (see Booking#pnrCodes) - check every
+                            // leg and aggregate, matching how confirmWithProvider originally
+                            // collected allTickets across legs, so a multi-city trip isn't only
+                            // ever reconciled for its first leg.
+                            List<String> tickets = booking.pnrCodes().stream()
+                                    .flatMap(pnr -> client.checkForIssuedTickets(pnr).stream())
+                                    .toList();
+                            return Map.entry(booking, tickets);
+                        } catch (Exception ex) {
+                            // One booking's provider hiccup shouldn't stop the rest of the batch -
+                            // it'll be retried next cycle since it's still CONFIRMED with an empty
+                            // ticket list.
+                            log.warn("reconcileMissingETicketNumbers: failed to check booking {}: {}",
+                                    booking.getId(), ex.getMessage());
+                            return Map.entry(booking, List.<String>of());
+                        }
+                    }, executor))
+                    .toList();
+        }
+
         List<Booking> updated = new ArrayList<>();
-        for (Booking booking : pending) {
-            if (booking.getProviderConfirmationNumber() == null) {
-                continue;
-            }
-            try {
-                TravelProviderClient client = clientFor(booking.getProviderType());
-                // Multi-city holds one PNR per leg (see Booking#pnrCodes) - check every leg and
-                // aggregate, matching how confirmWithProvider originally collected allTickets
-                // across legs, so a multi-city trip isn't only ever reconciled for its first leg.
-                List<String> tickets = booking.pnrCodes().stream()
-                        .flatMap(pnr -> client.checkForIssuedTickets(pnr).stream())
-                        .toList();
-                if (!tickets.isEmpty()) {
-                    booking.recordETicketNumbers(tickets);
-                    bookingRepository.save(booking);
-                    updated.add(booking);
-                }
-            } catch (Exception ex) {
-                // One booking's provider hiccup shouldn't stop the rest of the batch - it'll be
-                // retried next cycle since it's still CONFIRMED with an empty ticket list.
-                log.warn("reconcileMissingETicketNumbers: failed to check booking {}: {}", booking.getId(), ex.getMessage());
+        for (CompletableFuture<Map.Entry<Booking, List<String>>> future : futures) {
+            Map.Entry<Booking, List<String>> result = future.join();
+            List<String> tickets = result.getValue();
+            if (!tickets.isEmpty()) {
+                Booking booking = result.getKey();
+                booking.recordETicketNumbers(tickets);
+                bookingRepository.save(booking);
+                updated.add(booking);
             }
         }
         return updated;

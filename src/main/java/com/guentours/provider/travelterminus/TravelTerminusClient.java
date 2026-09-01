@@ -178,7 +178,10 @@ public class TravelTerminusClient implements TravelProviderClient {
         String paxJson = writeJson(paxes);
         String prefsJson = writeJson(prefs);
 
-        log.info("[TravelTerminus] search-stream request: searchAirLegs={}, paxes={}, travelPreferences={}, currency={}",
+        // DEBUG, not INFO: these are full JSON payloads on the search hot path, logged on every
+        // single flight search - fine for troubleshooting but too much I/O to run at the app's
+        // default INFO level under real traffic.
+        log.debug("[TravelTerminus] search-stream request: searchAirLegs={}, paxes={}, travelPreferences={}, currency={}",
                 legsJson, paxJson, prefsJson, currency);
 
         // The query param values are raw JSON (containing literal '{'/'}'). Passing them straight
@@ -202,7 +205,9 @@ public class TravelTerminusClient implements TravelProviderClient {
                 .retrieve()
                 .body(String.class));
 
-        log.info("[TravelTerminus] search-stream raw response ({} chars): {}",
+        // DEBUG, not INFO: the SSE body can be tens of KB (one route_update per fare) - logging it
+        // in full on every search at the default level is real synchronous I/O on the hot path.
+        log.debug("[TravelTerminus] search-stream raw response ({} chars): {}",
                 body == null ? 0 : body.length(), body);
 
         return parseSearchStream(body, criteria);

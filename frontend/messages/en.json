@@ -161,6 +161,7 @@
     "title": "Filters",
     "reset": "Reset",
     "showResults": "Show results ({count})",
+    "showMoreResults": "Show more results",
     "maxPrice": "Max price",
     "providers": "Providers",
     "airlines": "Airlines",
@@ -704,6 +705,7 @@
     "error": "An error occurred while searching for vehicles.",
     "missingParams": "Please provide your search criteria.",
     "title": "Available vehicles",
+    "showMoreResults": "Show more results",
     "select": "Select",
     "noResults": "No vehicles available for these criteria."
   },
@@ -711,6 +713,7 @@
     "error": "An error occurred while searching for properties.",
     "missingParams": "Please provide your search criteria.",
     "title": "Available properties",
+    "showMoreResults": "Show more results",
     "select": "Select",
     "noResults": "No properties available for these criteria."
   },

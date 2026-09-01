@@ -161,6 +161,7 @@
     "title": "Filtres",
     "reset": "Réinitialiser",
     "showResults": "Afficher les résultats ({count})",
+    "showMoreResults": "Afficher plus de résultats",
     "maxPrice": "Prix maximum",
     "providers": "Fournisseurs",
     "airlines": "Compagnies aériennes",
@@ -706,6 +707,7 @@
     "error": "Une erreur est survenue lors de la recherche de véhicules.",
     "missingParams": "Veuillez renseigner vos critères de recherche.",
     "title": "Véhicules disponibles",
+    "showMoreResults": "Afficher plus de résultats",
     "select": "Choisir",
     "noResults": "Aucun véhicule disponible pour ces critères."
   },
@@ -713,6 +715,7 @@
     "error": "Une erreur est survenue lors de la recherche de logements.",
     "missingParams": "Veuillez renseigner vos critères de recherche.",
     "title": "Logements disponibles",
+    "showMoreResults": "Afficher plus de résultats",
     "select": "Choisir",
     "noResults": "Aucun logement disponible pour ces critères."
   },
