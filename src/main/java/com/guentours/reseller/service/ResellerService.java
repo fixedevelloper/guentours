@@ -129,13 +129,15 @@ public class ResellerService {
             user = userRepository.findById(reseller.getUserId()).orElse(null);
         }
 
-        // 2. Mise à jour du rôle utilisateur vers RESELLER
+        // 2. Mise à jour du rôle utilisateur vers RESELLER + lien vers ce revendeur - promoteToReseller()
+        // seul ne fait que changer le rôle, pas AppUserPrincipal#getResellerId() (lit
+        // user.resellerId), ce qui bloquait tout revendeur fraîchement approuvé sur les endpoints
+        // self-service (createBookingHold & co, qui exigent un resellerId non-null).
         if (user != null) {
 
-                // Ajouter le rôle à la collection existante
-                user.promoteToReseller();
+                user.linkReseller(reseller.getId());
                 userRepository.save(user);
-                log.info("Rôle RESELLER ajouté à l'utilisateur [ID: {}]", user.getId());
+                log.info("Rôle RESELLER ajouté à l'utilisateur [ID: {}], lié au revendeur [ID: {}]", user.getId(), reseller.getId());
 
         } else {
             log.warn("Aucun utilisateur associé au revendeur [ID: {}] lors de l'approbation", id);

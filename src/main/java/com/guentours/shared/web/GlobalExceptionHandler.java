@@ -13,6 +13,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
 
@@ -83,6 +84,18 @@ public class GlobalExceptionHandler {
         HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
         return ResponseEntity.status(status)
                 .body(ApiError.of(status.value(), status.getReasonPhrase(), ex.getReason()));
+    }
+
+    /**
+     * Since Spring 6.1, an unmatched request falls through to a catch-all static-resource handler
+     * that throws this instead of DispatcherServlet returning 404 directly - without a specific
+     * handler here it matches the {@link #handleGeneric} catch-all below (it's still an
+     * {@link Exception}) and gets reported as a misleading 500 for any typo'd/nonexistent route.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiError> handleNoResourceFound(NoResourceFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiError.of(404, "Not Found", "No endpoint " + ex.getHttpMethod() + " " + ex.getResourcePath()));
     }
 
     @ExceptionHandler(Exception.class)

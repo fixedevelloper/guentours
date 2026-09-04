@@ -17,7 +17,7 @@ export default function AdminOverviewPage() {
   const locale = useLocale();
 
   const bookingsQuery = useAdminBookingsQuery();
-  const usersQuery = useAdminUsersQuery();
+  const usersQuery = useAdminUsersQuery(0);
   const walletQuery = useCommissionWalletQuery();
 
   const totalRevenue = (bookingsQuery.data ?? []).reduce(
@@ -123,7 +123,7 @@ export default function AdminOverviewPage() {
               {t("totalUsers") ?? "Utilisateurs"}
             </p>
             <p className="text-xl font-black text-foreground tracking-tight">
-              {isLoading ? <Skeleton className="h-6 w-12 rounded-md" /> : (usersQuery.data?.length ?? 0)}
+              {isLoading ? <Skeleton className="h-6 w-12 rounded-md" /> : (usersQuery.data?.totalElements ?? 0)}
             </p>
           </div>
         </div>

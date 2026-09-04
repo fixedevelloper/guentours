@@ -8,8 +8,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 public record ResellerCheckoutRequest(
-        @NotBlank CheckoutRequest checkoutRequest,
-        @NotBlank BigDecimal customAmount
+        @NotNull CheckoutRequest checkoutRequest,
+        @NotNull BigDecimal customAmount
 ) {
 
 }

@@ -13,6 +13,7 @@ import com.guentours.shared.CommissionPolicy;
 import com.guentours.shared.Money;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -24,6 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class FlightSearchService {
@@ -35,14 +37,26 @@ public class FlightSearchService {
     private final FlightHarmonizer harmonizer;
     private final OfferCache offerCache;
     private final CommissionPolicy commissionPolicy;
+    /**
+     * Hard ceiling on how long any single provider gets to answer a fan-out search, so the page
+     * can guarantee results within its own budget (currently 15s end-to-end) no matter how many
+     * providers are enabled or how slow one of them is. A provider that misses this window is
+     * treated as having returned no offers rather than blocking the whole response - the caller
+     * still gets every other provider's results on time. This is independent of (and normally
+     * shorter than) each vendor client's own connect/read timeout, which exists to bound the
+     * underlying HTTP call itself.
+     */
+    private final long providerTimeoutMillis;
 
     public FlightSearchService(List<TravelProviderClient> providerClients, ExecutorService providerSearchExecutor,
-                               FlightHarmonizer harmonizer, OfferCache offerCache, CommissionPolicy commissionPolicy) {
+                               FlightHarmonizer harmonizer, OfferCache offerCache, CommissionPolicy commissionPolicy,
+                               @Value("${app.search.flight-provider-timeout-millis:12000}") long providerTimeoutMillis) {
         this.providerClients = providerClients;
         this.providerSearchExecutor = providerSearchExecutor;
         this.harmonizer = harmonizer;
         this.offerCache = offerCache;
         this.commissionPolicy = commissionPolicy;
+        this.providerTimeoutMillis = providerTimeoutMillis;
     }
 
     public List<HarmonizedFlightOffer> search(FlightSearchRequest request) {
@@ -124,9 +138,15 @@ public class FlightSearchService {
         List<CompletableFuture<List<FlightOffer>>> futures = providerClients.stream()
                 .filter(TravelProviderClient::isEnabled)
                 .map(client -> CompletableFuture.supplyAsync(() -> {
-                    log.info("Dispatching flight search to provider {}", client.getType());
-                    return client.searchFlights(criteria);
-                }, providerSearchExecutor))
+                            log.info("Dispatching flight search to provider {}", client.getType());
+                            return client.searchFlights(criteria);
+                        }, providerSearchExecutor)
+                        .orTimeout(providerTimeoutMillis, TimeUnit.MILLISECONDS)
+                        .exceptionally(ex -> {
+                            log.warn("Provider {} did not respond within {} ms, excluding it from these results: {}",
+                                    client.getType(), providerTimeoutMillis, ex.toString());
+                            return List.of();
+                        }))
                 .toList();
 
         return futures.stream()

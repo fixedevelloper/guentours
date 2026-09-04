@@ -58,6 +58,10 @@ app:
     # a query param - the frontend's /auth/callback page then stores it exactly like a classic
     # login and redirects into the app.
     frontend-redirect-uri: ${APP_OAUTH2_FRONTEND_REDIRECT_URI:http://localhost:3000/auth/callback}
+    # Google OAuth client id registered for the mobile app (Android/iOS), distinct from the web
+    # client used by oauth2Login() above - checked against the ID token's `aud` claim in
+    # SocialTokenVerifier. Left blank until the mobile client is created in Google Cloud Console.
+    google-mobile-client-id: ${GOOGLE_MOBILE_CLIENT_ID:}
   jwt:
     # No fallback: a committed default would let anyone forge tokens the moment this is left unset.
     secret: ${APP_JWT_SECRET}
@@ -98,6 +102,14 @@ app:
     # How often unpaid/deposit-only holds past their provider ticketing deadline get auto-cancelled.
     expiry-check-interval-ms: ${APP_BOOKING_EXPIRY_CHECK_INTERVAL_MS:300000}
     expiry-check-initial-delay-ms: ${APP_BOOKING_EXPIRY_DELAY_MS:60000}
+
+  search:
+    # Hard ceiling per provider on a flight search fan-out (see FlightSearchService), so the page
+    # can guarantee results within its own 15s budget regardless of how many providers are enabled
+    # or how slow one of them is - a provider that misses this window is excluded from that
+    # response instead of blocking it. Independent of (and normally shorter than) each vendor
+    # client's own connect/read timeout (app.providers.<vendor>.timeout-millis).
+    flight-provider-timeout-millis: ${FLIGHT_SEARCH_PROVIDER_TIMEOUT_MILLIS:12000}
 
   notifications:
     # How long a read in-app notification is kept before the daily cleanup job deletes it.

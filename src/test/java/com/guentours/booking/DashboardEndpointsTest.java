@@ -18,6 +18,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -87,7 +89,22 @@ class DashboardEndpointsTest {
                 org.springframework.http.HttpMethod.GET, authEntity(adminToken), String.class);
         assertThat(usersResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode users = objectMapper.readTree(usersResponse.getBody());
-        assertThat(users.size()).isGreaterThanOrEqualTo(2);
+        assertThat(users.get("content").size()).isGreaterThanOrEqualTo(2);
+        assertThat(users.get("totalElements").asInt()).isGreaterThanOrEqualTo(2);
+
+        // Search narrows to just the matching account (name or email). Built as a plain URI
+        // (not a String passed to RestTemplate's template-expanding overload) for the same
+        // reason as BookingFlowIntegrationTest#withEmail: form-encoding "+" as "%2B" (matching
+        // how the servlet container decodes query params) would otherwise get double-encoded by
+        // UriComponentsBuilder if passed as a String.
+        String encodedEmail = URLEncoder.encode(adminEmail, StandardCharsets.UTF_8);
+        java.net.URI searchUri = java.net.URI.create(url("/api/admin/users?q=" + encodedEmail));
+        ResponseEntity<String> searchResponse = restTemplate.exchange(searchUri,
+                org.springframework.http.HttpMethod.GET, authEntity(adminToken), String.class);
+        assertThat(searchResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode searchResults = objectMapper.readTree(searchResponse.getBody()).get("content");
+        assertThat(searchResults.size()).isEqualTo(1);
+        assertThat(searchResults.get(0).get("email").asText()).isEqualTo(adminEmail);
     }
 
     private String checkoutFlightFor(String contactEmail) throws Exception {

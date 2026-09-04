@@ -4,6 +4,7 @@ import com.guentours.security.*;
 import com.guentours.security.service.JwtService;
 import com.guentours.user.domain.User;
 import com.guentours.user.service.UserService;
+import com.guentours.security.SocialTokenVerifier.VerifiedSocialProfile;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -28,13 +29,16 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
     private final AuthCookieService authCookieService;
+    private final SocialTokenVerifier socialTokenVerifier;
 
     public AuthController(UserService userService, AuthenticationManager authenticationManager,
-                          JwtService jwtService, AuthCookieService authCookieService) {
+                          JwtService jwtService, AuthCookieService authCookieService,
+                          SocialTokenVerifier socialTokenVerifier) {
         this.userService = userService;
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
         this.authCookieService = authCookieService;
+        this.socialTokenVerifier = socialTokenVerifier;
     }
 
     @PostMapping("/register")
@@ -51,6 +55,33 @@ public class AuthController {
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.email(), request.password()));
         User user = userService.getByEmail(request.email());
+        AppUserPrincipal principal = new AppUserPrincipal(user);
+        String token = jwtService.generateToken(principal, principal.getRole());
+        response.addHeader(HttpHeaders.SET_COOKIE, authCookieService.buildAuthCookie(token).toString());
+        return ResponseEntity.ok(AuthResponse.of(null, user.getEmail(), user.getFullName(), principal.getRole(), user.getPartnerId(), user.getId()));
+    }
+
+    /**
+     * Mobile-native equivalent of the browser's {@code oauth2Login()} flow: the token was already
+     * obtained on-device (google_sign_in) and is verified here against Google directly, since the
+     * cookie a browser-redirect flow would set never reaches this app's Dio cookie jar. Mints the
+     * exact same {@code gt_auth} cookie/{@link AuthResponse} as {@link #login}.
+     */
+    @PostMapping("/oauth/google")
+    public ResponseEntity<AuthResponse> loginWithGoogle(@Valid @RequestBody GoogleAuthRequest request, HttpServletResponse response) {
+        VerifiedSocialProfile profile = socialTokenVerifier.verifyGoogleIdToken(request.idToken());
+        User user = userService.findOrCreateForOAuth(profile.email(), profile.name());
+        AppUserPrincipal principal = new AppUserPrincipal(user);
+        String token = jwtService.generateToken(principal, principal.getRole());
+        response.addHeader(HttpHeaders.SET_COOKIE, authCookieService.buildAuthCookie(token).toString());
+        return ResponseEntity.ok(AuthResponse.of(null, user.getEmail(), user.getFullName(), principal.getRole(), user.getPartnerId(), user.getId()));
+    }
+
+    /** Mobile-native equivalent for Facebook (flutter_facebook_auth), see {@link #loginWithGoogle}. */
+    @PostMapping("/oauth/facebook")
+    public ResponseEntity<AuthResponse> loginWithFacebook(@Valid @RequestBody FacebookAuthRequest request, HttpServletResponse response) {
+        VerifiedSocialProfile profile = socialTokenVerifier.verifyFacebookAccessToken(request.accessToken());
+        User user = userService.findOrCreateForOAuth(profile.email(), profile.name());
         AppUserPrincipal principal = new AppUserPrincipal(user);
         String token = jwtService.generateToken(principal, principal.getRole());
         response.addHeader(HttpHeaders.SET_COOKIE, authCookieService.buildAuthCookie(token).toString());

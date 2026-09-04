@@ -51,8 +51,10 @@ export async function resendBookingConfirmation(bookingId: string) {
   await apiClient.post(`/api/admin/bookings/${bookingId}/resend-confirmation`);
 }
 
-export async function getAdminUsers() {
-  const { data } = await apiClient.get<AdminUserResponse[]>("/api/admin/users");
+export async function getAdminUsers(page: number, size = 20, query?: string) {
+  const { data } = await apiClient.get<PageResponse<AdminUserResponse>>("/api/admin/users", {
+    params: { page, size, q: query || undefined },
+  });
   return data;
 }
 

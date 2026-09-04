@@ -12,6 +12,7 @@ import {
   Info,
   Luggage,
   Lock,
+  AlertTriangle,
 } from "lucide-react";
 
 import { useRouter } from "@/i18n/navigation";
@@ -26,6 +27,25 @@ import { useRenderCap } from "@/hooks/use-render-cap";
 import { useFlightStore } from "@/store/useFlightStore";
 import type { HarmonizedFlightOffer } from "@/lib/api/types";
 import { checkoutUrlForFlight, resellerCheckoutUrlForFlight } from "@/lib/checkout-url";
+
+/** Shown when the search request itself failed (timeout, network error, 5xx) - distinct from a
+ *  successful search that found zero offers (see FlightResultsList's own empty state below). */
+export function FlightSearchErrorState({ onRetry }: { onRetry: () => void }) {
+  const t = useTranslations("SearchResults");
+
+  return (
+      <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-destructive/40 bg-destructive/5 p-8 text-center backdrop-blur-xs">
+        <div className="relative mb-4 flex size-16 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+          <AlertTriangle className="size-8" />
+        </div>
+        <h3 className="text-base font-bold text-foreground">{t("searchFailedTitle")}</h3>
+        <p className="mt-1.5 max-w-sm text-xs text-muted-foreground">{t("searchFailedMessage")}</p>
+        <Button onClick={onRetry} className="mt-6 rounded-full px-6 font-semibold">
+          {t("retrySearch")}
+        </Button>
+      </div>
+  );
+}
 
 export function FlightResultsList({
                                     offers,

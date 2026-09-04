@@ -46,10 +46,11 @@ export function useResendBookingConfirmationMutation(bookingId: string) {
   });
 }
 
-export function useAdminUsersQuery() {
+export function useAdminUsersQuery(page: number, query?: string) {
   return useQuery({
-    queryKey: ["admin-users"],
-    queryFn: () => adminApi.getAdminUsers(),
+    queryKey: ["admin-users", page, query],
+    queryFn: () => adminApi.getAdminUsers(page, 20, query),
+    placeholderData: (previousData) => previousData,
   });
 }
 

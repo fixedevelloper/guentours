@@ -341,6 +341,7 @@ public class SabreClient implements TravelProviderClient {
                 getType(),
                 String.valueOf(itinerary.id()),
                 first.carrier().marketing(),
+                IataAirlines.nameFor(first.carrier().marketing()),
                 first.carrier().marketing() + first.carrier().marketingFlightNumber(),
                 first.departure().airport(),
                 last.arrival().airport(),
@@ -348,7 +349,9 @@ public class SabreClient implements TravelProviderClient {
                 arrival,
                 cabin,
                 price,
-                seats);
+                seats,
+                Map.of(),
+                null);
     }
 
     /** Booked-cabin/seat details of the first priced passenger type (ADT), across all its fare components. */

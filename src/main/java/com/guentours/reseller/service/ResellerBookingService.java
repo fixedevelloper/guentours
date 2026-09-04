@@ -15,6 +15,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -51,23 +52,29 @@ public class ResellerBookingService {
      * Delegates the actual hold creation to the platform's booking flow, then tags the
      * resulting booking with the connected reseller's id so commission crediting can happen
      * later at payment confirmation.
+     * {@code NOT_SUPPORTED}, overriding the class-level read-only default: {@code checkout()}
+     * relies on its own {@code createPendingBooking} sub-call committing independently *before*
+     * it fires the provider hold off-thread ({@code completeHold}, @Async) - wrapping this method
+     * in a transaction of its own would instead fold that insert into this one, leaving it
+     * uncommitted (and invisible to completeHold's own connection) for as long as this method
+     * keeps running, racing (and sometimes losing) an async step that assumes it's already durable.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ResellerBookingResponse createBookingHold(ResellerCheckoutRequest req, Authentication authentication) {
         Reseller reseller = resolveConnectedReseller(authentication);
         Booking booking = bookingService.checkout(req.checkoutRequest());
+        bookingRepository.assignReseller(booking.getId(), reseller.getId());
         booking.assignReseller(reseller.getId());
-        Booking saved = bookingRepository.save(booking);
-        return ResellerBookingResponse.from(saved);
+        return ResellerBookingResponse.from(booking);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ResellerBookingResponse createBookingMultiCityHold(MultiCityCheckoutRequest req, Authentication authentication) {
         Reseller reseller = resolveConnectedReseller(authentication);
         Booking booking = bookingService.checkoutMultiCity(req);
+        bookingRepository.assignReseller(booking.getId(), reseller.getId());
         booking.assignReseller(reseller.getId());
-        Booking saved = bookingRepository.save(booking);
-        return ResellerBookingResponse.from(saved);
+        return ResellerBookingResponse.from(booking);
     }
 
     /** Resolves the reseller behind the currently authenticated principal, or 403s if the account isn't a reseller. */

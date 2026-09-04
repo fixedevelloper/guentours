@@ -550,6 +550,7 @@ public class TravelportClient implements TravelProviderClient {
                 getType(),
                 offering.id(),
                 first.carrier(),
+                IataAirlines.nameFor(first.carrier()),
                 first.carrier() + first.number(),
                 first.Departure().location(),
                 last.Arrival().location(),
@@ -558,7 +559,8 @@ public class TravelportClient implements TravelProviderClient {
                 first.classOfService() != null ? first.classOfService() : criteria.cabinClass(),
                 price,
                 9,
-                bookingContext(offerings, offering, pricedOffering, flights.size(), transactionId));
+                bookingContext(offerings, offering, pricedOffering, flights.size(), transactionId),
+                null);
     }
 
     private Money extractPrice(TravelportSearchResponse.ProductBrandOptions brandOption, String fallbackCurrency) {

@@ -579,10 +579,18 @@ public class TraveloproClient implements TravelProviderClient {
             context.put("isPassportMandatory", itinerary.IsPassportMandatory().toString());
         }
 
+        // Travelopro's own response usually carries the marketing airline's display name directly
+        // (unlike Travelport/Sabre, which only return the two-letter code) - fall back to the
+        // static IATA lookup only if the vendor left it blank.
+        String airlineName = first.MarketingAirlineName() != null && !first.MarketingAirlineName().isBlank()
+                ? first.MarketingAirlineName()
+                : IataAirlines.nameFor(first.MarketingAirlineCode());
+
         return new FlightOffer(
                 getType(),
                 itinerary.AirItineraryFareInfo().FareSourceCode(),
                 first.MarketingAirlineCode(),
+                airlineName,
                 first.MarketingAirlineCode() + first.FlightNumber(),
                 first.DepartureAirportLocationCode(),
                 last.ArrivalAirportLocationCode(),
@@ -591,7 +599,8 @@ public class TraveloproClient implements TravelProviderClient {
                 criteria.cabinClass(),
                 price,
                 seats,
-                context);
+                context,
+                null);
     }
     private String toTraveloproCabinClass(String cabinClass) {
         if (cabinClass == null) {

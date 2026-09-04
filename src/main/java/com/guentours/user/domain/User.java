@@ -135,7 +135,4 @@ public class User {
         this.partnerId = partnerId;
         this.role = partnerRole;
     }
-    public void promoteToReseller() {
-        this.role = Role.RESELLER;
-    }
 }
