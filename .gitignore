@@ -7,3 +7,8 @@ target/
 .DS_Store
 .env
 monitoring/prometheus_admin.txt
+
+# Firebase Admin SDK service account key (push notifications, see PushNotificationService) -
+# a real private key, never committed. Matches FIREBASE_CREDENTIALS_PATH in .env.
+firebase-service-account.json
+*firebase-adminsdk*.json

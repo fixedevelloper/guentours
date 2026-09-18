@@ -2,7 +2,9 @@ package com.guentours.usernotification;
 
 import com.guentours.booking.BookingService;
 import com.guentours.booking.domain.Booking;
+import com.guentours.booking.domain.OfferType;
 import com.guentours.booking.event.BookingAutoCancelledEvent;
+import com.guentours.booking.event.BookingConfirmedEvent;
 import com.guentours.booking.event.BookingFailedEvent;
 import com.guentours.payment.events.PaymentFailedEvent;
 import com.guentours.usernotification.domain.NotificationType;
@@ -51,5 +53,23 @@ class UserNotificationEventListener {
                 "Payment failed",
                 "The payment for your booking " + event.bookingId() + " failed. Reason: " + event.reason(),
                 event.bookingId());
+    }
+
+    /**
+     * The main motivation for push (see PushNotificationService): a mobile money payment confirms
+     * asynchronously via webhook, often well after the user has closed the app - without this,
+     * they'd only learn their booking went through the next time they happen to reopen it.
+     * {@link BookingConfirmedEvent} fires for every offer type (flight, hotel, car rental,
+     * furnished rental - see BookingService#confirmWithProvider), so the message only mentions
+     * e-tickets for flights, where they actually exist.
+     */
+    @ApplicationModuleListener
+    void on(BookingConfirmedEvent event) {
+        Booking booking = bookingService.getById(event.bookingId());
+        String message = booking.getOfferType() == OfferType.FLIGHT
+                ? "Your booking " + booking.getId() + " is confirmed. Your e-ticket is ready."
+                : "Your booking " + booking.getId() + " is confirmed.";
+        notificationService.create(booking.getUserId(), NotificationType.BOOKING_CONFIRMED,
+                "Booking confirmed", message, booking.getId());
     }
 }

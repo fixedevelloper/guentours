@@ -1,0 +1,18 @@
+# Secrets - never end up in an image layer, even an intermediate build stage.
+.env
+firebase-service-account.json
+*firebase-adminsdk*.json
+
+# Not needed to build/run the Spring Boot API image.
+guentravel/
+frontend/
+target/
+.git/
+.idea/
+*.iml
+.vscode/
+monitoring/
+deploy/
+
+logs/
+*.log

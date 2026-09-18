@@ -2,13 +2,19 @@ services:
 
   spring:
     build:
-      context: ./spring
+      context: .
     container_name: spring
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
       - "8080:8080"
     volumes:
-      - ./spring/logs:/logs
+      - ./logs:/logs
+      # Clé de compte de service Firebase (push notifications, voir PushNotificationService) -
+      # jamais copiée dans l'image (voir .dockerignore), montée en lecture seule à l'emplacement
+      # que FIREBASE_CREDENTIALS_PATH pointe déjà dans .env (relatif au WORKDIR /app du conteneur).
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
     networks:
       - backend
     # Recommandé : Healthcheck pour s'assurer que Spring répond avant d'activer Prometheus

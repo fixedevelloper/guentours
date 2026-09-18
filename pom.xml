@@ -26,6 +26,7 @@
         <spring-dotenv.version>5.1.0</spring-dotenv.version>
         <kotlin.version>2.3.20</kotlin.version>
         <openhtmltopdf.version>1.0.10</openhtmltopdf.version>
+        <firebase-admin.version>9.4.1</firebase-admin.version>
     </properties>
 
     <dependencyManagement>
@@ -121,6 +122,13 @@
             <groupId>io.minio</groupId>
             <artifactId>minio</artifactId>
             <version>8.5.17</version>
+        </dependency>
+
+        <!-- Firebase Cloud Messaging (push notifications, see com.guentours.usernotification) -->
+        <dependency>
+            <groupId>com.google.firebase</groupId>
+            <artifactId>firebase-admin</artifactId>
+            <version>${firebase-admin.version}</version>
         </dependency>
         <!-- PDF rendering: converts a Thymeleaf-rendered XHTML ticket document to PDF bytes -->
         <dependency>
