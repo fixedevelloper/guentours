@@ -15,11 +15,16 @@ import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -46,11 +51,16 @@ import java.util.function.Function;
  * Travelopro/Sabre/Travelport:
  *
  * <p><b>Search is Server-Sent Events, not a plain request/response.</b> {@code GET
- * /api/flights/search-stream} streams {@code route_update} events until the connection closes;
- * since our SPI's {@link #searchFlights} is synchronous we simply read the whole body as text
- * (blocking until Travel Terminus closes the stream) and parse it line by line - handling both
- * the real SSE framing ({@code event:}/{@code id:}/{@code data: <json>}) and the raw
- * newline-delimited JSON shown in the vendor's own sample code, since the two disagree.
+ * /api/flights/search-stream} streams {@code route_update} events, but real measurement showed
+ * Travel Terminus delivering all of them within ~1s of {@code search_started} and then holding the
+ * connection open with nothing but heartbeat pings for up to another 70s before it actually closes
+ * - since our SPI's {@link #searchFlights} is synchronous, blocking on the full body (as this used
+ * to) meant waiting out that entire idle tail on every search. {@link #readSearchStreamUntilQuiet}
+ * instead reads the stream incrementally and closes our end as soon as a terminal event arrives, or
+ * once the stream has gone quiet (heartbeats only) for a while after the last real route data - see
+ * its javadoc. The accumulated text is then parsed line by line exactly as before, handling both the
+ * real SSE framing ({@code event:}/{@code id:}/{@code data: <json>}) and the raw newline-delimited
+ * JSON shown in the vendor's own sample code, since the two disagree.
  *
  * <p><b>There is no "hold" state.</b> Travel Terminus retired Hold booking on 2026-08-13: {@code
  * POST /api/flights/book} now debits the vendor wallet and issues the e-ticket immediately, in
@@ -74,6 +84,10 @@ public class TravelTerminusClient implements TravelProviderClient {
     private static final String PENDING_BOOKING_PREFIX = "TTH-";
     private static final int ORDER_DETAILS_POLL_ATTEMPTS = 3;
     private static final long ORDER_DETAILS_POLL_DELAY_MS = 1500;
+    /** How long to keep reading the search-stream past the last real route_update/first_results
+     *  event, seeing nothing but heartbeats, before giving up on more data arriving - see
+     *  {@link #readSearchStreamUntilQuiet}. */
+    private static final long SEARCH_STREAM_QUIET_PERIOD_MS = 3_000L;
     // Our canonical PassengerInfo carries no gender/title field (only fullName, dob, passport,
     // nationality) - same gap TravelportClient.toWorkbenchTraveler hit, same fix: default until a
     // real gender/title field exists in the domain model.
@@ -189,6 +203,22 @@ public class TravelTerminusClient implements TravelProviderClient {
         // URI template placeholder syntax ("Not enough variable values available to expand..."), so
         // each value is instead passed as a placeholder + supplied through build(Object...), which
         // substitutes and percent-encodes it as an opaque literal instead of re-parsing it.
+        //
+        // Read via exchange(), not retrieve().body(...), for two reasons: (1) retrieve() has no
+        // HttpMessageConverter that supports InputStream for a text/event-stream response ("no
+        // suitable HttpMessageConverter found"); exchange() hands us the raw ClientHttpResponse,
+        // bypassing message conversion entirely. (2) it lets us read the body incrementally (see
+        // readSearchStreamUntilQuiet) instead of blocking until Travel Terminus closes the
+        // connection - real measurement (2026-09-18) showed every route_update arriving within ~1s
+        // of search_started, followed by nothing but heartbeat pings for up to 70 more seconds
+        // before the connection actually closes. Blocking on that made searches exceed
+        // FlightSearchService's per-provider budget and get excluded even though the results had
+        // long since arrived.
+        //
+        // exchange() applies none of retrieve()'s default error-status handling, so a non-2xx
+        // response is turned back into the same RestClientResponseException retrieve() would have
+        // thrown - withAuth's token-expiry retry (and toTravelTerminusException) depend on catching
+        // exactly that type.
         String body = withAuth(token -> restClient.get()
                 .uri(uriBuilder -> uriBuilder.path("/api/flights/search-stream")
                         .queryParam("searchAirLegs", "{searchAirLegs}")
@@ -202,8 +232,21 @@ public class TravelTerminusClient implements TravelProviderClient {
                 .header("version", "1")
                 .header("Currency-Preference", currency)
                 .header("language", "en")
-                .retrieve()
-                .body(String.class));
+                .exchange((request, response) -> {
+                    if (response.getStatusCode().isError()) {
+                        byte[] errorBody = StreamUtils.copyToByteArray(response.getBody());
+                        throw new RestClientResponseException(
+                                "Travel Terminus search-stream returned " + response.getStatusCode(),
+                                response.getStatusCode(), response.getStatusText(),
+                                response.getHeaders(), errorBody, StandardCharsets.UTF_8);
+                    }
+                    try {
+                        return readSearchStreamUntilQuiet(response.getBody());
+                    } catch (IOException e) {
+                        throw new TravelTerminusException("stream_read_error",
+                                "Failed reading Travel Terminus search-stream: " + e.getMessage(), e);
+                    }
+                }));
 
         // DEBUG, not INFO: the SSE body can be tens of KB (one route_update per fare) - logging it
         // in full on every search at the default level is real synchronous I/O on the hot path.
@@ -211,6 +254,69 @@ public class TravelTerminusClient implements TravelProviderClient {
                 body == null ? 0 : body.length(), body);
 
         return parseSearchStream(body, criteria);
+    }
+
+    /**
+     * Reads the SSE search-stream line by line and stops early instead of waiting for Travel
+     * Terminus to close the connection: as soon as a terminal event ({@code search_completed},
+     * {@code almost_complete}, {@code stop_loader}) arrives, or once at least one {@code
+     * route_update}/{@code first_results} event has been seen and {@link
+     * #SEARCH_STREAM_QUIET_PERIOD_MS} has passed since the last one with nothing but heartbeats in
+     * between, we close our end - Travel Terminus notices the dropped connection and cleans up on
+     * its side, we don't need to wait for it to do so first. Falls back to the underlying
+     * RestClient read timeout (a genuine stall with no lines at all, not even heartbeats) as a
+     * last-resort safety net, same as before this change.
+     */
+    private String readSearchStreamUntilQuiet(InputStream in) throws IOException {
+        StringBuilder collected = new StringBuilder();
+        boolean sawRouteData = false;
+        long lastUsefulEventAtMillis = System.currentTimeMillis();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                collected.append(line).append('\n');
+                String eventType = extractEventType(line);
+                if (isTerminalSearchStreamEvent(eventType)) {
+                    break;
+                }
+                if ("route_update".equals(eventType) || "first_results".equals(eventType)) {
+                    sawRouteData = true;
+                    lastUsefulEventAtMillis = System.currentTimeMillis();
+                } else if (sawRouteData
+                        && System.currentTimeMillis() - lastUsefulEventAtMillis >= SEARCH_STREAM_QUIET_PERIOD_MS) {
+                    log.debug("[TravelTerminus] search-stream quiet for {} ms since the last route data, "
+                            + "closing our end instead of waiting for Travel Terminus to close the connection",
+                            SEARCH_STREAM_QUIET_PERIOD_MS);
+                    break;
+                }
+            }
+        }
+        return collected.toString();
+    }
+
+    /** Best-effort: an unparseable/non-JSON line (a raw SSE {@code event:}/{@code id:}/{@code :}
+     *  framing line, or garbage) just isn't a signal either way, not an error worth surfacing here -
+     *  {@link #parseSearchStream} re-parses the same lines properly afterward. */
+    private String extractEventType(String rawLine) {
+        String line = rawLine.strip();
+        if (line.isEmpty() || line.startsWith("event:") || line.startsWith("id:") || line.startsWith(":")) {
+            return null;
+        }
+        if (line.startsWith("data:")) {
+            line = line.substring("data:".length()).strip();
+        }
+        if (line.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(line).path("type").asText(null);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static boolean isTerminalSearchStreamEvent(String type) {
+        return "search_completed".equals(type) || "almost_complete".equals(type) || "stop_loader".equals(type);
     }
 
     private List<FlightOffer> parseSearchStream(String body, FlightSearchCriteria criteria) {

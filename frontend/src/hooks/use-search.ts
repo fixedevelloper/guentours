@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import axios from "axios";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import {
@@ -69,7 +70,7 @@ export function useHotelSearchWithLoadMore(params: HotelSearchParams | null) {
     setPageNumber(1);
     setHasMore(Boolean(query.data?.searchId));
     // Only a genuinely new query.data reference (a new search) should reset accumulated pages.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [query.data]);
 
   const loadMoreMutation = useMutation({
@@ -116,8 +117,8 @@ export function useHotelDetail(offerId: string | null | undefined) {
     // 2. Durée de validité des données (ex: 10 min)
     staleTime: 10 * 60 * 1000, 
     // 3. Ne PAS retenter en cas d'offre expirée (404 / 410)
-    retry: (failureCount, error: any) => {
-      const status = error?.response?.status;
+    retry: (failureCount, error) => {
+      const status = axios.isAxiosError(error) ? error.response?.status : undefined;
       if (status === 404 || status === 410) return false;
       return failureCount < 2;
     },

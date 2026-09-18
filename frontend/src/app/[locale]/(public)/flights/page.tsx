@@ -6,7 +6,6 @@ import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
   Search,
-  X,
   ArrowLeftRight,
   Calendar,
   Users,

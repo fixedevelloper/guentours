@@ -7,7 +7,6 @@ import { Link } from "@/i18n/navigation";
 import { useAdminBookingsQuery, useAdminUsersQuery, useCommissionWalletQuery } from "@/hooks/use-admin";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BookingRow } from "@/components/dashboard/booking-row";
 import { formatMoney } from "@/lib/format";

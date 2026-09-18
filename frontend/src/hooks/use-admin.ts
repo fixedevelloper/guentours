@@ -9,7 +9,6 @@ import type {
   ResellerApprovalRequest,
   ResellerStatus,
   ShareholderRequest,
-  UpdateCommissionPayload,
 } from "@/lib/api/types";
 
 export function useAdminBookingsQuery() {

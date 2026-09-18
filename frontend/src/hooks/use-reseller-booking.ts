@@ -1,9 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as resellerBookingApi from "@/lib/api/reseller-booking";
-import {CheckoutRequest, type MultiCityCheckoutRequest} from "@/lib/api/types";
-import * as bookingApi from "@/lib/api/booking";
 import {
-    createBookingMultiCityHold,
     ResellerBookingCheckout,
     ResellerBookingCheckoutMultiCity
 } from "@/lib/api/reseller-booking";

@@ -4,7 +4,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useFieldArray, useForm } from "react-hook-form";
 import { useTranslations } from "next-intl";
-import { Plus, Trash2, User, Mail, Phone, CreditCard, Calendar, ShieldCheck, Check, Banknote } from "lucide-react";
+import { Plus, Trash2, User, Mail, CreditCard, ShieldCheck, Check, Banknote } from "lucide-react";
 import { z } from "zod";
 import { Resolver } from "react-hook-form";
 import { Badge } from "@/components/ui/badge";

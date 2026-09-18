@@ -10,15 +10,18 @@ import type {
   RoomOffer,
   SeatMapResponse, VehicleSearchParams,
 } from "./types";
-import {useQuery} from "@tanstack/react-query";
 
-// The page must show results (or a clear failure) within a 15s budget. The backend already
-// caps its own slowest step - the provider fan-out - at 12s (app.search.flight-provider-timeout-millis,
-// see FlightSearchService), leaving headroom for network + serialization. This per-call timeout
-// overrides the apiClient's generic 45s default (sized for the slowest endpoint in the app) so a
-// flight search that misses its own budget fails fast instead of leaving the loader spinning past
-// the point where the page is supposed to have an answer.
-const FLIGHT_SEARCH_TIMEOUT_MS = 15_000;
+// Must stay above the backend's own provider fan-out budget
+// (app.search.flight-provider-timeout-millis / FLIGHT_SEARCH_PROVIDER_TIMEOUT_MILLIS, see
+// FlightSearchService) plus headroom for network + serialization, or this fires first and aborts
+// a search the backend was still legitimately working on - which is exactly what happened here:
+// this was 15s (matching a backend budget of 12s at the time), the backend budget was since
+// raised to 52s (.env) without updating this constant to match, so every search that took the
+// backend more than 15s got aborted client-side, retried once (see QueryProvider's global
+// `retry: 1`), and aborted again - two cancelled requests, no result, for a search the backend
+// would have answered within its own 52s budget. 60s covers the current 52s backend budget with
+// margin; if that budget changes again, this needs to move with it.
+const FLIGHT_SEARCH_TIMEOUT_MS = 60_000;
 
 export async function searchFlights(params: FlightSearchParams) {
   const { data } = await apiClient.get<HarmonizedFlightOffer[]>("/api/search/flights", {

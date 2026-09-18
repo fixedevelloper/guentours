@@ -139,7 +139,7 @@ export function DashboardShell({
               <span>Devenir revendeur</span>
             </div>
             <p className="text-[11px] text-muted-foreground font-medium leading-relaxed">
-              Gagnez des commissions sur vos ventes de billets et d'hôtels.
+              Gagnez des commissions sur vos ventes de billets et d&apos;hôtels.
             </p>
             <Button
               asChild

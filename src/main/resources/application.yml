@@ -115,7 +115,7 @@ app:
     # or how slow one of them is - a provider that misses this window is excluded from that
     # response instead of blocking it. Independent of (and normally shorter than) each vendor
     # client's own connect/read timeout (app.providers.<vendor>.timeout-millis).
-    flight-provider-timeout-millis: ${FLIGHT_SEARCH_PROVIDER_TIMEOUT_MILLIS:12000}
+    flight-provider-timeout-millis: ${FLIGHT_SEARCH_PROVIDER_TIMEOUT_MILLIS:22000}
 
   notifications:
     # How long a read in-app notification is kept before the daily cleanup job deletes it.

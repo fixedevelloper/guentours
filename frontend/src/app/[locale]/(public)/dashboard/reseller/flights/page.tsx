@@ -3,7 +3,6 @@
 
 import { Suspense, useMemo, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
 import {
     Search,
     X,
@@ -50,7 +49,6 @@ export default function ResellerFlightsPage() {
 }
 
 function ResellerFlightsPageContent() {
-    const t = useTranslations("SearchResults");
     const searchParams = useSearchParams();
     const router = useRouter();
 
@@ -136,7 +134,7 @@ function ResellerFlightsPageContent() {
                     </div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <ShieldCheck className="size-4 text-emerald-600" />
-                        <span>Tarifs d'agences & commissions B2B appliqués</span>
+                        <span>Tarifs d&apos;agences & commissions B2B appliqués</span>
                     </div>
                 </div>
 
@@ -227,7 +225,7 @@ function ResellerFlightsPageContent() {
                                         Aucun vol ne correspond à vos filtres
                                     </h3>
                                     <p className="mt-1.5 max-w-sm text-xs text-muted-foreground">
-                                        Essayez d'élargir vos critères de prix ou de compagnies pour afficher les tarifs revendeur disponibles.
+                                        Essayez d&apos;élargir vos critères de prix ou de compagnies pour afficher les tarifs revendeur disponibles.
                                     </p>
                                     <Button
                                         onClick={() => setFilters(DEFAULT_FLIGHT_FILTERS)}
